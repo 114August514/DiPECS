@@ -1,0 +1,79 @@
+### 警告不用管，是静态检查导致的，实际上没啥问题。
+
+# 1. 名字：这是在 GitHub 界面上显示的标题
+# 代码质检员
+name: Code-Quality-Guard
+
+# 2. 触发条件 (On)
+on:
+  push:
+    branches: [ main ]      # 当有人把代码直接推送到 main 分支时
+  pull_request:
+    branches: [ main ]      # 当有人发起合并到 main 的申请 (PR) 时
+
+# 3. 全局环境变量：设置这个虚拟工厂的“全局配置”
+env:
+  CARGO_TERM_COLOR: always  # 强制让 Cargo 输出带颜色的日志，方便我们看报错
+
+# 控制并发并设置最严格权限
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+# 4. 任务 (Jobs)：定义具体的流水线
+jobs:
+  # 任务 ID 叫 fmt
+  # 将快速执行的格式检查独立出来，实现快速失败(Fail-fast)
+  fmt:
+    name: Rustfmt Check
+    # 物理环境：租用 GitHub 提供的最新版 Ubuntu 虚拟机
+    runs-on: ubuntu-latest
+    # 步骤 (Steps)：这是真正的工序，按顺序执行
+    steps:
+      # --- 步骤 1: 搬运代码 ---
+      # uses 表示使用别人写好的“现成机器人”。
+      # checkout@v4 的作用是将你的 GitHub 仓库代码“克隆”到这台虚拟机上。
+      - name: Checkout Source
+        uses: actions/checkout@v4
+
+      # --- 步骤 2: 安装工具链 ---
+      # dtolnay/rust-toolchain 是 Rust 社区最稳的“装机机器人”。
+      # 它会自动读取你根目录的 rust-toolchain.toml，安装指定的 Rust 版本。
+      - name: Install Rust Toolchain
+        uses: dtolnay/rust-toolchain@master
+        with:
+          components: rustfmt # 顺便安装格式化工具
+
+      # --- 步骤 3: 检查代码格式 ---
+      # run 表示直接在虚拟机的终端里执行原始命令。
+      # --check 表示：只检查，不修改。如果代码不整齐，直接判“死刑”（报错）。
+      - name: Run Cargo Fmt
+        run: cargo fmt --all -- --check
+
+  # 深度体检留在独立任务中
+  clippy:
+    name: Clippy Check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Source
+        uses: actions/checkout@v4
+        with:
+          lfs: true # 保留 LFS，确保编译所需的资源就绪
+
+      - name: Install Rust Toolchain
+        uses: dtolnay/rust-toolchain@master
+        with:
+          components: clippy
+
+      # --- 开启缓存 ---
+      # Rust 编译很慢。这个机器人会记住上次编译好的中间文件。
+      # 下次跑 CI 时，如果依赖没变，直接复用，速度提升 5-10 倍。
+      - name: Cache Dependencies
+        uses: Swatinem/rust-cache@v2
+
+      # 增加 --all-targets 和 --all-features 以覆盖测试与所有特性
+      - name: Run Cargo Clippy
+        run: cargo clippy --workspace --all-targets --all-features -- -D warnings

@@ -28,6 +28,9 @@ repository = "https://github.com/114August514/DiPECS"
 tokio = { version = "1.36", features = ["full"] }
 async-trait = "0.1"
 
+# --- 网络与云端通信 (Control Plane) ---
+reqwest = { version = "0.12", features = ["json", "rustls-tls"] }
+
 # --- 序列化与协议 (离线数据处理的核心) ---
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"

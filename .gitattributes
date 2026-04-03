@@ -1,0 +1,28 @@
+# --- [ 1. 静态参考资料 (References) ] ---
+*.pdf filter=lfs diff=lfs merge=lfs -text
+
+# --- [ 2. 轨迹数据 (Traces) ] ---
+data/traces/**/*.bin filter=lfs diff=lfs merge=lfs -text
+data/traces/**/*.pb filter=lfs diff=lfs merge=lfs -text
+data/traces/**/*.parquet filter=lfs diff=lfs merge=lfs -text
+# 如果 JSON 文件被识别为大型数据集（如超过 2MB），也建议强制 LFS
+# data/traces/**/*.json filter=lfs diff=lfs merge=lfs -text
+
+# --- [ 3. 第三方预编译库 ] ---
+# 仅当源码编译太慢或不可用时
+**/*.so filter=lfs diff=lfs merge=lfs -text
+**/*.a filter=lfs diff=lfs merge=lfs -text
+
+# --- [ 4. 文档素材 ] ---
+# 演示录屏和高精素材
+docs/assets/**/*.mp4 filter=lfs diff=lfs merge=lfs -text
+docs/assets/**/*.mov filter=lfs diff=lfs merge=lfs -text
+docs/assets/**/*.png filter=lfs diff=lfs merge=lfs -text
+docs/assets/**/*.jpg filter=lfs diff=lfs merge=lfs -text
+
+# --- [ 5. 严禁 LFS (White List) ] ---
+# 显式声明：所有的代码和配置文件严禁进入 LFS
+*.rs text
+*.toml text
+*.md text
+*.sh text

@@ -2,6 +2,8 @@
 
 欢迎加入 **DiPECS (Digital Intelligence Platform for Efficient Computing Systems)** 项目团队。
 
+**架构声明：** 本系统采用**云端大模型驱动**（Control Plane），本地环境则负责**环境感知、隐私脱敏、语义执行与状态反馈**（Data Plane）。本地 OS 不是算力中心，而是作为带有隐私隔离墙的“动作翻译官”和语义网关。
+
 作为一个系统级开源项目，我们的核心原则是：**确定性 (Determinism)**、**可观测性 (Observability)** 和 **工程严谨性 (Rigor)**。请在开始编码前仔细阅读本规范。
 
 ---

@@ -1,154 +1,157 @@
-# 文档与知识自动化 (Docs & Knowledge Deployment)
-name: Docs-Publish
+name: Docs CI/CD
 
 on:
   push:
-    branches: [ main ]
-    tags: [ 'v*' ]
+    branches:
+      - main
     paths:
+      - 'crates/**'
       - 'docs/**'
-      - '**.rs'
       - '.github/workflows/docs.yml'
-
-permissions:
-  contents: write
-  pages: write
-  id-token: write
+  workflow_dispatch:
 
 env:
   CARGO_TERM_COLOR: always
-  RUST_VERSION: "1.86.0"
-  # 知识库路径配置
-  DOCS_ROOT: docs            # mdBook 源码根目录
-  DOCS_OUT: docs/book        # mdBook 编译输出目录
-  ACADEMIC_ROOT: docs/academic # LaTeX 学术报告源码区
-  PUBLISH_DIR: public        # 最终发布目录
 
 jobs:
   # 1. 编译 mdBook 与 Rust API 文档
   build-docs:
-    name: Build Knowledge Base
+    name: Build KB & API
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4.2.2
-      
-      - name: Setup Rust
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
         uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: ${{ env.RUST_VERSION }} 
+          toolchain: 1.86.0
 
-      - name: Rust Cache
-        uses: Swatinem/rust-cache@v2
+      - name: Install mdBook & Plugins
+        run: |
+          cargo install mdbook || true
+          cargo install mdbook-graphviz || true
+          cargo install cargo-deps || true
 
-      - name: Cache mdBook & Tools
-        uses: actions/cache@v4
+      - name: Generate Dependency Graph
+        run: |
+          mkdir -p docs/src/img
+          cargo deps --all-deps | dot -Tpng > docs/src/img/deps.png || echo "Deps graph failed"
+
+      - name: Build mdBook
+        run: |
+          cd docs
+          mdbook build
+          cd ..
+
+      - name: Build API Docs
+        run: cargo doc --no-deps --workspace
+
+      - name: Upload Docs Artifacts
+        uses: actions/upload-artifact@v4
         with:
-          path: ~/.cargo/bin/
-          key: ${{ runner.os }}-docs-tools-${{ hashFiles('.github/workflows/docs.yml') }}
+          name: docs-html
+          path: |
+            docs/book/
+            target/doc/
 
-      - name: Install Tools (mdBook, Linkcheck & Deps)
-        uses: taiki-e/install-action@v2
+  # 2. 编译学术报告 (仅在相关文件变动时触发)
+  build-academic:
+    name: Build Academic Reports
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
         with:
-          tool: mdbook,mdbook-linkcheck,cargo-deps
+          fetch-depth: 2
 
-      - name: Install Graphviz
-        run: sudo apt-get update && sudo apt-get install -y graphviz
-
-      # A. 状态机图渲染
-      - name: Render State Diagrams
+      - name: Check for Academic Changes
+        id: check_changes
         run: |
-          SRC_DIR="${{ env.DOCS_ROOT }}/src"
-          IMG_DIR="$SRC_DIR/img"
-          mkdir -p "$IMG_DIR"
-          if [ -f "$SRC_DIR/architecture/states.md" ]; then
-            sed -n '/```dot/,/```/p' "$SRC_DIR/architecture/states.md" | grep -v '```' > state_tmp.dot
-            [ -s state_tmp.dot ] && dot -Tpng state_tmp.dot > "$IMG_DIR/states.png" || true
-          fi
-
-      # B. 依赖拓扑图渲染 (Dependency Graph)
-      - name: Render Dependency Graph
-        run: |
-          IMG_DIR="${{ env.DOCS_ROOT }}/src/img"
-          mkdir -p "$IMG_DIR"
-          cargo deps --all-deps | dot -Tpng > "$IMG_DIR/dependency-graph.png" || true
-
-      # C. 学术报告批量编译 (调研、可行性、中期、结题)
-      - name: Compile Academic Reports
-        run: |
-          ACADEMIC_DIR="${{ env.ACADEMIC_ROOT }}"
-          if [ -d "$ACADEMIC_DIR" ]; then
-            sudo apt-get update && sudo apt-get install -y texlive-xetex latexmk texlive-fonts-recommended texlive-fonts-extra
-            for report in "$ACADEMIC_DIR"/*; do
-              if [ -f "$report/main.tex" ]; then
-                echo "Compiling $report"
-                cd "$report"
-                latexmk -pdf -xelatex -interaction=nonstopmode main.tex || true
-                cd -
-              fi
-            done
-          fi
-
-      # 构建 API 文档
-      - name: Generate Rust API Docs
-        run: cargo doc --workspace --no-deps --document-private-items
-
-      # 构建 mdBook (逻辑判断与死链检查)
-      - name: Build mdBook & Check Links
-        run: |
-          if [ -f "${{ env.DOCS_ROOT }}/book.toml" ]; then
-            # 自动注入 linkcheck 预处理器，防止出现 404 死链
-            if ! grep -q "\[preprocessor.linkcheck\]" "${{ env.DOCS_ROOT }}/book.toml"; then
-              echo "" >> "${{ env.DOCS_ROOT }}/book.toml"
-              echo "[preprocessor.linkcheck]" >> "${{ env.DOCS_ROOT }}/book.toml"
-              echo "command = \"mdbook-linkcheck\"" >> "${{ env.DOCS_ROOT }}/book.toml"
-            fi
-            # 强制设定书籍语言为中文
-            export MDBOOK_BOOK__LANGUAGE=zh-CN
-            mdbook build "${{ env.DOCS_ROOT }}"
+          if git diff --name-only HEAD^ HEAD | grep -q "^docs/academic/"; then
+            echo "changed=true" >> $GITHUB_OUTPUT
           else
-            echo "No mdBook found at ${{ env.DOCS_ROOT }}."
+            echo "changed=false" >> $GITHUB_OUTPUT
           fi
 
-      # 整合产物到一个发布目录
-      - name: Organize Artifacts
+      - name: Setup TeX Live
+        if: steps.check_changes.outputs.changed == 'true'
+        uses: xu-cheng/latex-action@v3
+        with:
+          root_file: |
+            docs/academic/01_Survey_Report/main.tex
+            docs/academic/02_Feasibility_Report/main.tex
+            docs/academic/03_Midterm_Report/main.tex
+            docs/academic/04_Final_Report/main.tex
+          args: -pdf -interaction=nonstopmode -shell-escape
+          working_directory: docs/academic/
+
+      - name: Prepare PDF Artifacts
+        if: steps.check_changes.outputs.changed == 'true'
         run: |
-          PUB="${{ env.PUBLISH_DIR }}"
-          mkdir -p "$PUB/api"
-          cp -r target/doc/* "$PUB/api/" 2>/dev/null || true
-          touch "$PUB/.nojekyll"
-          # 提取并发布所有 PDF 报告
-          ACADEMIC_DIR="${{ env.ACADEMIC_ROOT }}"
-          PDF_LINK_HTML=""
-          if [ -d "$ACADEMIC_DIR" ]; then
-            for report in "$ACADEMIC_DIR"/*; do
-              if [ -f "$report/main.pdf" ]; then
-                # 去除前缀并替换下划线，例如 "01_Survey_Report" -> "Survey Report"
-                REPORT_NAME=$(basename "$report" | sed -r 's/^[0-9]+_//' | sed 's/_/ /g')
-                FILE_NAME=$(basename "$report")
-                cp "$report/main.pdf" "$PUB/${FILE_NAME}.pdf"
-                PDF_LINK_HTML="${PDF_LINK_HTML}<a href=\"./${FILE_NAME}.pdf\" target=\"_blank\" class=\"group flex items-center justify-between p-4 rounded-lg border border-slate-200 hover:border-red-500 hover:bg-red-50 hover:shadow-sm transition-all text-slate-700 hover:text-red-700 font-medium\"><div class=\"flex items-center space-x-4\"><i class=\"fa-solid fa-file-pdf text-red-500 text-lg w-6 text-center\"></i><span>${REPORT_NAME} (PDF)</span></div><i class=\"fa-solid fa-chevron-right text-slate-400 group-hover:text-red-500 transition-colors\"></i></a>"
-              fi
-            done
-          fi
-                    # 处理 mdBook
-          if [ -d "${{ env.DOCS_OUT }}" ]; then
-            cp -r "${{ env.DOCS_OUT }}"/* "$PUB/guide/" 2>/dev/null || mkdir -p "$PUB/guide"
-          fi
+          mkdir -p academic-pdfs
+          cp docs/academic/01_Survey_Report/main.pdf academic-pdfs/Survey_Report.pdf || true
+          cp docs/academic/02_Feasibility_Report/main.pdf academic-pdfs/Feasibility_Report.pdf || true
+          cp docs/academic/03_Midterm_Report/main.pdf academic-pdfs/Midterm_Report.pdf || true
+          cp docs/academic/04_Final_Report/main.pdf academic-pdfs/Final_Report.pdf || true
+
+      - name: Upload Academic Artifacts
+        if: steps.check_changes.outputs.changed == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: academic-pdfs
+          path: academic-pdfs/
+
+  # 3. 整合站点结构
+  deploy-site:
+    name: Assemble Site
+    needs: [build-docs, build-academic]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Download Docs Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: docs-html
+          path: site-temp
+
+      - name: Download Academic Artifacts (Optional)
+        uses: actions/download-artifact@v4
+        with:
+          name: academic-pdfs
+          path: academic-temp
+        continue-on-error: true
+
+      - name: Organize Structure
+        run: |
+          PUB="public_html"
+          mkdir -p "$PUB/guide" "$PUB/api" "$PUB/academic"
           
-          # 版本快照支持
-          if [[ $GITHUB_REF == refs/tags/* ]]; then
-            TAG_NAME=${GITHUB_REF#refs/tags/}
-            mkdir -p "$PUB/archive/$TAG_NAME"
-            cp -r "$PUB/guide" "$PUB/archive/$TAG_NAME/guide" 2>/dev/null || true
-            cp -r "$PUB/api" "$PUB/archive/$TAG_NAME/api" 2>/dev/null || true
+          # 移动 mdBook
+          cp -r site-temp/docs/book/* "$PUB/guide/"
+          
+          # 移动 API Docs
+          cp -r site-temp/target/doc/* "$PUB/api/"
+          
+          # 动态生成学术报告链接
+          PDF_HTML_SNIPPET=""
+          if [ -d "academic-temp" ] && [ "$(ls -A academic-temp/*.pdf 2>/dev/null)" ]; then
+            PDF_HTML_SNIPPET="<div class='mt-6 pt-6 border-t border-slate-200'><h3 class='text-xs font-bold text-slate-400 uppercase tracking-widest mb-4 flex items-center'><i class='fa-solid fa-graduation-cap mr-2'></i>学术报告 (Academic Reports)</h3><div class='grid grid-cols-1 gap-3'>"
+            for pdf in academic-temp/*.pdf; do
+              filename=$(basename "$pdf")
+              # 转换文件名：Survey_Report.pdf -> Survey Report
+              displayname=$(echo "$filename" | sed 's/\.pdf//; s/_/ /g')
+              cp "$pdf" "$PUB/academic/"
+              PDF_HTML_SNIPPET="${PDF_HTML_SNIPPET}<a href='./academic/${filename}' target='_blank' class='flex items-center p-3 rounded-lg border border-slate-100 hover:bg-slate-50 transition-colors text-sm text-slate-600 hover:text-indigo-600 font-medium'><i class='fa-solid fa-file-pdf text-red-500 mr-3 text-lg'></i>${displayname}</a>"
+            done
+            PDF_HTML_SNIPPET="${PDF_HTML_SNIPPET}</div></div>"
           fi
 
-          # 智能定位 API 入口
+          # 定位 API 入口
           API_INDEX=$(find "$PUB/api" -name "index.html" | grep -v "settings.html" | head -n 1)
-          API_LINK=${API_INDEX#$PUB/}
+          API_PATH=${API_INDEX#$PUB/}
           
           # 生成引导页
-          cat << HTM > "$PUB/index.html"
+          cat << EOF > "$PUB/index.html"
           <!DOCTYPE html>
           <html lang="zh-CN">
           <head>
@@ -174,14 +177,14 @@ jobs:
                   <i class="fa-solid fa-chevron-right text-slate-400 group-hover:text-indigo-500 transition-colors"></i>
                 </a>
                 
-                <a href="./${API_LINK:-api/index.html}" class="group flex items-center justify-between p-4 rounded-lg border border-slate-200 hover:border-orange-500 hover:bg-orange-50 hover:shadow-sm transition-all text-slate-700 hover:text-orange-700 font-medium">
+                <a href="./${API_PATH:-api/index.html}" class="group flex items-center justify-between p-4 rounded-lg border border-slate-200 hover:border-orange-500 hover:bg-orange-50 hover:shadow-sm transition-all text-slate-700 hover:text-orange-700 font-medium">
                   <div class="flex items-center space-x-4">
                     <i class="fa-brands fa-rust text-orange-600 text-lg w-6 text-center"></i>
                     <span>Rust API 参考手册 (最新版)</span>
                   </div>
                   <i class="fa-solid fa-chevron-right text-slate-400 group-hover:text-orange-500 transition-colors"></i>
                 </a>
-                ${PDF_LINK_HTML}
+                ${PDF_HTML_SNIPPET}
               </div>
 
               <div class="mt-10 pt-6 border-t border-slate-200">
@@ -195,17 +198,20 @@ jobs:
             </div>
           </body>
           </html>
-          HTM
+          EOF
+          
+          # 输出结果
+          mv "$PUB" deployment_payload
 
-      - name: Upload Artifact
+      - name: Upload Final Site
         uses: actions/upload-pages-artifact@v3
         with:
-          path: ${{ env.PUBLISH_DIR }}
+          path: deployment_payload/
 
-  # 2. 自动部署到 GitHub Pages
+  # 4. 自动部署到 GitHub Pages
   deploy:
     name: Deploy to Pages
-    needs: build-docs
+    needs: deploy-site
     runs-on: ubuntu-latest
     permissions:
       pages: write

@@ -1,0 +1,41 @@
+# DiPECS 依赖策略配置文件
+
+[graph]
+# 允许存在多版本 crate 的豁免清单 (仅在必须时添加)
+targets = []
+
+[advisories]
+# 安全公告
+db-urls = ["https://github.com/rustsec/advisory-db"]
+vulnerability = "deny"
+unmaintained = "warn"
+unsound = "deny"
+notice = "warn"
+
+[licenses]
+# 核心原则：仅允许开源友好且合规的许可证
+allow = [
+    "MIT",
+    "Apache-2.0",
+    "BSD-3-Clause",
+    "ISC",
+    "CC0-1.0",
+]
+confidence-threshold = 0.8
+copyleft = "deny"
+
+[bans]
+multiple-versions = "deny" # 强制版本归一，防止二进制膨胀 (Anti-Bloat)
+deny = [
+    # 禁止使用已知的、与 NDK 交叉编译冲突或体积巨大的冗余库
+    { name = "openssl", reason = "Use rustls for better Android cross-compilation and smaller size." },
+    { name = "lazy_static", reason = "Use standard library OnceLock (Rust 1.70+) or once_cell to reduce redundancy." },
+    { name = "glob", reason = "Use walkdir for more robust cross-platform file traversal." }
+]
+skip = []
+skip-tree = []
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]

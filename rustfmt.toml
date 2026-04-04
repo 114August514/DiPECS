@@ -1,0 +1,20 @@
+# 每一行最长 100 字符
+max_width = 100
+# 使用 2021 版 Rust 习语
+edition = "2021"
+# 在注释里也进行格式化
+format_code_in_doc_comments = true
+# 减少 import 混乱
+imports_granularity = "Crate"
+# 结构体字段对齐
+struct_field_align_threshold = 20
+# 换行符设置
+newline_style = "Unix"
+# 跨行表达式，将操作符放在行首
+binop_separator = "Front"
+# 减少深度嵌套的垂直占用
+array_width = 60
+# 让函数定义更紧凑
+fn_args_layout = "Tall"
+# 在 match 分支中，如果只有一行，不强制加括号
+match_block_trailing_comma = true

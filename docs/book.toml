@@ -1,0 +1,20 @@
+[book]
+authors = ["114August514"]
+language = "zh-CN"
+multilingual = false
+src = "src"
+title = "DiPECS 核心架构指南"
+
+[output.html]
+git-repository-url = "https://github.com/114August514/DiPECS"
+edit-url-template = "https://github.com/114August514/DiPECS/edit/main/docs/{path}"
+# 启用常用的现代插件
+copy-fonts = true
+additional-js = []
+
+[output.html.search]
+limit-results = 30
+teaser-word-count = 30
+use-boolean-and = true
+expand = true
+

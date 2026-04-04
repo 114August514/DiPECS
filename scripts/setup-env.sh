@@ -4,6 +4,7 @@
 # 颜色定义
 GREEN='\033[0;32m'
 RED='\033[0;31m'
+YELLOW='\033[1;33m'
 NC='\033[0m'
 
 echo -e "${GREEN}[DiPECS] 配置 Android 交叉编译环境...${NC}"
@@ -39,6 +40,13 @@ if [[ ":$PATH:" != *":$TOOLCHAIN/bin:"* ]]; then
     echo "已将 NDK Toolchain 加入 PATH"
 fi
 
+# 3.5 增加：Rust Target 自动检查与补充
+TARGET_ARCH="aarch64-linux-android"
+if ! rustup target list --installed | grep -q "$TARGET_ARCH"; then
+    echo -e "${YELLOW}[DiPECS] 正在安装 Rust target: $TARGET_ARCH...${NC}"
+    rustup target add "$TARGET_ARCH"
+fi
+
 # 4. 定义 API 版本和链接器名称
 LINKER_NAME="aarch64-linux-android${ANDROID_API}-clang"
 
@@ -52,7 +60,36 @@ else
     return 1 2>/dev/null || exit 1
 fi
 
-# 6. 安全检查：提示用户使用 source 运行
+# 6. [自举 Bootstrap] 注入 GitHooks
+echo "正在注入 DiPECS Git Hooks..."
+GIT_DIR=$(git rev-parse --git-dir 2>/dev/null || true)
+if [ -z "$GIT_DIR" ]; then
+    echo -e "${RED}错误: 当前不在 Git 仓库中，跳过 Git Hooks 注入。${NC}"
+else
+    mkdir -p "$GIT_DIR/hooks"
+    # 注入 pre-commit (基于相对路径，增强可移植性)
+    ln -sf ../../scripts/pre-commit.sh "$GIT_DIR/hooks/pre-commit"
+    # 注入 commit-msg
+    ln -sf ../../scripts/commit-msg.sh "$GIT_DIR/hooks/commit-msg"
+    echo -e "${GREEN}已启动 物理检查站 & 语义检查站。${NC}"
+fi
+
+chmod +x scripts/pre-commit.sh scripts/commit-msg.sh
+
+# 6.5 环境自检报告
+echo -e "\n${GREEN}[Check] 环境概览:${NC}"
+echo "------------------------------------------"
+printf "Rustc:   $(rustc --version | awk '{print $2}')\n"
+printf "Cargo:   $(cargo --version | awk '{print $2}')\n"
+if command -v adb &> /dev/null; then
+    printf "ADB:     $(adb version | head -n1 | awk '{print $5}')\n"
+else
+    printf "ADB:     ${RED}NOT FOUND${NC}\n"
+fi
+printf "Linker:  $CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER\n"
+echo "------------------------------------------"
+
+# 7. 安全检查：提示用户使用 source 运行
 if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
     echo -e "${RED}请使用 source 运行此脚本，例如: source scripts/setup-env.sh${NC}"
     exit 1

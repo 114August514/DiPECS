@@ -1,0 +1,219 @@
+# 文档与知识自动化 (Docs & Knowledge Deployment)
+name: Docs-Publish
+
+on:
+  push:
+    branches: [ main ]
+    tags: [ 'v*' ]
+    paths:
+      - 'docs/**'
+      - '**.rs'
+      - '.github/workflows/docs.yml'
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_VERSION: "1.86.0"
+  # 知识库路径配置
+  DOCS_ROOT: docs            # mdBook 源码根目录
+  DOCS_OUT: docs/book        # mdBook 编译输出目录
+  ACADEMIC_ROOT: docs/academic # LaTeX 学术报告源码区
+  PUBLISH_DIR: public        # 最终发布目录
+
+jobs:
+  # 1. 编译 mdBook 与 Rust API 文档
+  build-docs:
+    name: Build Knowledge Base
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4.2.2
+      
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.RUST_VERSION }} 
+
+      - name: Rust Cache
+        uses: Swatinem/rust-cache@v2
+
+      - name: Cache mdBook & Tools
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/bin/
+          key: ${{ runner.os }}-docs-tools-${{ hashFiles('.github/workflows/docs.yml') }}
+
+      - name: Install Tools (mdBook, Linkcheck & Deps)
+        uses: taiki-e/install-action@v2
+        with:
+          tool: mdbook,mdbook-linkcheck,cargo-deps
+
+      - name: Install Graphviz
+        run: sudo apt-get update && sudo apt-get install -y graphviz
+
+      # A. 状态机图渲染
+      - name: Render State Diagrams
+        run: |
+          SRC_DIR="${{ env.DOCS_ROOT }}/src"
+          IMG_DIR="$SRC_DIR/img"
+          mkdir -p "$IMG_DIR"
+          if [ -f "$SRC_DIR/architecture/states.md" ]; then
+            sed -n '/```dot/,/```/p' "$SRC_DIR/architecture/states.md" | grep -v '```' > state_tmp.dot
+            [ -s state_tmp.dot ] && dot -Tpng state_tmp.dot > "$IMG_DIR/states.png" || true
+          fi
+
+      # B. 依赖拓扑图渲染 (Dependency Graph)
+      - name: Render Dependency Graph
+        run: |
+          IMG_DIR="${{ env.DOCS_ROOT }}/src/img"
+          mkdir -p "$IMG_DIR"
+          cargo deps --all-deps | dot -Tpng > "$IMG_DIR/dependency-graph.png" || true
+
+      # C. 学术报告批量编译 (调研、可行性、中期、结题)
+      - name: Compile Academic Reports
+        run: |
+          ACADEMIC_DIR="${{ env.ACADEMIC_ROOT }}"
+          if [ -d "$ACADEMIC_DIR" ]; then
+            sudo apt-get update && sudo apt-get install -y texlive-xetex latexmk texlive-fonts-recommended texlive-fonts-extra
+            for report in "$ACADEMIC_DIR"/*; do
+              if [ -f "$report/main.tex" ]; then
+                echo "Compiling $report"
+                cd "$report"
+                latexmk -pdf -xelatex -interaction=nonstopmode main.tex || true
+                cd -
+              fi
+            done
+          fi
+
+      # 构建 API 文档
+      - name: Generate Rust API Docs
+        run: cargo doc --workspace --no-deps --document-private-items
+
+      # 构建 mdBook (逻辑判断与死链检查)
+      - name: Build mdBook & Check Links
+        run: |
+          if [ -f "${{ env.DOCS_ROOT }}/book.toml" ]; then
+            # 自动注入 linkcheck 预处理器，防止出现 404 死链
+            if ! grep -q "\[preprocessor.linkcheck\]" "${{ env.DOCS_ROOT }}/book.toml"; then
+              echo "" >> "${{ env.DOCS_ROOT }}/book.toml"
+              echo "[preprocessor.linkcheck]" >> "${{ env.DOCS_ROOT }}/book.toml"
+              echo "command = \"mdbook-linkcheck\"" >> "${{ env.DOCS_ROOT }}/book.toml"
+            fi
+            # 强制设定书籍语言为中文
+            export MDBOOK_BOOK__LANGUAGE=zh-CN
+            mdbook build "${{ env.DOCS_ROOT }}"
+          else
+            echo "No mdBook found at ${{ env.DOCS_ROOT }}."
+          fi
+
+      # 整合产物到一个发布目录
+      - name: Organize Artifacts
+        run: |
+          PUB="${{ env.PUBLISH_DIR }}"
+          mkdir -p "$PUB/api"
+          cp -r target/doc/* "$PUB/api/" 2>/dev/null || true
+          touch "$PUB/.nojekyll"
+          # 提取并发布所有 PDF 报告
+          ACADEMIC_DIR="${{ env.ACADEMIC_ROOT }}"
+          PDF_LINK_HTML=""
+          if [ -d "$ACADEMIC_DIR" ]; then
+            for report in "$ACADEMIC_DIR"/*; do
+              if [ -f "$report/main.pdf" ]; then
+                # 去除前缀并替换下划线，例如 "01_Survey_Report" -> "Survey Report"
+                REPORT_NAME=$(basename "$report" | sed -r 's/^[0-9]+_//' | sed 's/_/ /g')
+                FILE_NAME=$(basename "$report")
+                cp "$report/main.pdf" "$PUB/${FILE_NAME}.pdf"
+                PDF_LINK_HTML="${PDF_LINK_HTML}<a href=\"./${FILE_NAME}.pdf\" target=\"_blank\" class=\"group flex items-center justify-between p-4 rounded-lg border border-slate-200 hover:border-red-500 hover:bg-red-50 hover:shadow-sm transition-all text-slate-700 hover:text-red-700 font-medium\"><div class=\"flex items-center space-x-4\"><i class=\"fa-solid fa-file-pdf text-red-500 text-lg w-6 text-center\"></i><span>${REPORT_NAME} (PDF)</span></div><i class=\"fa-solid fa-chevron-right text-slate-400 group-hover:text-red-500 transition-colors\"></i></a>"
+              fi
+            done
+          fi
+                    # 处理 mdBook
+          if [ -d "${{ env.DOCS_OUT }}" ]; then
+            cp -r "${{ env.DOCS_OUT }}"/* "$PUB/guide/" 2>/dev/null || mkdir -p "$PUB/guide"
+          fi
+          
+          # 版本快照支持
+          if [[ $GITHUB_REF == refs/tags/* ]]; then
+            TAG_NAME=${GITHUB_REF#refs/tags/}
+            mkdir -p "$PUB/archive/$TAG_NAME"
+            cp -r "$PUB/guide" "$PUB/archive/$TAG_NAME/guide" 2>/dev/null || true
+            cp -r "$PUB/api" "$PUB/archive/$TAG_NAME/api" 2>/dev/null || true
+          fi
+
+          # 智能定位 API 入口
+          API_INDEX=$(find "$PUB/api" -name "index.html" | grep -v "settings.html" | head -n 1)
+          API_LINK=${API_INDEX#$PUB/}
+          
+          # 生成引导页
+          cat << HTM > "$PUB/index.html"
+          <!DOCTYPE html>
+          <html lang="zh-CN">
+          <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>DiPECS Knowledge Base</title>
+            <script src="https://cdn.tailwindcss.com"></script>
+            <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+          </head>
+          <body class="bg-slate-50 flex items-center justify-center min-h-screen p-6">
+            <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-8 w-full max-w-lg">
+              <div class="flex items-center space-x-3 border-b border-slate-200 pb-5 mb-6">
+                <i class="fa-solid fa-microchip text-3xl text-indigo-600"></i>
+                <h1 class="text-2xl font-bold text-slate-800 tracking-tight">DiPECS 文档中心</h1>
+              </div>
+              
+              <div class="space-y-4">
+                <a href="./guide/" class="group flex items-center justify-between p-4 rounded-lg border border-slate-200 hover:border-indigo-500 hover:bg-indigo-50 hover:shadow-sm transition-all text-slate-700 hover:text-indigo-700 font-medium">
+                  <div class="flex items-center space-x-4">
+                    <i class="fa-solid fa-book text-indigo-500 text-lg w-6 text-center"></i>
+                    <span>核心架构指南 (最新版)</span>
+                  </div>
+                  <i class="fa-solid fa-chevron-right text-slate-400 group-hover:text-indigo-500 transition-colors"></i>
+                </a>
+                
+                <a href="./${API_LINK:-api/index.html}" class="group flex items-center justify-between p-4 rounded-lg border border-slate-200 hover:border-orange-500 hover:bg-orange-50 hover:shadow-sm transition-all text-slate-700 hover:text-orange-700 font-medium">
+                  <div class="flex items-center space-x-4">
+                    <i class="fa-brands fa-rust text-orange-600 text-lg w-6 text-center"></i>
+                    <span>Rust API 参考手册 (最新版)</span>
+                  </div>
+                  <i class="fa-solid fa-chevron-right text-slate-400 group-hover:text-orange-500 transition-colors"></i>
+                </a>
+                ${PDF_LINK_HTML}
+              </div>
+
+              <div class="mt-10 pt-6 border-t border-slate-200">
+                <h3 class="text-xs font-bold text-slate-400 uppercase tracking-widest mb-4 flex items-center">
+                  <i class="fa-solid fa-clock-rotate-left mr-2"></i>历史版本归档 (Archive)
+                </h3>
+                <div class="space-y-3">
+                  $( [ -d "$PUB/archive" ] && ls "$PUB/archive" | xargs -I {} echo "<a href='./archive/{}/guide/' class='flex items-center text-sm text-slate-600 hover:text-indigo-600 transition-colors'><i class='fa-solid fa-code-commit text-slate-400 mr-3 w-4 text-center'></i>版本 {} 存档</a>" || echo "<span class='text-sm text-slate-400 italic flex items-center'><i class='fa-solid fa-circle-info mr-2'></i>暂无历史归档记录。</span>" )
+                </div>
+              </div>
+            </div>
+          </body>
+          </html>
+          HTM
+
+      - name: Upload Artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: ${{ env.PUBLISH_DIR }}
+
+  # 2. 自动部署到 GitHub Pages
+  deploy:
+    name: Deploy to Pages
+    needs: build-docs
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

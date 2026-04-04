@@ -17,7 +17,7 @@ if [ -z "$CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER" ]; then
     source "$(dirname "$0")/setup-env.sh" || exit 1
 fi
 
-echo -e "\n${GREEN}--- 1. 格式化检查 ---${NC}"
+echo -e "\n${GREEN}--- 1. 格式化检查 (Rustfmt) ---${NC}"
 cargo fmt --all -- --check
 
 echo -e "\n${GREEN}--- 2. 静态分析 (Clippy) ---${NC}"

@@ -1,0 +1,127 @@
+# 物理构建流水线 (跨平台验证)
+name: Multi-Platform-Build
+
+on:
+  push:
+    paths: &code_paths
+      - '**.rs'
+      - '**/Cargo.toml'
+      - '.github/workflows/build.yml'
+  pull_request:
+    branches: [ main ]
+    paths: *code_paths
+
+# 并称控制
+concurrency:
+  group: build-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_VERSION: "1.86.0"
+  NDK_VERSION: "r27d"
+  ANDROID_API: 33
+
+jobs:
+  build:
+    name: Build (${{ matrix.platform.name }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        platform:
+          - { name: "Android-AArch64", target: "aarch64-linux-android", use_ndk: true }
+          - { name: "Linux-x86_64", target: "x86_64-unknown-linux-gnu", use_ndk: false }
+    
+    steps:
+      - name: Checkout Source
+        uses: actions/checkout@v4.2.2
+        with:
+          submodules: recursive
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.RUST_VERSION }}
+          targets: ${{ matrix.platform.target }}
+
+      # 仅在 Android 构建时处理 NDK
+      - name: Cache Android NDK
+        if: matrix.platform.use_ndk
+        id: cache-ndk
+        uses: actions/cache@v4
+        with:
+          path: ${{ github.workspace }}/android-ndk-${{ env.NDK_VERSION }}
+          key: ndk-linux-${{ env.NDK_VERSION }}
+      
+      - name: Install Android NDK
+        if: matrix.platform.use_ndk && steps.cache-ndk.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p ndk-download && cd ndk-download
+          wget -q https://dl.google.com/android/repository/android-ndk-${{ env.NDK_VERSION }}-linux.zip
+          unzip -q android-ndk-${{ env.NDK_VERSION }}-linux.zip
+          mv android-ndk-${{ env.NDK_VERSION }} ${{ github.workspace }}/android-ndk-${{ env.NDK_VERSION }}
+
+      - name: Setup Compiler Environment
+        run: |
+          if [ "${{ matrix.platform.use_ndk }}" == "true" ]; then
+            NDK_PATH="${{ github.workspace }}/android-ndk-${{ env.NDK_VERSION }}"
+            TOOLCHAIN_BIN="$NDK_PATH/toolchains/llvm/prebuilt/linux-x86_64/bin"
+            CLANG_NAME="${{ matrix.platform.target }}${{ env.ANDROID_API }}-clang"
+            
+            # 动态生成 Cargo Linker 变量，支持未来扩展
+            TARGET_UPPER=$(echo "${{ matrix.platform.target }}" | tr '-' '_' | tr '[:lower:]' '[:upper:]')
+            
+            echo "NDK_HOME=$NDK_PATH" >> $GITHUB_ENV
+            echo "TOOLCHAIN_BIN=$TOOLCHAIN_BIN" >> $GITHUB_ENV
+            echo "CC=$TOOLCHAIN_BIN/$CLANG_NAME" >> $GITHUB_ENV
+            echo "AR=$TOOLCHAIN_BIN/llvm-ar" >> $GITHUB_ENV
+            echo "STRIP=$TOOLCHAIN_BIN/llvm-strip" >> $GITHUB_ENV
+            echo "CARGO_TARGET_${TARGET_UPPER}_LINKER=$TOOLCHAIN_BIN/$CLANG_NAME" >> $GITHUB_ENV
+            echo "$TOOLCHAIN_BIN" >> $GITHUB_PATH
+          fi
+
+      - name: Cache Rust Workspace
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: v1-build-${{ matrix.platform.target }}
+
+      - name: Compile Release
+        run: cargo build --workspace --target ${{ matrix.platform.target }} --release --locked
+
+      # 增加二进制剥离 (Strip) 以减小体积，并输出大小对比
+      - name: Inspect & Strip Binary
+        run: |
+          BINARY="target/${{ matrix.platform.target }}/release/aios-cli"
+          if [ -f "$BINARY" ]; then
+            echo "--- Original size ---"
+            ls -lh "$BINARY"
+            
+            if [ "${{ matrix.platform.use_ndk }}" == "true" ]; then
+              $TOOLCHAIN_BIN/llvm-strip "$BINARY"
+            else
+              strip "$BINARY"
+            fi
+            
+            echo "--- Stripped size ---"
+            ls -lh "$BINARY"
+            file "$BINARY"
+          fi
+
+      # 增强 Android ELF 的“物理审计”
+      - name: Audit Android ELF
+        if: matrix.platform.use_ndk
+        run: |
+          BINARY="target/${{ matrix.platform.target }}/release/aios-cli"
+          if [ -f "$BINARY" ]; then
+            $TOOLCHAIN_BIN/llvm-readelf -d "$BINARY" | grep "NEEDED"
+          fi
+
+      - name: Upload Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: dipecs-${{ matrix.platform.target }}-${{ github.sha }}
+          path: |
+            target/${{ matrix.platform.target }}/release/aios-cli
+            target/${{ matrix.platform.target }}/release/*.so
+          if-no-files-found: warn

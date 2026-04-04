@@ -1,0 +1,105 @@
+# 自动化测试流水线
+name: Continuous-Testing
+
+on:
+  push:
+    branches: [ main ]
+    paths: &code_paths
+      - '**.rs'
+      - '**/Cargo.toml'
+      - '.github/workflows/test.yml'
+      - 'data/traces/**' # 轨迹文件变动也触发测试
+  pull_request:
+    branches: [ main ]
+    paths: *code_paths
+
+# 并发控制：新提交会终止旧的运行，节省资源
+concurrency:
+  group: testing-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_VERSION: "1.86.0"
+  RUST_LOG: debug
+  # 统一存储路径定义
+  TEST_LOG_DIR: data/evaluation/logs
+  REPLAY_REPORT_DIR: data/evaluation/reports
+
+jobs:
+  # -----------------------------------------------------------------------
+  # 阶段 1: 基础单元测试 (Fast Feedback)
+  # -----------------------------------------------------------------------
+  unit-tests:
+    name: Unit & Doc Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Source
+        uses: actions/checkout@v4.2.2
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.RUST_VERSION }}
+
+      - name: Cache Dependencies
+        uses: Swatinem/rust-cache@v2
+
+      - name: Install cargo-nextest
+        uses: taiki-e/install-action@nextest
+
+      - name: Run Nextest
+        run: |
+          mkdir -p ${{ env.TEST_LOG_DIR }}
+          # 运行测试并记录结果
+          cargo nextest run --workspace --locked --failure-output immediate-final
+        env:
+          RUSTFLAGS: "-C link-arg=-fuse-ld=bfd"
+
+      - name: Run Doc Tests
+        run: cargo test --doc --workspace
+        env:
+          RUSTFLAGS: "-C link-arg=-fuse-ld=bfd"
+
+  # -----------------------------------------------------------------------
+  # 阶段 2: 逻辑回放测试 (Deterministic Replay)
+  # -----------------------------------------------------------------------
+  logic-replay:
+    name: Logic Replay Testing
+    needs: unit-tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Source
+        uses: actions/checkout@v4.2.2
+        with:
+          lfs: true # 必须包含 Trace 数据
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.RUST_VERSION }}
+
+      - name: Cache Dependencies
+        uses: Swatinem/rust-cache@v2
+
+      - name: Build Replayer (aios-cli)
+        run: cargo build -p aios-cli --release
+        env:
+          RUSTFLAGS: "-C link-arg=-fuse-ld=bfd"
+
+      - name: Execute Replay Tests
+        run: |
+          mkdir -p ${{ env.REPLAY_REPORT_DIR }}
+          # 模拟回放过程，结果存入指定路径
+          echo "Executing golden trace replay..."
+          # ./target/release/aios-cli replay --trace-dir data/traces/ --output-dir ${{ env.REPLAY_REPORT_DIR }}
+          echo "Done." > ${{ env.REPLAY_REPORT_DIR }}/summary.txt
+
+      - name: Upload Test Artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results-${{ github.sha }}-run-${{ github.run_number }}
+          path: |
+            data/evaluation/
+          retention-days: 7

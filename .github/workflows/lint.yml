@@ -1,15 +1,18 @@
-### 警告不用管，是静态检查导致的，实际上没啥问题。
-
 # 1. 名字：这是在 GitHub 界面上显示的标题
-# 代码质检员
+# 代码质检员 (只负责语法、样式与死代码检查)
 name: Code-Quality-Guard
 
 # 2. 触发条件 (On)
 on:
   push:
-    branches: [ main ]      # 当有人把代码直接推送到 main 分支时
+    # 路径过滤
+    paths: &code_paths
+      - '**.rs'
+      - '**/Cargo.toml'
+      - '.github/workflows/lint.yml'
   pull_request:
-    branches: [ main ]      # 当有人发起合并到 main 的申请 (PR) 时
+    branches: [ main ]
+    paths: *code_paths
 
 # 3. 全局环境变量：设置这个虚拟工厂的“全局配置”
 env:
@@ -36,9 +39,9 @@ jobs:
     steps:
       # --- 步骤 1: 搬运代码 ---
       # uses 表示使用别人写好的“现成机器人”。
-      # checkout@v4 的作用是将你的 GitHub 仓库代码“克隆”到这台虚拟机上。
+      # checkout@v4.2.2 的作用是将你的 GitHub 仓库代码“克隆”到这台虚拟机上。
       - name: Checkout Source
-        uses: actions/checkout@v4
+        uses: actions/checkout@v4.2.2
 
       # --- 步骤 2: 安装工具链 ---
       # dtolnay/rust-toolchain 是 Rust 社区最稳的“装机机器人”。
@@ -55,13 +58,24 @@ jobs:
       - name: Run Cargo Fmt
         run: cargo fmt --all -- --check
 
+  # 检查未使用的依赖
+  machete:
+    name: Unused Dependencies Check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Source
+        uses: actions/checkout@v4.2.2
+
+      - name: Check unused dependencies
+        uses: bnjbvr/cargo-machete@v0.7.0
+
   # 深度体检留在独立任务中
   clippy:
     name: Clippy Check
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Source
-        uses: actions/checkout@v4
+        uses: actions/checkout@v4.2.2
         with:
           lfs: true # 保留 LFS，确保编译所需的资源就绪
 
@@ -70,10 +84,6 @@ jobs:
         with:
           toolchain: ${{ env.RUST_VERSION }} 
           components: clippy
-
-      # 安装依赖
-      - name: Install dependencies
-        run: sudo apt-get update && sudo apt-get install -y lld
 
       # --- 开启缓存 ---
       # Rust 编译很慢。这个机器人会记住上次编译好的中间文件。
@@ -84,3 +94,6 @@ jobs:
       # 增加 --all-targets 和 --all-features 以覆盖测试与所有特性
       - name: Run Cargo Clippy
         run: cargo clippy --workspace --all-targets --all-features -- -D warnings
+        env:
+          # 这里通过环境变量强制改为使用系统自带的 bfd/gold 链接器，从此消灭 "lld not found" 报错。
+          RUSTFLAGS: "-C link-arg=-fuse-ld=bfd" 

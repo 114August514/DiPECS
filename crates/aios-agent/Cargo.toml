@@ -7,8 +7,4 @@ license.workspace = true
 repository.workspace = true
 
 [dependencies]
-# 负责 API 调用优化与云端通信
-reqwest = { workspace = true }
-tokio = { workspace = true }
-serde = { workspace = true }
-serde_json = { workspace = true }
+

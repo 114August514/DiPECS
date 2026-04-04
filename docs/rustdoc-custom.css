@@ -1,0 +1,28 @@
+/* 1. 解除主内容区域的过窄限制，利用大屏空间 */
+.main-content, 
+.width-limiter {
+    max-width: 95% !important;
+    margin-left: auto;
+    margin-right: auto;
+}
+
+/* 2. 优化文档内容区域的排版宽度 */
+.docblock, 
+.item-decl {
+    max-width: 100% !important;
+}
+
+/* 3. 增强大屏下的视觉张力：提高代码块的可读性 */
+pre.rust {
+    padding: 1.2em !important;
+    border-radius: 8px !important;
+    border: 1px solid rgba(0,0,0,0.05) !important;
+}
+
+/* 4. 侧边栏与主区域间隙微调 */
+@media (min-width: 1200px) {
+    main {
+        padding-left: 40px !important;
+        padding-right: 40px !important;
+    }
+}

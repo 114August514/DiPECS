@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DiPECS Knowledge Base</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body class="bg-slate-50 flex items-center justify-center min-h-screen p-6">
+  <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-8 w-full max-w-lg">
+    <div class="flex items-center space-x-3 border-b border-slate-200 pb-5 mb-6">
+      <i class="fa-solid fa-microchip text-3xl text-indigo-600"></i>
+      <h1 class="text-2xl font-bold text-slate-800 tracking-tight">DiPECS 文档中心</h1>
+    </div>
+    
+    <div class="space-y-4">
+      <a href="./guide/" class="group flex items-center justify-between p-4 rounded-lg border border-slate-200 hover:border-indigo-500 hover:bg-indigo-50 hover:shadow-sm transition-all text-slate-700 hover:text-indigo-700 font-medium">
+        <div class="flex items-center space-x-4">
+          <i class="fa-solid fa-book text-indigo-500 text-lg w-6 text-center"></i>
+          <span>核心架构指南 (最新版)</span>
+        </div>
+        <i class="fa-solid fa-chevron-right text-slate-400 group-hover:text-indigo-500 transition-colors"></i>
+      </a>
+      
+      <a href="./{{API_PATH}}" class="group flex items-center justify-between p-4 rounded-lg border border-slate-200 hover:border-orange-500 hover:bg-orange-50 hover:shadow-sm transition-all text-slate-700 hover:text-orange-700 font-medium">
+        <div class="flex items-center space-x-4">
+          <i class="fa-brands fa-rust text-orange-600 text-lg w-6 text-center"></i>
+          <span>Rust API 参考手册 (最新版)</span>
+        </div>
+        <i class="fa-solid fa-chevron-right text-slate-400 group-hover:text-orange-500 transition-colors"></i>
+      </a>
+
+      <!-- ACADEMIC_REPORTS_PLACEHOLDER -->
+    </div>
+
+    <div class="mt-10 pt-6 border-t border-slate-200">
+      <h3 class="text-xs font-bold text-slate-400 uppercase tracking-widest mb-4 flex items-center">
+        <i class="fa-solid fa-clock-rotate-left mr-2"></i>历史版本归档 (Archive)
+      </h3>
+      <div class="space-y-3">
+        <!-- ARCHIVE_LIST_PLACEHOLDER -->
+      </div>
+    </div>
+  </div>
+</body>
+</html>

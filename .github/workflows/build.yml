@@ -91,9 +91,9 @@ jobs:
           if [ "${{ matrix.platform.use_ndk }}" == "true" ]; then
             cargo build --workspace --target ${{ matrix.platform.target }} --release --locked
           else
-            # 在 CI 的 Linux 纯净环境下，强制覆盖 .cargo/config.toml 中的 lld 配置
-            # 避免因为未安装 lld 导致链接失败，同时保持本地开发依然可以使用 lld
-            CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUSTFLAGS="" \
+            # 在 CI 的 Linux 纯净环境下，强制清除 rustflags 以禁用 lld
+            # 注意：必须使用正确的 Cargo 环境变量格式覆盖 config.toml
+            export CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUSTFLAGS=" "
             cargo build --workspace --target ${{ matrix.platform.target }} --release --locked
           fi
 

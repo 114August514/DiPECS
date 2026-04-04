@@ -45,6 +45,12 @@ jobs:
           toolchain: ${{ env.RUST_VERSION }}
           targets: ${{ matrix.platform.target }}
 
+      - name: Install Host Dependencies (Linux)
+        if: matrix.platform.use_ndk == false
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y lld
+
       # 仅在 Android 构建时处理 NDK
       - name: Cache Android NDK
         if: matrix.platform.use_ndk
@@ -87,15 +93,7 @@ jobs:
           key: v1-build-${{ matrix.platform.target }}
 
       - name: Compile Release
-        run: |
-          if [ "${{ matrix.platform.use_ndk }}" == "true" ]; then
-            cargo build --workspace --target ${{ matrix.platform.target }} --release --locked
-          else
-            # 在 CI 的 Linux 纯净环境下，强制清除 rustflags 以禁用 lld
-            # 注意：必须使用正确的 Cargo 环境变量格式覆盖 config.toml
-            export CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUSTFLAGS=" "
-            cargo build --workspace --target ${{ matrix.platform.target }} --release --locked
-          fi
+        run: cargo build --workspace --target ${{ matrix.platform.target }} --release --locked
 
       # 增加二进制剥离 (Strip) 以减小体积，并输出大小对比
       - name: Inspect & Strip Binary

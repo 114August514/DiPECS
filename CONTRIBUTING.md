@@ -25,7 +25,36 @@
 - **Android NDK**: `r27d` (必须安装并配置 `$ANDROID_NDK_HOME`)。
 - **构建环境**: 任何标准的 **64-bit Linux** 环境（包括原生 Ubuntu 22.04+、Windows WSL2 或 Docker 容器）
 
-**严禁**未经团队讨论私自升级或更改全局编译器版本。
+---
+
+## 2.1 快速上手 (Quick Start / Bootstrap)
+
+虽然底层涉及 Android 交叉编译，但我们通过一系列脚本抹平了配置复杂度。
+
+### 步骤 1: 声明式环境自举
+
+1. 安装 [Android NDK r27d](https://developer.android.com/ndk/downloads)。
+2. 配置环境变量（建议写入 `.bashrc`）：
+
+   ```bash
+   export ANDROID_NDK_HOME=$HOME/path/to/android-ndk-r27d
+   ```
+
+3. 执行自举脚本（每次新开终端）：
+
+   ```bash
+   source scripts/setup-env.sh
+   ```
+
+   *该脚本将自动：安装 Rust Android Target、注入 Git Hooks、配置 Clang 交叉链接器。*
+
+### 步骤 2: 开发者内循环 (Dev Loop)
+
+- **代码质检**: 提交前必运行 `./scripts/check-all.sh`。
+- **真机/模拟器调试**:
+  1. 确保 `adb devices` 可用。
+  2. 使用脚本推送并运行：`./scripts/android-runner.sh`。
+- **日志观测**: 在执行过程中，通过 `adb logcat | grep dipecs` 观察 `tracing` 数据。
 
 ---
 

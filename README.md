@@ -12,7 +12,14 @@
 
 DiPECS 是一款基于 **云端大模型驱动 (Cloud-LLM Driven)** 的下一代分布式意图操作系统原型。它通过严格的 **“机制与策略分离”**，在 Android (API 33) 物理环境下，实现用户意图感知、隐私安全脱敏、云端决策推断与本地确定性执行的高效闭环。
 
-本项目深受蒋炎岩 (JYY) 老师的操作系统哲学启发，在研发规范上坚持对 **状态机流转确定性**、**全链路可观测性** 及 **极致的工程严谨** 提出最高要求。
+### 1.1 系统闭环逻辑 (System Loop)
+
+本项目构建了一个从物理原始信号到系统预加载优化的完整状态机闭环：
+
+1. **本地采集 (Local Collection)**: 通过 `UsageStats`、`NotificationListener` 及授权下的 `AccessibilityService` 捕获原子行为，并将其结构化为系统事件流。
+2. **隐私脱敏 (Privacy Redaction)**: 在本地端通过 `aios-core` 进行隐私物理隔绝（Air-gap），确保原始数据在上传前完成敏感信息剥离。
+3. **云端预测 (Cloud Prediction)**: 使用云端大模型对历史行为模式进行归纳，仅在置信度达标时输出低风险优化意图。
+4. **本地优化 (Local Optimization)**: 本地内核层执行非侵入式优化（如应用进程预热、关键数据缓存），实现“零时延”感官体验。
 
 ## 🏗️ 2. 系统架构 (Architecture)
 
@@ -37,18 +44,32 @@ graph TD
 
 ## 📦 3. 车间布局 (Project Structure / Workspace)
 
-整个 DiPECS 被划分为 6 个权责分明的 Crate 工作区，依赖界限物理隔离：
-
-| Crate | 层级 | 职责 | 依赖约束 |
+| Crate | 层级 | 职责 | 技术栈 |
 | :--- | :--- | :--- | :--- |
-| **`aios-spec`** | **宪法层** | 系统 Single Source of Truth。收束所有数据结构、Trait 及 Action Schema 接口。 | **零内部依赖**，绝对隔离 |
-| **`aios-core`** | **逻辑层** | Action Bus 的枢纽。统筹意图调度、负责 **Privacy Air-gap (隐私物理隔绝)** 与防渗漏审计。 | `aios-spec` |
-| **`aios-kernel`** | **内核层** | 控制底层资源生命周期、任务时序分配与确定性进程协同（IPC）。 | `aios-core`, `aios-spec` |
-| **`aios-adapter`** | **适配层** | 跨接纯逻辑层与物理世界。代理 Android Binder 与 Linux Syscalls。 | `aios-kernel`, `aios-spec` |
-| **`aios-agent`** | **业务层** | 充当 LLM 大脑本地 Proxy。执行语义编组拆解与对话轮次上下文控制。 | （最高应用层）隔离 |
-| **`aios-cli`** | **工具层** | 提供交互沙盒与系统状态的“显微镜”探针 (Observability TUI)。 | - |
+| **`aios-spec`** | **宪法层** | 系统 SSOT。定义数据结构、Trait 及 Action Schema。 | `prost` (PB), `serde` |
+| **`aios-core`** | **逻辑层** | 枢纽。统筹调度、**Privacy Air-gap** 与防渗漏审计。 | `tracing`, `thiserror` |
+| **`aios-kernel`** | **内核层** | 控制底层资源生命周期、任务时序分配与 IPC 协同。 | `tokio`, `libc` |
+| **`aios-adapter`** | **适配层** | 跨接物理世界。代理 Android Binder 与 Linux Syscalls。 | `jni`, `ndk-sys` |
+| **`aios-agent`** | **业务层** | LLM 大脑本地 Proxy。执行语义编组与对话轮次控制。 | `async-trait` |
+| **`aios-cli`** | **工具层** | 交互沙盒与系统状态的“显微镜”探针 (TUI)。 | `ratatui` |
 
-## 🛠️ 4. 环境引导与自举 (Bootstrap & Toolchain)
+## 🛠️ 4. 技术栈说明 (Tech Stack)
+
+### 4.1 核心基石
+
+- **语言**: Rust 1.86.0 (Stable)，强制 `Resolver v2`。
+- **Android 集成**: NDK r27d, API Level 33 (Android 13)。
+- **可观测性**: `tracing` (异步全链路追踪), `tracing-subscriber`。
+- **异步处理**: `tokio` (全功能运行时)。
+- **错误处理**: `thiserror` (强类型库错误) / `anyhow` (应用层)。
+
+### 4.2 开发哲学
+
+- **Safe Rust**: 严禁隐式 `unwrap()`/`expect()`。
+- **No-alloc 倾向**: 在 `core` 热路径中优先考虑栈分配，减少堆垃圾回收抖动。
+- **单向依赖**: 严格遵守 `spec -> core -> kernel -> adapter` 拓扑。
+
+## 🛠️ 5. 环境引导与自举 (Bootstrap & Toolchain)
 
 针对跨 Android/Linux AArch64 繁琐的配置，架构组通过自动化脚本抹平了环境门槛。
 

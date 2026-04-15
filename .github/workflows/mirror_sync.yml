@@ -1,12 +1,14 @@
 name: Mirror to OSH2026
 
 on:
-  push:               # 监听所有推送
-  delete:             # 监听分支删除
-  workflow_dispatch:  # 支持手动触发
+  push: # 监听所有推送
+  delete: # 监听分支删除
+  workflow_dispatch: # 支持手动触发
 
 jobs:
   mirror_to_org:
+    if: github.repository == '114August514/DiPECS'
+
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -28,15 +30,27 @@ jobs:
 
           # 1. 设置远程仓库地址
           REMOTE_URL="https://oauth2:${PAT}@${DEST_REPO}"
-          
+
           # 2. 确保抓取所有远程信息
           git fetch --prune --unshallow 2>/dev/null || git fetch --prune
 
-          # 3. 镜像推送
+          # 3. 配置临时用户信息
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
+
+          # 4. 动态修改 README (仅在当前运行环境中修改)
+          # 使用 sed 在第一行插入镜像声明
+          sed -i '1i > [!IMPORTANT]\n> This is a mirror of [114August514/DiPECS](https://github.com/114August514/DiPECS). Please contribute there.\n' README.md
+
+          # 5. 提交修改
+          git add README.md
+          git commit -m "chore: add mirror notice to README" || echo "No changes"         
+
+          # 6. 镜像推送
           # - 解释：
           #   "refs/heads/*:refs/heads/*" -> 同步所有分支
           #   "refs/tags/*:refs/tags/*"   -> 同步所有标签
           #   --force -> 强制覆盖
           #   --prune -> 跟随删除
           git lfs install
-          git push "$REMOTE_URL" "refs/heads/*:refs/heads/*" "refs/tags/*:refs/tags/*" --force --prune
+          git push "$REMOTE_URL" "HEAD:refs/heads/main" "refs/tags/*:refs/tags/*" --force --prune

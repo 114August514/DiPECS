@@ -61,3 +61,5 @@ temp/
 *.temp
 *.bak
 *.local
+CLAUDE.md
+.claude/

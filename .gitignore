@@ -43,6 +43,7 @@ data/traces/*.bin
 # 过滤运行时的临时评估日志
 data/evaluation/*.log
 logs/
+book/
 *.out
 
 # --- [ 5. 密钥与隐私 ] ---

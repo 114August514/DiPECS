@@ -2,7 +2,7 @@
 
 - [项目概览](index.md)
 - [参考文献](references/index.md)
-  - [AIOS 架构分析与供参考设计 (PDF资源)](references/static/aios-arch-analysis.pdf)
+  - [AIOS 架构分析 (PDF)](references/aios-arch.md)
   - [文献综述与阅读清单](references/related-work-report.md)
 - [团队协作与管理](management/index.md)
   - [团队分工与组织架构](management/roles.md)

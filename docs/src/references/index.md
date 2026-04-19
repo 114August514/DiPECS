@@ -33,18 +33,7 @@
 
 ## 3. 重要项目文档 (Project Documents)
 
-### AIOS 架构分析与供参考设计 (PDF)
-
-<center>
-<iframe src="static/aios-arch-analysis.pdf" width="100%" height="600px" style="border: none;">
-  您的浏览器不支持嵌入 PDF，请 [点击此处下载](static/aios-arch-analysis.pdf)。
-</iframe>
-</center>
-
-- **Appformer: Mobile App Usage Prediction via Progressive Multi-Modal Data Fusion**
-  - *Sun, C. et al.* (2024). arXiv:2407.19414.
-- **Anticipatory Mobile Computing: A Survey**
-  - *Pejovic, V. & Musolesi, M.* (2015). ACM Computing Surveys.
+- [AIOS 架构分析与供参考设计 (PDF)](aios-arch.md)
 
 ---
 

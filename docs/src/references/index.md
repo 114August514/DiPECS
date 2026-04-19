@@ -28,6 +28,19 @@
   - *Zhao, S. et al.* (2019). IEEE ICDE.
 - **DeepAPP: A Deep Reinforcement Learning Framework for Mobile Application Usage Prediction**
   - *Shen, Z. et al.* (2019). ACM SenSys.
+
+---
+
+## 3. 重要项目文档 (Project Documents)
+
+### AIOS 架构分析与供参考设计 (PDF)
+
+<center>
+<iframe src="static/aios-arch-analysis.pdf" width="100%" height="600px" style="border: none;">
+  您的浏览器不支持嵌入 PDF，请 [点击此处下载](static/aios-arch-analysis.pdf)。
+</iframe>
+</center>
+
 - **Appformer: Mobile App Usage Prediction via Progressive Multi-Modal Data Fusion**
   - *Sun, C. et al.* (2024). arXiv:2407.19414.
 - **Anticipatory Mobile Computing: A Survey**
@@ -35,7 +48,7 @@
 
 ---
 
-## 3. 隐私保护与联邦学习 (Privacy & Federated Learning)
+## 4. 隐私保护与联邦学习 (Privacy & Federated Learning)
 
 - **SeqMF: Federated Privacy-Preserving Collaborative Filtering for On-Device Next App Prediction**
   - *Sayapin, A. et al.* (2023). arXiv:2303.04744.
@@ -44,7 +57,7 @@
 
 ---
 
-## 4. 分布式与边缘协作 (Distributed & Edge Systems)
+## 5. 分布式与边缘协作 (Distributed & Edge Systems)
 
 - **RAMOS: A Reference Architecture for Cloud-Edge Meta-Operating Systems**
   - *Trakadas, P. et al.* (2022). Sensors.
@@ -53,7 +66,7 @@
 
 ---
 
-## 5. 详细调研报告
+## 6. 详细调研报告
 
 关于上述文献的深入分析与对比实验数据，请参阅：
 

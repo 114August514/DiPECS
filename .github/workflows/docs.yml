@@ -7,6 +7,17 @@ on:
     paths:
       - 'crates/**'
       - 'docs/**'
+      - 'data/**'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - '.github/workflows/docs.yml'
+  pull_request:
+    paths:
+      - 'crates/**'
+      - 'docs/**'
+      - 'data/**'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
       - '.github/workflows/docs.yml'
   workflow_dispatch:
 
@@ -71,8 +82,10 @@ jobs:
       - name: Check for Academic Changes
         id: check_changes
         run: |
-          if git diff --name-only HEAD^ HEAD | grep -q "^docs/academic/"; then
+          if git diff --name-only HEAD^ HEAD 2>/dev/null | grep -q "^docs/academic/"; then
             echo "changed=true" >> $GITHUB_OUTPUT
+          elif [ "${{ github.event_name }}" = "pull_request" ]; then
+            git diff --name-only origin/${{ github.base_ref }}..HEAD | grep -q "^docs/academic/" && echo "changed=true" >> $GITHUB_OUTPUT || echo "changed=false" >> $GITHUB_OUTPUT
           else
             echo "changed=false" >> $GITHUB_OUTPUT
           fi
@@ -109,10 +122,11 @@ jobs:
   deploy-site:
     name: Assemble Site
     needs: [build-docs, build-academic]
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      
+
       - name: Download Docs Artifacts
         uses: actions/download-artifact@v4
         with:
@@ -130,23 +144,25 @@ jobs:
         run: |
           PUB="public_html"
           mkdir -p "$PUB/guide" "$PUB/api" "$PUB/academic"
-          
+
           # 移动 mdBook
           cp -r site-temp/docs/book/* "$PUB/guide/"
-          
+
           # 移动 API Docs
           cp -r site-temp/target/doc/* "$PUB/api/"
-          
-          # 动态生成学术报告链接
+
+          # 移动参考文献 PDF
+          cp docs/refs/*.pdf "$PUB/academic/" 2>/dev/null || true
+
+          # 动态生成学术报告链接区块
           PDF_HTML_SNIPPET=""
           if [ -d "academic-temp" ] && [ "$(ls -A academic-temp/*.pdf 2>/dev/null)" ]; then
-            PDF_HTML_SNIPPET="<div class='mt-6 pt-6 border-t border-slate-200'><h3 class='text-xs font-bold text-slate-400 uppercase tracking-widest mb-4 flex items-center'><i class='fa-solid fa-graduation-cap mr-2'></i>学术报告 (Academic Reports)</h3><div class='grid grid-cols-1 gap-3'>"
+            PDF_HTML_SNIPPET="<div class='mt-6 pt-6 border-t border-slate-200 dark:border-slate-700'><h3 class='text-xs font-bold text-slate-400 uppercase tracking-widest mb-4 flex items-center'><i class='fa-solid fa-graduation-cap mr-2'></i>学术报告 (Academic Reports)</h3><div class='grid grid-cols-1 gap-3'>"
             for pdf in academic-temp/*.pdf; do
               filename=$(basename "$pdf")
-              # 转换文件名：Survey_Report.pdf -> Survey Report
               displayname=$(echo "$filename" | sed 's/\.pdf//; s/_/ /g')
               cp "$pdf" "$PUB/academic/"
-              PDF_HTML_SNIPPET="${PDF_HTML_SNIPPET}<a href='./academic/${filename}' target='_blank' class='flex items-center p-3 rounded-lg border border-slate-100 hover:bg-slate-50 transition-colors text-sm text-slate-600 hover:text-indigo-600 font-medium'><i class='fa-solid fa-file-pdf text-red-500 mr-3 text-lg'></i>${displayname}</a>"
+              PDF_HTML_SNIPPET="${PDF_HTML_SNIPPET}<a href='./academic/${filename}' target='_blank' class='flex items-center p-3 rounded-lg border border-slate-100 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors text-sm text-slate-600 dark:text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 font-medium'><i class='fa-solid fa-file-pdf text-red-500 mr-3 text-lg'></i>${displayname}</a>"
             done
             PDF_HTML_SNIPPET="${PDF_HTML_SNIPPET}</div></div>"
           fi
@@ -154,17 +170,22 @@ jobs:
           # 定位 API 入口
           API_INDEX=$(find "$PUB/api" -name "index.html" | grep -v "settings.html" | head -n 1)
           API_PATH=${API_INDEX#$PUB/}
-          
-          # 物理提取与模板渲染
-          ARCHIVE_SNIPPET=$( [ -d "$PUB/archive" ] && ls "$PUB/archive" | xargs -I {} echo "<a href='./archive/{}/guide/' class='flex items-center text-sm text-slate-600 hover:text-indigo-600 transition-colors'><i class='fa-solid fa-code-commit text-slate-400 mr-3 w-4 text-center'></i>版本 {} 存档</a>" || echo "<span class='text-sm text-slate-400 italic flex items-center'><i class='fa-solid fa-circle-info mr-2'></i>暂无历史归档记录。</span>" )
+
+          # 生成归档链接
+          ARCHIVE_SNIPPET=$( [ -d "$PUB/archive" ] && ls "$PUB/archive" | xargs -I {} echo "<a href='./archive/{}/guide/' class='flex items-center text-sm text-slate-600 dark:text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors'><i class='fa-solid fa-code-commit text-slate-400 mr-3 w-4 text-center'></i>版本 {} 存档</a>" || echo "<span class='text-sm text-slate-400 italic flex items-center'><i class='fa-solid fa-circle-info mr-2'></i>暂无历史归档记录。</span>" )
+
+          # 写入构建时间戳
+          BUILD_TIME=$(date -u +"%Y-%m-%d %H:%M UTC")
+          TIMESTAMP_SNIPPET="<span class='text-xs text-slate-400 mt-2 block'>构建时间: ${BUILD_TIME}</span>"
 
           sed -e "s|{{API_PATH}}|${API_PATH:-api/index.html}|g" \
               -e "/<!-- ACADEMIC_REPORTS_PLACEHOLDER -->/r /dev/stdin" \
               -e "s|<!-- ARCHIVE_LIST_PLACEHOLDER -->|${ARCHIVE_SNIPPET}|g" \
+              -e "s|<!-- BUILD_TIMESTAMP_PLACEHOLDER -->|${TIMESTAMP_SNIPPET}|g" \
               docs/templates/index.html > "$PUB/index.html" << EOR
           ${PDF_HTML_SNIPPET}
           EOR
-          
+
           # 输出结果
           mv "$PUB" deployment_payload
 
@@ -177,6 +198,7 @@ jobs:
   deploy:
     name: Deploy to Pages
     needs: deploy-site
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     permissions:
       pages: write
@@ -188,3 +210,42 @@ jobs:
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
+
+  # 5. PR 预览 (仅构建，生成预览链接)
+  pr-preview:
+    name: PR Preview
+    needs: [build-docs, build-academic]
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download Docs Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: docs-html
+          path: site-temp
+
+      - name: Assemble Preview Site
+        run: |
+          PUB="public_html"
+          mkdir -p "$PUB/guide" "$PUB/api"
+
+          cp -r site-temp/docs/book/* "$PUB/guide/"
+          cp -r site-temp/target/doc/* "$PUB/api/"
+
+          API_INDEX=$(find "$PUB/api" -name "index.html" | grep -v "settings.html" | head -n 1)
+          API_PATH=${API_INDEX#$PUB/}
+
+          sed -e "s|{{API_PATH}}|${API_PATH:-api/index.html}|g" \
+              -e "s|<!-- ARCHIVE_LIST_PLACEHOLDER -->|<span class='text-sm text-slate-400 italic flex items-center'><i class='fa-solid fa-circle-info mr-2'></i>PR 预览模式 — 归档仅在 main 分支可用。</span>|g" \
+              -e "s|<!-- ACADEMIC_REPORTS_PLACEHOLDER -->|<div class='mt-6 pt-6 border-t border-slate-200 dark:border-slate-700'><span class='text-sm text-slate-400 italic'>学术报告仅随 main 分支发布。</span></div>|g" \
+              -e "s|<!-- BUILD_TIMESTAMP_PLACEHOLDER -->|<span class='text-xs text-slate-400 mt-2 block'>PR 预览构建</span>|g" \
+              docs/templates/index.html > "$PUB/index.html"
+
+      - name: Upload Preview Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: pr-preview
+          path: public_html/
+          retention-days: 7

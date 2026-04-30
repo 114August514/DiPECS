@@ -30,6 +30,8 @@ dist/
 
 # --- [ 3. Android & NDK 交叉编译 ] ---
 # 过滤 Android Studio 产生的本地配置文件
+**/build/
+.gradle/
 .cxx/
 local.properties
 .externalNativeBuild/
@@ -62,5 +64,6 @@ temp/
 *.temp
 *.bak
 *.local
+.codex
 CLAUDE.md
 .claude/

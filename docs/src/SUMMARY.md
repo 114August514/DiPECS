@@ -1,14 +1,26 @@
-# DiPECS 文档
+<!-- markdownlint-disable MD025 MD041 -->
+[项目概览](index.md)
 
-- [项目概览](index.md)
-- [参考文献](references/index.md)
-  - [AIOS 架构分析 (PDF)](references/aios-arch.md)
-  - [文献综述与阅读清单](references/related-work-report.md)
-- [团队协作与管理](management/index.md)
-  - [团队分工与组织架构](management/roles.md)
-  - [技术可行性分析报告](management/feasibility.md)
-- [核心架构](architecture/index.md)
-  - [状态机设计](architecture/states.md)
-- [RFC 提案](rfc/index.md)
-  - [RFC 规范与模板](rfc/0000-template.md)
-- [开发指南](guide/dev.md)
+# 调研分析
+
+- [需求分析](research/requirements.md)
+- [可行性分析](research/feasibility.md)
+- [AIOS 参考架构](research/aios-arch.md)
+- [文献综述](research/related-work.md)
+- [中期报告](research/midterm.md)
+- [结题报告](research/final.md)
+
+# 系统设计
+
+- [架构概览](design/overview.md)
+- [状态机设计](design/states.md)
+- [RFC 提案](design/rfc/process.md)
+  - [RFC 模板](design/rfc/0000-template.md)
+
+# 团队与开发
+
+- [团队分工](team/roles.md)
+- [会议纪要](team/meetings/index.md)
+  - [周报模板](team/meetings/0000-template.md)
+  - [第 1 周](team/meetings/week1.md)
+- [开发指南](team/dev.md)

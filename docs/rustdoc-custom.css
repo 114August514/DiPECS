@@ -1,5 +1,5 @@
 /* 1. 解除主内容区域的过窄限制，利用大屏空间 */
-.main-content, 
+.main-content,
 .width-limiter {
     max-width: 95% !important;
     margin-left: auto;
@@ -7,7 +7,7 @@
 }
 
 /* 2. 优化文档内容区域的排版宽度 */
-.docblock, 
+.docblock,
 .item-decl {
     max-width: 100% !important;
 }
@@ -24,5 +24,26 @@ pre.rust {
     main {
         padding-left: 40px !important;
         padding-right: 40px !important;
+    }
+}
+
+/* 5. 深色模式适配 (Rustdoc 自动跟随系统主题) */
+@media (prefers-color-scheme: dark) {
+    pre.rust {
+        border-color: rgba(255,255,255,0.08) !important;
+    }
+}
+
+/* 6. API 文档搜索与导航可读性 */
+.search-results .result-name {
+    font-family: "Fira Code", "Cascadia Code", monospace;
+}
+
+/* 7. 移动端侧边栏收起优化 */
+@media (max-width: 700px) {
+    .main-content,
+    .width-limiter {
+        max-width: 100% !important;
+        padding: 0 12px !important;
     }
 }

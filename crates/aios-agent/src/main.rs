@@ -29,6 +29,7 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use aios_adapter::{
     binder_probe::BinderProbe,
+    collection_stats::RawEventStats,
     daemon,
     proc_reader::{self, ProcReader},
     system_collector::SystemStateCollector,
@@ -157,6 +158,7 @@ async fn main() -> anyhow::Result<()> {
     let executor = DefaultActionExecutor;
     let window_dur = Duration::from_secs(WINDOW_DURATION_SECS);
     let mut window = WindowAggregator::new(WINDOW_DURATION_SECS, timestamp_ms());
+    let mut raw_stats = RawEventStats::default();
     let mut window_deadline = Instant::now() + window_dur;
 
     loop {
@@ -181,14 +183,16 @@ async fn main() -> anyhow::Result<()> {
 
         match raw_event {
             Some(raw) => {
+                raw_stats.record(&raw);
                 let sanitized = sanitizer.sanitize(raw);
                 window.push(sanitized);
             },
             None => {
                 // Channel closed (collection task exited) — flush and exit
                 tracing::info!("raw event channel closed, flushing remaining events");
+                let window_stats = std::mem::take(&mut raw_stats);
                 if let Some(ctx) = window.close(timestamp_ms()) {
-                    process_window(&ctx, &policy, &executor);
+                    process_window(&ctx, &policy, &executor, &window_stats);
                 }
                 break;
             },
@@ -196,8 +200,9 @@ async fn main() -> anyhow::Result<()> {
 
         // Check if window should close
         if Instant::now() >= window_deadline {
+            let window_stats = std::mem::take(&mut raw_stats);
             if let Some(ctx) = window.close(timestamp_ms()) {
-                process_window(&ctx, &policy, &executor);
+                process_window(&ctx, &policy, &executor, &window_stats);
             }
             window_deadline = Instant::now() + window_dur;
         }
@@ -215,10 +220,13 @@ fn process_window(
     ctx: &aios_spec::StructuredContext,
     policy: &PolicyEngine,
     executor: &DefaultActionExecutor,
+    raw_stats: &RawEventStats,
 ) {
     tracing::info!(
         window_id = %ctx.window_id,
         event_count = ctx.events.len(),
+        raw_event_total = raw_stats.total(),
+        raw_event_stats = %raw_stats.summary_line(),
         duration_secs = ctx.duration_secs,
         "window closed, sending to agent"
     );

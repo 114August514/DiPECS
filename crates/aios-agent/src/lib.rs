@@ -6,8 +6,8 @@
 //! 后续替换为真实的 HTTPS 通信 (reqwest + rustls)。
 
 use aios_spec::{
-    ActionType, ActionUrgency, Intent, IntentBatch, IntentType, RiskLevel, SanitizedEventType,
-    SemanticHint, StructuredContext, SuggestedAction,
+    ActionType, ActionUrgency, AppTransition, Intent, IntentBatch, IntentType, RiskLevel,
+    SanitizedEventType, SemanticHint, StructuredContext, SuggestedAction,
 };
 use uuid::Uuid;
 
@@ -46,6 +46,7 @@ impl MockCloudProxy {
         let mut has_file_mention = false;
         let mut has_activity_launch = false;
         let mut launched_apps: Vec<String> = Vec::new();
+        let mut observed_foreground_apps: Vec<String> = Vec::new();
         let mut has_screen_on = false;
         let mut is_low_battery = false;
         let notified_apps: Vec<String> = summary.notified_apps.clone();
@@ -70,6 +71,13 @@ impl MockCloudProxy {
                             }
                         }
                     }
+                },
+                SanitizedEventType::AppTransition {
+                    package_name,
+                    transition: AppTransition::Foreground,
+                    ..
+                } if !observed_foreground_apps.contains(package_name) => {
+                    observed_foreground_apps.push(package_name.clone());
                 },
                 SanitizedEventType::FileActivity {
                     extension_category, ..
@@ -141,6 +149,28 @@ impl MockCloudProxy {
                     },
                 ],
                 rationale_tags: vec!["app_launch_detected".into()],
+            });
+        }
+
+        if let Some(target) = observed_foreground_apps.first().cloned() {
+            intents.push(Intent {
+                intent_id: new_id(),
+                intent_type: IntentType::SwitchToApp(target.clone()),
+                confidence: 0.80,
+                risk_level: RiskLevel::Low,
+                suggested_actions: vec![
+                    SuggestedAction {
+                        action_type: ActionType::PreWarmProcess,
+                        target: Some(target.clone()),
+                        urgency: ActionUrgency::Immediate,
+                    },
+                    SuggestedAction {
+                        action_type: ActionType::KeepAlive,
+                        target: Some(target),
+                        urgency: ActionUrgency::Immediate,
+                    },
+                ],
+                rationale_tags: vec!["app_foreground_observed".into()],
             });
         }
 

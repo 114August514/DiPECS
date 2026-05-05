@@ -5,9 +5,9 @@
 
 use aios_spec::traits::PrivacySanitizer;
 use aios_spec::{
-    BinderTxEvent, ExtensionCategory, FsAccessEvent, FsActivityType, InteractionType,
-    NotificationRawEvent, ProcStateEvent, RawEvent, SanitizedEvent, SanitizedEventType, ScriptHint,
-    SemanticHint, SourceTier, TextHint,
+    AppTransitionRawEvent, BinderTxEvent, ExtensionCategory, FsAccessEvent, FsActivityType,
+    InteractionType, NotificationRawEvent, ProcStateEvent, RawEvent, SanitizedEvent,
+    SanitizedEventType, ScriptHint, SemanticHint, SourceTier, TextHint,
 };
 use uuid::Uuid;
 
@@ -17,6 +17,7 @@ pub struct DefaultPrivacyAirGap;
 impl PrivacySanitizer for DefaultPrivacyAirGap {
     fn sanitize(&self, raw: RawEvent) -> SanitizedEvent {
         match raw {
+            RawEvent::AppTransition(e) => sanitize_app_transition(e),
             RawEvent::BinderTransaction(e) => sanitize_binder(e),
             RawEvent::ProcStateChange(e) => sanitize_proc(e),
             RawEvent::FileSystemAccess(e) => sanitize_fs(e),
@@ -74,6 +75,21 @@ impl PrivacySanitizer for DefaultPrivacyAirGap {
 }
 
 // ===== 各类型脱敏逻辑 =====
+
+fn sanitize_app_transition(e: AppTransitionRawEvent) -> SanitizedEvent {
+    SanitizedEvent {
+        event_id: new_id(),
+        timestamp_ms: e.timestamp_ms,
+        event_type: SanitizedEventType::AppTransition {
+            package_name: e.package_name.clone(),
+            activity_class: e.activity_class,
+            transition: e.transition,
+        },
+        source_tier: SourceTier::PublicApi,
+        app_package: Some(e.package_name),
+        uid: None,
+    }
+}
 
 fn sanitize_binder(e: BinderTxEvent) -> SanitizedEvent {
     let interaction_type = match e.target_method.as_str() {

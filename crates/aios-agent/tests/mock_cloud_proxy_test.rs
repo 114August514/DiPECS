@@ -182,6 +182,37 @@ fn test_activity_launch_triggers_switch_to_app() {
         .any(|a| matches!(a.action_type, ActionType::KeepAlive)));
 }
 
+#[test]
+fn test_app_transition_foreground_triggers_switch_to_app() {
+    let mut summary = make_summary();
+    summary.foreground_apps = vec!["com.android.chrome".into()];
+    let events = vec![SanitizedEvent {
+        event_id: "evt-app-fg".into(),
+        timestamp_ms: 5000,
+        event_type: SanitizedEventType::AppTransition {
+            package_name: "com.android.chrome".into(),
+            activity_class: Some("Main".into()),
+            transition: AppTransition::Foreground,
+        },
+        source_tier: SourceTier::PublicApi,
+        app_package: Some("com.android.chrome".into()),
+        uid: None,
+    }];
+    let ctx = make_context(events, summary);
+
+    let batch = MockCloudProxy::evaluate(&ctx);
+
+    let switch = batch
+        .intents
+        .iter()
+        .find(|i| matches!(i.intent_type, IntentType::SwitchToApp(_)))
+        .expect("should have SwitchToApp intent");
+    assert_eq!(
+        switch.rationale_tags,
+        vec!["app_foreground_observed".to_string()]
+    );
+}
+
 // ===== FileActivity 处理 =====
 
 #[test]

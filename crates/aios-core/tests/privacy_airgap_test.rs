@@ -134,6 +134,38 @@ fn test_binder_notification_detection() {
 }
 
 #[test]
+fn test_app_transition_foreground_sanitized() {
+    let sanitizer = DefaultPrivacyAirGap;
+
+    let raw = RawEvent::AppTransition(AppTransitionRawEvent {
+        timestamp_ms: 2000,
+        package_name: "com.android.chrome".into(),
+        activity_class: Some("com.google.android.apps.chrome.Main".into()),
+        transition: AppTransition::Foreground,
+    });
+
+    let sanitized = sanitizer.sanitize(raw);
+
+    assert_eq!(sanitized.source_tier, SourceTier::PublicApi);
+    assert_eq!(sanitized.app_package.as_deref(), Some("com.android.chrome"));
+    match sanitized.event_type {
+        SanitizedEventType::AppTransition {
+            package_name,
+            activity_class,
+            transition,
+        } => {
+            assert_eq!(package_name, "com.android.chrome");
+            assert_eq!(
+                activity_class.as_deref(),
+                Some("com.google.android.apps.chrome.Main")
+            );
+            assert_eq!(transition, AppTransition::Foreground);
+        },
+        _ => panic!("expected AppTransition event"),
+    }
+}
+
+#[test]
 fn test_prefixed_variable_warning_suppression() {
     // 验证代码通过编译 (clippy 不报错)
     let sanitizer = DefaultPrivacyAirGap;

@@ -10,6 +10,7 @@
 #![deny(unsafe_op_in_unsafe_fn)]
 
 pub mod binder_probe;
+pub mod collection_stats;
 pub mod daemon;
 pub mod proc_reader;
 pub mod system_collector;

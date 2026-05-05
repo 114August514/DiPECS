@@ -6,8 +6,8 @@
 use std::collections::HashMap;
 
 use aios_spec::{
-    ContextSummary, ExtensionCategory, SanitizedEvent, SanitizedEventType, SemanticHint,
-    SourceTier, StructuredContext, SystemStatusSnapshot,
+    AppTransition, ContextSummary, ExtensionCategory, SanitizedEvent, SanitizedEventType,
+    SemanticHint, SourceTier, StructuredContext, SystemStatusSnapshot,
 };
 use uuid::Uuid;
 
@@ -100,6 +100,13 @@ fn build_summary(events: &[SanitizedEvent]) -> ContextSummary {
         }
 
         match &event.event_type {
+            SanitizedEventType::AppTransition {
+                package_name,
+                transition: AppTransition::Foreground,
+                ..
+            } if !foreground_apps.contains(package_name) => {
+                foreground_apps.push(package_name.clone());
+            },
             SanitizedEventType::ProcessResource {
                 package_name: Some(pkg),
                 ..

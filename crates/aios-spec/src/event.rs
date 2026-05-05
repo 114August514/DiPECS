@@ -15,6 +15,8 @@ use serde::{Deserialize, Serialize};
 /// 经由 `PrivacySanitizer` 处理后再也不包含原始敏感数据。
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum RawEvent {
+    /// 应用前后台切换 (UsageStatsManager)
+    AppTransition(AppTransitionRawEvent),
     /// Binder 事务 (eBPF tracepoint)
     BinderTransaction(BinderTxEvent),
     /// 进程状态变化 (/proc 轮询)
@@ -32,6 +34,20 @@ pub enum RawEvent {
 }
 
 // ===== RawEvent 子类型 =====
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AppTransitionRawEvent {
+    pub timestamp_ms: i64,
+    pub package_name: String,
+    pub activity_class: Option<String>,
+    pub transition: AppTransition,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum AppTransition {
+    Foreground,
+    Background,
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BinderTxEvent {
@@ -157,6 +173,12 @@ pub struct SanitizedEvent {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum SanitizedEventType {
+    /// 应用前后台切换 (来自 UsageStatsManager)
+    AppTransition {
+        package_name: String,
+        activity_class: Option<String>,
+        transition: AppTransition,
+    },
     /// 应用间交互 (从 Binder 事务推断)
     InterAppInteraction {
         source_package: Option<String>,

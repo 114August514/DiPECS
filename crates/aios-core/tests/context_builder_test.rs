@@ -200,6 +200,43 @@ fn test_summary_foreground_apps() {
 }
 
 #[test]
+fn test_summary_foreground_apps_from_app_transition() {
+    let mut w = WindowAggregator::new(10, 1000);
+    w.push(make_sanitized_event(
+        "fg",
+        5000,
+        SourceTier::PublicApi,
+        SanitizedEventType::AppTransition {
+            package_name: "com.android.chrome".into(),
+            activity_class: Some("Main".into()),
+            transition: AppTransition::Foreground,
+        },
+    ));
+    w.push(make_sanitized_event(
+        "bg",
+        6000,
+        SourceTier::PublicApi,
+        SanitizedEventType::AppTransition {
+            package_name: "com.example.background".into(),
+            activity_class: None,
+            transition: AppTransition::Background,
+        },
+    ));
+
+    let ctx = w.close(11000).unwrap();
+
+    assert_eq!(ctx.summary.source_tier, SourceTier::PublicApi);
+    assert!(ctx
+        .summary
+        .foreground_apps
+        .contains(&"com.android.chrome".to_string()));
+    assert!(!ctx
+        .summary
+        .foreground_apps
+        .contains(&"com.example.background".to_string()));
+}
+
+#[test]
 fn test_summary_notified_apps() {
     let mut w = WindowAggregator::new(10, 1000);
     w.push(make_notif_event(

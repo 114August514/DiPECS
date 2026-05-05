@@ -8,6 +8,16 @@ repository.workspace = true
 
 [dependencies]
 aios-spec = { workspace = true }
+aios-core = { workspace = true }
+aios-kernel = { workspace = true }
+aios-adapter = { workspace = true }
+tokio = { workspace = true, features = ["full"] }
 tracing = { workspace = true }
+tracing-subscriber = { workspace = true, features = ["env-filter"] }
+anyhow = { workspace = true }
 uuid = { workspace = true }
+
+[[bin]]
+name = "dipecsd"
+path = "src/main.rs"
 

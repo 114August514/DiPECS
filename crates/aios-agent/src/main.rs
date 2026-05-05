@@ -33,7 +33,6 @@ use aios_adapter::{
     proc_reader::{self, ProcReader},
     system_collector::SystemStateCollector,
 };
-use aios_agent::MockCloudProxy;
 use aios_core::action_bus::ActionBus;
 use aios_core::context_builder::WindowAggregator;
 use aios_core::policy_engine::PolicyEngine;
@@ -42,6 +41,8 @@ use aios_kernel::DefaultActionExecutor;
 use aios_spec::traits::ActionExecutor;
 use aios_spec::traits::PrivacySanitizer;
 use aios_spec::RawEvent;
+
+use aios_agent::MockCloudProxy;
 
 /// 系统状态采集间隔 (秒)
 const SYS_POLL_INTERVAL_SECS: u64 = 30;

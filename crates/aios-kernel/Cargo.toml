@@ -9,4 +9,4 @@ repository.workspace = true
 [dependencies]
 aios-spec = { workspace = true }
 tracing = { workspace = true }
-libc = { workspace = true }
+# libc = { workspace = true }

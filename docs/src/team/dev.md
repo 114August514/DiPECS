@@ -2,7 +2,7 @@
 
 ## 环境准备
 
-- Rust 1.86.0+
+- Rust 1.95.0+
 - Android Studio + NDK
 - mdBook（文档构建）
 

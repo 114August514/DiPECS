@@ -20,7 +20,7 @@ concurrency:
 
 env:
   CARGO_TERM_COLOR: always
-  RUST_VERSION: "1.86.0"
+  RUST_VERSION: "1.95.0"
   RUST_LOG: debug
   # 统一存储路径定义
   TEST_LOG_DIR: data/evaluation/logs

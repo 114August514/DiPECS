@@ -21,7 +21,7 @@
 
 为了避免“在我的机器上能跑”这种非确定性故障，所有成员必须强制对齐：
 
-- **Rust 版本**: `1.86.0` (由 `rust-toolchain.toml` 锁定)。
+- **Rust 版本**: `1.95.0` (由 `rust-toolchain.toml` 锁定)。
 - **Android NDK**: `r27d` (必须安装并配置 `$ANDROID_NDK_HOME`)。
 - **构建环境**: 任何标准的 **64-bit Linux** 环境（包括原生 Ubuntu 22.04+、Windows WSL2 或 Docker 容器）
 

@@ -17,7 +17,7 @@ on:
 # 3. 全局环境变量：设置这个虚拟工厂的“全局配置”
 env:
   CARGO_TERM_COLOR: always  # 强制让 Cargo 输出带颜色的日志，方便我们看报错
-  RUST_VERSION: "1.86.0" 
+  RUST_VERSION: "1.95.0" 
 
 # 控制并发并设置最严格权限
 concurrency:

@@ -18,7 +18,7 @@ concurrency:
 
 env:
   CARGO_TERM_COLOR: always
-  RUST_VERSION: "1.86.0"
+  RUST_VERSION: "1.95.0"
   NDK_VERSION: "r27d"
   ANDROID_API: 33
 

@@ -1,6 +1,6 @@
 [toolchain]
 # 1. 锁定具体版本
-channel = "1.86.0"
+channel = "1.95.0"
 
 # 2. 必需的组件
 components = [

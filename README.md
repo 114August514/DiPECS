@@ -2,7 +2,7 @@
 
 <!-- Badges Area: CI Status, Rust Version, NDK Version, License -->
 ![CI Status](https://img.shields.io/badge/CI-Pipeline-success)
-[![Rust Version](https://img.shields.io/badge/Rust-1.86.0-orange)](rust-toolchain.toml)
+[![Rust Version](https://img.shields.io/badge/Rust-1.95.0-orange)](rust-toolchain.toml)
 [![NDK Version](https://img.shields.io/badge/NDK-r27d-green)](scripts/setup-env.sh)
 [![License](https://img.shields.io/badge/License-Apache--2.0-blue)](LICENSE)
 
@@ -57,7 +57,7 @@ graph TD
 
 ### 4.1 核心基石
 
-- **语言**: Rust 1.86.0 (Stable)，强制 `Resolver v2`。
+- **语言**: Rust 1.95.0 (Stable)，强制 `Resolver v2`。
 - **Android 集成**: NDK r27d, API Level 33 (Android 13)。
 - **可观测性**: `tracing` (异步全链路追踪), `tracing-subscriber`。
 - **异步处理**: `tokio` (全功能运行时)。
@@ -79,7 +79,7 @@ graph TD
 
 ### 4.2 一键初始化 (Setup)
 
-注入 Rust 1.86.0 与预编译的 Android NDK (r27d) 环境：
+注入 Rust 1.95.0 与预编译的 Android NDK (r27d) 环境：
 
 ```bash
 source scripts/setup-env.sh

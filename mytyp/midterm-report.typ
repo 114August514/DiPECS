@@ -41,7 +41,7 @@
   inset: (x: 0.4em, y: 0.4em),
   fill: (_, y) => if calc.odd(y) { luma(242) } else { white },
   [*目标平台*], [Android 13 (API 33)，AOSP 可定制环境],
-  [*实现语言*], [Rust 1.86.0（核心逻辑）+ Kotlin（Android 采集/执行层）],
+  [*实现语言*], [Rust 1.95.0（核心逻辑）+ Kotlin（Android 采集/执行层）],
   [*关键能力*], [本地采集与脱敏、云端语义预测、本地资源优化执行],
 )
 

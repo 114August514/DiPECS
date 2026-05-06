@@ -153,6 +153,10 @@ jobs:
           # 移动 API Docs
           cp -r site-temp/target/doc/* "$PUB/api/"
 
+          # 移动 Slides 演示文稿
+          mkdir -p "$PUB/slides"
+          cp -r docs/slides/* "$PUB/slides/" 2>/dev/null || true
+
           # 移动参考文献 PDF
           cp docs/refs/*.pdf "$PUB/academic/" 2>/dev/null || true
 
@@ -231,10 +235,11 @@ jobs:
       - name: Assemble Preview Site
         run: |
           PUB="public_html"
-          mkdir -p "$PUB/guide" "$PUB/api"
+          mkdir -p "$PUB/guide" "$PUB/api" "$PUB/slides"
 
           cp -r site-temp/docs/book/* "$PUB/guide/"
           cp -r site-temp/target/doc/* "$PUB/api/"
+          cp -r docs/slides/* "$PUB/slides/" 2>/dev/null || true
 
           API_INDEX=$(find "$PUB/api" -name "index.html" | grep -v "settings.html" | head -n 1)
           API_PATH=${API_INDEX#$PUB/}

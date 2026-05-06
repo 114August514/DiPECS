@@ -1,7 +1,6 @@
 # 中期报告：最小可执行原型
 
-> 答辩 slides：[slides.md](../../slides/midterm/slides.md) · [PPXT 下载](../../slides/midterm/)
-> 对应学术交付：[中期报告 PDF](../../academic/03_Midterm_Report/main.tex)
+> 答辩 slides：[slides.md](../../slides/midterm/slides.md)
 
 ## 阶段目标
 

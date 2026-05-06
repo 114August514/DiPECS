@@ -80,6 +80,7 @@
 ### 2.4 结论: eBPF 不是答案
 
 对于"飞书收文件"这个场景，**eBPF 无法解决问题**:
+
 - 即使有 root 部署 eBPF，也只能看到 `open()`、`write()`、`socket()` 等系统调用
 - 文件语义 (文件名、类型、发件人) 存在于应用层数据结构中，不是 eBPF 的观测目标
 - 正确的解决方向是: **(a)** 接受 Tier 0 的信息不完整性，依赖 LLM 从上下文推断; **(b)** 使用 Tier 1 (AccessibilityService) 作为可选增强; **(c)** 将不确定性编码到数据结构中
@@ -400,6 +401,7 @@ pub enum FileChangeType {
 ```
 
 **关键点**:
+
 - `semantic_hints: ["FileMention"]` 来自本地关键词匹配 (检测到正文含"文件"), 而非 Android API 直接提供
 - LLM 知道这是 Tier 0 数据 (`source_tier: "Basic"`), 因此可以理解文件类型的判断可能不准确
 - 具体的文件名、大小、下载状态等字段全部为 `None`, 诚实地表达"没观测到"

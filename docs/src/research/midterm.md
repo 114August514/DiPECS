@@ -1,6 +1,6 @@
 # 中期报告：最小可执行原型
 
-> 答辩 slides：[slides.md](../../slides/midterm/slides.md)
+> 答辩 slides：[下载 PPTX](../../slides/midterm/DiPECS-midterm-v3.pptx)
 
 ## 阶段目标
 

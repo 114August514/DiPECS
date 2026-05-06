@@ -45,6 +45,11 @@ jobs:
             git commit -m "chore: add mirror notice to README" || echo "No changes"
           fi
 
-          # 5. 镜像推送 — 同步所有分支和标签
+          # 5. 为所有远程分支创建本地跟踪分支（避免 detached HEAD 导致 --prune 误删）
+          for remote in $(git branch -r | grep -v '\->' | grep '^ *origin/' | sed 's/^ *origin\///'); do
+            git branch --force "$remote" "origin/$remote"
+          done
+
+          # 6. 镜像推送 — 同步所有分支和标签
           git lfs install
           git push "$REMOTE_URL" "refs/heads/*:refs/heads/*" "refs/tags/*:refs/tags/*" --force --prune

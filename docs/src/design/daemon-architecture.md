@@ -9,17 +9,17 @@
 
 ```
 ┌────────────────────────────────────────────────────────────┐
-│  Cloud LLM (策略面)                                        │
-│  输入: StructuredContext (脱敏后的结构化上下文)              │
-│  输出: IntentBatch (候选意图 + 置信度 + 风险等级)            │
+│  Decision backends (策略面)                                │
+│  RuleBased / LocalEvaluator / CloudLlm / FallbackNoOp       │
+│  输入: StructuredContext, 输出: IntentBatch                 │
 └──────────────────────────┬─────────────────────────────────┘
-                           │ HTTPS (reqwest + rustls)
+                           │ optional HTTPS for CloudLlm
 ┌──────────────────────────┼─────────────────────────────────┐
-│  dipecsd (机制面)         │                                  │
+│  dipecsd / aios-daemon   │                                  │
 │                          │                                  │
 │  ┌───────────────────────────────────────────────────────┐ │
 │  │                  aios-agent                            │ │
-│  │  CloudProxy: StructuredContext → LLM → IntentBatch     │ │
+│  │  DecisionRouter: StructuredContext → IntentBatch       │ │
 │  │  超时降级, 熔断器, 本地保守策略 fallback                │ │
 │  └───────────────────────────┬───────────────────────────┘ │
 │                              │                              │
@@ -35,15 +35,15 @@
 │  └───────────────────────────┬───────────────────────────┘ │
 │                              │                              │
 │  ┌───────────────────────────▼───────────────────────────┐ │
-│  │                  aios-kernel                           │ │
-│  │  ResourceMonitor, ProcessManager, IpcCoordinator       │ │
+│  │                  aios-action                           │ │
+│  │  DefaultActionExecutor: AuthorizedAction → ActionResult│ │
 │  └───────────────────────────┬───────────────────────────┘ │
 │                              │                              │
 │  ┌───────────────────────────▼───────────────────────────┐ │
-│  │                  aios-adapter                          │ │
+│  │                  aios-collector                        │ │
 │  │  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐ │ │
-│  │  │ BinderProbe  │  │ ProcReader   │  │ FanotifyMon  │ │ │
-│  │  │ (eBPF)       │  │ (/proc)      │  │ (文件系统)   │ │ │
+│  │  │ App Source   │  │ ProcReader   │  │ BinderProbe  │ │ │
+│  │  │ JSONL/JNI    │  │ (/proc)      │  │ (eBPF)       │ │ │
 │  │  └──────────────┘  └──────────────┘  └──────────────┘ │ │
 │  └───────────────────────────────────────────────────────┘ │
 │                              │                              │
@@ -53,20 +53,20 @@
 
 **关键设计决策**:
 - Daemon 内部是**同步优先** (aios-core 不引入不必要的 async)
-- 异步点集中在**系统边界**: adapter 读取内核事件、agent 发 HTTPS
+- 异步点集中在**系统边界**: collector 读取系统事件、agent 发 HTTPS
 - 所有原始数据在 `PrivacyAirGap` 处被截断, 之后只存在脱敏数据
 
 ---
 
 ## 二、向上的结构化接口
 
-### 2.1 原始事件流 (adapter → kernel → core)
+### 2.1 原始事件流 (collector → core)
 
-adapter 从内核采集的所有事件, 统一为 `RawEvent` 枚举:
+collector 从 app 侧采集能力或 system 观测入口接收事件, 统一为 `CollectorEnvelope` / `RawEvent`:
 
 ```rust
 /// 从系统采集的原始事件, 未经脱敏
-/// 此类型仅存在于 adapter-core 边界内部, 不出 daemon
+/// 此类型仅存在于 collector-core 边界内部, 不出 daemon
 pub enum RawEvent {
     BinderTransaction(BinderTxEvent),
     ProcStateChange(ProcStateEvent),
@@ -398,27 +398,27 @@ pub enum ActionUrgency {
 ## 三、Daemon 内部模块通信
 
 ```
-┌─adapter────┐  RawEvent channel   ┌─core──────┐  StructuredContext  ┌─agent────┐
-│ BinderProbe│────────────────────→│           │───────────────────→│          │
-│ ProcReader │  (mpsc::Sender)     │PrivacyGap │                    │CloudProxy│
-│ FanotifyMon│                     │           │                    │          │
-│ NotifBridge│                     │ActionBus  │  IntentBatch       │          │
-└────────────┘                     │TraceEngine│←───────────────────│          │
-                                   │           │  (oneshot::Sender) │          │
-                                   └─────┬─────┘                    └──────────┘
+┌─collector────┐  RawEvent channel   ┌─core──────┐  StructuredContext  ┌─agent──────┐
+│ AppSource    │────────────────────→│           │───────────────────→│Decision    │
+│ ProcReader   │  (mpsc::Sender)     │PrivacyGap │                    │Router      │
+│ BinderProbe  │                     │           │                    │            │
+│ SysCollector │                     │ActionBus  │  IntentBatch       │            │
+└──────────────┘                     │TraceEngine│←───────────────────│            │
+                                     │           │  (oneshot::Sender) │            │
+                                     └─────┬─────┘                    └────────────┘
                                          │
                                    ┌─────▼─────┐
                                    │ aios-     │
-                                   │ kernel    │
-                                   │ ProcessMgr│
-                                   │ ResourceMgr│
+                                   │ action    │
+                                   │ Executor  │
+                                   │           │
                                    └───────────┘
 ```
 
-- adapter→core: `tokio::sync::mpsc` channel (bounded, backpressure)
-- core→agent: 函数调用 (同步, agent 是 core 的依赖)
-- agent→core→kernel: `IntentBatch` 通过 `ActionBus` 派发到 `PolicyEngine`
-- PolicyEngine 决定执行的 action, 通过 adapter 写入 `/proc` / Binder
+- collector→core: `tokio::sync::mpsc` channel (bounded, backpressure)
+- core→agent: 函数调用 (同步, daemon 装配 core 与 agent)
+- agent→core→action: `IntentBatch` 通过 `ActionBus` 派发到 `PolicyEngine`
+- PolicyEngine 决定执行的 action, 通过 action executor 发出
 
 ---
 
@@ -524,4 +524,3 @@ pub struct ReplayResult {
 | **模拟器 + `adb shell`** | `ps | grep dipecsd` 证明 daemon 在运行, `logcat -s dipecs` 展示结构化事件流 | 低, 现有脚本即可 |
 | **模拟器 system image 预置** | daemon 作为 init service 自启, 展示"开机即运行" | 中, 需要打包 system image |
 | **真机 (root / custom ROM)** | 真实设备上的端到端演示 | 高, 需要合适的测试机 |
-

@@ -141,7 +141,7 @@ fi
 
 # 6. 可选: Android 交叉编译预检 (Host Side Check)
 # 智能提示：如果核心模块发生变动且未开启检查，给出建议
-CHANGED_CORE=$(git diff --cached --name-only | grep -E '^crates/(aios-kernel|aios-adapter|aios-core)/' || true)
+CHANGED_CORE=$(git diff --cached --name-only | grep -E '^crates/(aios-action|aios-agent|aios-collector|aios-core|aios-daemon)/' || true)
 if [ ! -z "$CHANGED_CORE" ] && [ "$CHECK_ANDROID_TARGET" -eq 0 ]; then
     echo -e "${YELLOW}ℹ 智能提示: 检测到核心模块变动，建议开启交叉编译预检：${NC}"
     echo "  CHECK_ANDROID_TARGET=1 git commit ..."
@@ -149,8 +149,8 @@ fi
 
 if [ "$CHECK_ANDROID_TARGET" -eq 1 ]; then
     echo "执行 Android 交叉编译预检 (target: aarch64-linux-android)..."
-    if ! cargo check --target aarch64-linux-android -p aios-core --quiet; then
-        echo -e "${RED}错误: 交叉编译检查失败！核心模块 aios-core 包含平台不兼容的代码。${NC}"
+    if ! cargo check --target aarch64-linux-android -p aios-daemon --quiet; then
+        echo -e "${RED}错误: 交叉编译检查失败！dipecsd 运行时包含平台不兼容的代码。${NC}"
         echo "提示: 请检查是否误用了标准库中不支持 Android 的 API。"
         exit 1
     fi

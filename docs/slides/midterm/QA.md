@@ -98,15 +98,15 @@
 
 ---
 
-### Q6b: v0.3 新增了 `apps/android-collector` (Kotlin 应用)，它和 Rust daemon (`aios-adapter`) 是什么关系？为什么不全部用 Rust 采集？
+### Q6b: v0.3 新增了 `apps/android-collector` (Kotlin 应用)，它和 Rust daemon (`aios-collector`) 是什么关系？为什么不全部用 Rust 采集？
 
 **A:**
 
-1. **角色互补**: android-collector 是 **Phase-1 探针**，用于验证"某个 Android 接口能观测到什么信号"。daemon (`aios-adapter`) 是**生产级采集**，运行在系统层。探针筛选通过的接口，才提升到 daemon 中。
+1. **角色互补**: android-collector 是 **Phase-1 探针**，用于验证"某个 Android 接口能观测到什么信号"。daemon (`aios-collector`) 是**生产级采集**，运行在系统层。探针筛选通过的接口，才提升到 daemon 中。
 
 2. **技术分工**:
    - `apps/android-collector` (Kotlin): 走 Android SDK API — `NotificationListenerService`、`AccessibilityService`、`UsageStatsManager`。这些接口无需 root，仅需用户授权，可以直接在普通设备上验证。
-   - `aios-adapter` (Rust): 走 Linux 内核接口 — `/proc`、`/sys/class`、eBPF tracepoint。需要系统权限，但可获取更底层的信号（Binder IPC、进程状态）。
+   - `aios-collector` (Rust): 走 Linux 内核接口 — `/proc`、`/sys/class`、eBPF tracepoint。需要系统权限，但可获取更底层的信号（Binder IPC、进程状态）。
 
 3. **工作流**:
    - Phase 1: 在 android-collector 中逐一开启数据源 → 做可重复动作 → 检查 JSONL trace → 决定是否值得提升。
@@ -122,7 +122,7 @@
 **A:**
 
 1. **信号来源不同**:
-   - `BinderTransaction`: 来自 eBPF tracepoint，是**内核层 IPC 信号**。能观测到所有 Binder 调用（如 `ActivityManagerService.startActivity`），但需要 root + eBPF 支持。
+   - `BinderTransaction`: 来自 eBPF tracepoint，是**系统层 IPC 信号**。能观测到所有 Binder 调用（如 `ActivityManagerService.startActivity`），但需要 root + eBPF 支持。
    - `AppTransition`: 来自 `UsageStatsManager`，是 **Android 系统服务层信号**。直接报告"哪个 App 进入前台/后台"，无需 root，仅需用户授权 Usage Access。
 
 2. **互补性**:
@@ -347,7 +347,7 @@
 
 | 问题 | 一句话 |
 |:---|:---|
-| "这和不就是一个 AI 助手吗？" | 不是——助手在 App 层看你的数据，我们在内核层脱敏后发给云端，且不展示 UI。 |
+| "这和不就是一个 AI 助手吗？" | 不是——助手在 App 层看你的数据，我们在本地脱敏边界处理后再发给云端，且不展示 UI。 |
 | "为什么不用端侧模型？" | 架构支持，当前用云端是能力选择不是架构限制。 |
 | "怎么保证隐私？" | Rust ownership 保证脱敏后原始字符串物理不可访问，不是承诺，是编译器强制。 |
 | "预热错了怎么办？" | 预热是投机操作，错了无副作用，Android LMK 30 秒自动回收。 |

@@ -32,6 +32,8 @@ Each JSONL row keeps the human-readable collector fields and, when a Rust-side s
 {"rawEvent":{"SystemState":{"timestamp_ms":0,"battery_pct":88,"is_charging":true,"network":"Wifi","ringer_mode":"Normal","location_type":"Unknown","headphone_connected":false,"bluetooth_connected":false}}}
 ```
 
+The `rawEvent` field is a phase-1 screening and Rust ingress sample format. The Android app does not produce the final production context; Rust owns normalization, privacy sanitization, window aggregation, and `StructuredContext` output.
+
 The app can export the trace to its external files directory from the main screen.
 
 ## Build

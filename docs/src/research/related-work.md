@@ -500,7 +500,7 @@ Based on the evaluation landscape above, a comprehensive DiPECS evaluation shoul
 | State machine correctness | Golden trace pass rate (%) | Novel |
 | Energy impact | % battery/day for prediction pipeline | FALCON, Android Standby |
 | Determinism | Replay divergence rate (should be 0%) | Novel |
-| Cloud dependency | Graceful degradation under offline/high-latency conditions | OfflineAdapter replay |
+| Cloud dependency | Graceful degradation under offline/high-latency conditions | OfflineTraceReplayer replay |
 
 ---
 

@@ -116,7 +116,7 @@ Digital Intelligence Platform for Efficient Computing Systems
 
 <div class="mt-2 text-sm opacity-75">
 
-> 这些信号经过 `aios-adapter` 采集、封装为 `RawEvent`，通过 `tokio::mpsc` 推入 `aios-core`，然后在 `PrivacyAirGap` 处完成脱敏。
+> 这些信号经过 `aios-collector` 采集、封装为 `RawEvent`，通过 `tokio::mpsc` 推入 `aios-core`，然后在 `PrivacyAirGap` 处完成脱敏。
 
 </div>
 
@@ -145,7 +145,7 @@ pub enum RawEvent {
 }
 ```
 
-<div class="mt-2 text-xs opacity-60">⚠️ = 含 PII, 仅存在于 adapter→core 的 mpsc 通道中</div>
+<div class="mt-2 text-xs opacity-60">⚠️ = 含 PII, 仅存在于 collector→core 的 mpsc 通道中</div>
 
 </div>
 
@@ -246,9 +246,10 @@ pub enum SanitizedEventType {
 
 - `aios-spec` 宪法层 · 全部数据类型 (含 AppTransition)
 - `aios-core` 逻辑层 · 事件总线 / 脱敏 / 策略 / 上下文聚合
-- `aios-adapter` 适配层 · /proc / eBPF / 系统状态 / CollectionStats 采集
-- `aios-kernel` 内核层 · 动作执行骨架
-- `aios-agent` 业务层 · MockCloudProxy + daemon 主循环
+- `aios-collector` 采集层 · /proc / eBPF / 系统状态 / CollectionStats 采集
+- `aios-action` 动作层 · 动作执行骨架
+- `aios-agent` 决策层 · DecisionRouter / MockCloudProxy
+- `aios-daemon` 编排层 · dipecsd 主循环
 - `apps/android-collector` · Kotlin Phase-1 采集探针 (4 数据源 + JSONL + 云端上传)
 - 62 个测试 · 全部通过
 
@@ -300,7 +301,7 @@ pub enum SanitizedEventType {
 
 <div v-click class="mt-4 p-3 border border-primary/20 rounded text-sm">
 
-**与 Rust daemon 的关系**: android-collector 是 **Phase-1 探针**，用于 Android 接口可行性验证。各数据源筛选通过后，对应的采集逻辑将提升到 `aios-adapter` 的 Rust daemon 中（如 NotificationListenerService → Kotlin↔Rust JNI 桥接）。当前二者为 **互补关系**：daemon 走内核层 (/proc, eBPF)，collector 走系统服务层 (NotificationListener, Accessibility)。
+**与 Rust daemon 的关系**: android-collector 是 **Phase-1 探针**，用于 Android 接口可行性验证。各数据源筛选通过后，对应的采集逻辑将提升到 `aios-collector` 的 Rust daemon 中（如 NotificationListenerService → Kotlin↔Rust JNI 桥接）。当前二者为 **互补关系**：daemon 走系统层 (/proc, eBPF)，collector 走系统服务层 (NotificationListener, Accessibility)。
 
 </div>
 
@@ -338,7 +339,7 @@ pub enum SanitizedEventType {
 
 <div v-click class="mt-4 p-3 border border-primary/20 rounded text-sm">
 
-**与 Rust daemon 的关系**: android-collector 是 **Phase-1 探针**，用于 Android 接口可行性验证。各数据源筛选通过后，对应的采集逻辑将提升到 `aios-adapter` 的 Rust daemon 中（如 NotificationListenerService → Kotlin↔Rust JNI 桥接）。当前二者为 **互补关系**：daemon 走内核层 (/proc, eBPF)，collector 走系统服务层 (NotificationListener, Accessibility)。
+**与 Rust daemon 的关系**: android-collector 是 **Phase-1 探针**，用于 Android 接口可行性验证。各数据源筛选通过后，对应的采集逻辑将提升到 `aios-collector` 的 Rust daemon 中（如 NotificationListenerService → Kotlin↔Rust JNI 桥接）。当前二者为 **互补关系**：daemon 走系统层 (/proc, eBPF)，collector 走系统服务层 (NotificationListener, Accessibility)。
 
 </div>
 
@@ -400,10 +401,11 @@ graph TD
     end
     subgraph Device["机制面"]
         direction LR
-        Agent["Agent"] --> Core["Core"] --> Kernel["Kernel"] --> Adapter["Adapter"]
+        Daemon["Daemon"] --> Collector["Collector"] --> Core["Core"] --> Action["Action"]
+        Core --> Agent["Agent"]
     end
     Cloud -->|"IntentBatch"| Agent
-    Adapter -->|"RawEvent"| Core
+    Agent -->|"IntentBatch"| Core
 ```
 
 > 云端决定"做什么"，本地决定"怎么做"。云端永远经过 PolicyEngine 二次校验。
@@ -444,15 +446,17 @@ fn sanitize(&self, raw: RawEvent) -> SanitizedEvent
 ```mermaid {scale: 0.58}
 graph LR
     L6["apps/android-collector<br/>采集探针 (Kotlin)"]
-    L5["aios-agent<br/>业务层"]
-    L4["aios-adapter<br/>适配层"]
+    L5["aios-daemon<br/>编排层"]
+    L5A["aios-agent<br/>决策层"]
+    L4["aios-collector<br/>采集层"]
 
     L6 -.->|"JSONL + HTTP Upload<br/>(mock/llm)"| L5
     L5 --> L4
+    L5 --> L5A
 ```
 
 <div class="mt-4 text-sm opacity-75">
-Android 系统服务层信号与 daemon 业务层汇合，再进入适配层。
+Android 系统服务层信号与 daemon 编排层汇合，再进入 Rust 采集层和决策层。
 </div>
 
 ---
@@ -461,8 +465,8 @@ Android 系统服务层信号与 daemon 业务层汇合，再进入适配层。
 
 ```mermaid {scale: 0.58}
 graph LR
-    L4["aios-adapter<br/>适配层"]
-    L3["aios-kernel<br/>内核层"]
+    L4["aios-collector<br/>采集层"]
+    L3["aios-action<br/>动作层"]
     L2["aios-core<br/>逻辑层"]
     L1["aios-spec<br/>宪法层"]
 
@@ -485,13 +489,17 @@ graph LR
         Collector["NotificationListener<br/>AccessibilityService<br/>UsageStatsManager"]
     end
 
-    subgraph L5["aios-agent · 业务层"]
+    subgraph L5["aios-daemon · 编排层"]
         direction LR
         Main["dipecsd 守护进程"]
+    end
+
+    subgraph L5A["aios-agent · 决策层"]
+        direction LR
         Cloud["MockCloudProxy<br/>后续替换 HTTPS"]
     end
 
-    subgraph L4["aios-adapter · 适配层"]
+    subgraph L4["aios-collector · 采集层"]
         direction LR
         Proc["ProcReader<br/>Linux /proc 轮询"]
         Binder["BinderProbe<br/>eBPF tracepoint"]
@@ -500,6 +508,7 @@ graph LR
 
     Collector -.->|"JSONL + HTTP Upload<br/>(mock/llm)"| Main
     L5 --> L4
+    L5 --> L5A
 ```
 
 ---
@@ -508,7 +517,7 @@ graph LR
 
 ```mermaid {scale: 0.44}
 graph LR
-    subgraph L3["aios-kernel · 内核层"]
+    subgraph L3["aios-action · 动作层"]
         Exec["DefaultActionExecutor<br/>PreWarm / Prefetch / KeepAlive / Release"]
     end
 
@@ -542,8 +551,9 @@ graph LR
 ### 采集与调度
 
 - `apps/android-collector`: Notification / Accessibility / UsageStats
-- `aios-agent`: `dipecsd` 主循环，负责云端调用与动作调度
-- `aios-adapter`: `/proc`、Binder、系统状态等本地信号采集
+- `aios-daemon`: `dipecsd` 主循环，负责长期运行和管道装配
+- `aios-agent`: DecisionRouter / MockCloudProxy，负责意图生成
+- `aios-collector`: `/proc`、Binder、系统状态等本地信号采集
 
 </div>
 
@@ -552,7 +562,7 @@ graph LR
 ### 安全与执行
 
 - `aios-core`: `PrivacyAirGap`、`WindowAggregator`、`PolicyEngine`
-- `aios-kernel`: `ActionExecutor` 执行预热、预取、保活、释放
+- `aios-action`: `ActionExecutor` 执行预热、预取、保活、释放
 - `aios-spec`: `RawEvent`、`SanitizedEvent`、`IntentBatch` 等契约
 
 </div>
@@ -747,7 +757,7 @@ PolicyEngine 校验通过 → 送入 ActionExecutor (当前为骨架，记录微
 
 ---
 
-# How · 平台适配层 — aios-adapter
+# How · 平台采集层 — aios-collector
 
 **职责**: 连接 Linux/Android 内核与核心引擎
 
@@ -932,7 +942,7 @@ graph LR
 
 **关键设计**:
 - 核心处理是同步的 (aios-core 无 async)
-- 异步仅在 I/O 边界 (adapter 读取 / agent HTTPS)
+- 异步仅在 I/O 边界 (collector 读取 / agent HTTPS)
 - 所有步骤通过 `tracing` 打点
 
 ---

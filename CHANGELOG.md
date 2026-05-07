@@ -7,7 +7,7 @@
 ### Added
 
 - `aios-agent`: MockCloudProxy 模拟 LLM 决策，6 种信号→意图规则
-- `aios-kernel`: DefaultActionExecutor 骨架，5 种动作类型
+- `aios-action`: DefaultActionExecutor 骨架，5 种动作类型
 - `aios-core`: WindowAggregator 10s 时间窗口聚合
 - `aios-core`: PolicyEngine 策略校验（风险/置信度/动作过滤）
 - `aios-core`: ActionBus 事件与意图通道
@@ -16,7 +16,7 @@
 ### Changed
 
 - daemon 主循环从单线程重构为 2-task tokio 管道（采集 + 处理）
-- 依赖层级修正：`aios-adapter` 不再反向依赖 `aios-agent`
+- 依赖层级修正：`aios-collector` 不再反向依赖 `aios-agent`
 
 ### Fixed
 
@@ -31,5 +31,5 @@
 
 - `aios-spec`: 事件类型、上下文、意图、轨迹、公共 trait
 - `aios-core`: PrivacyAirGap 脱敏引擎
-- `aios-adapter`: BinderProbe / ProcReader 采集骨架
+- `aios-collector`: BinderProbe / ProcReader 采集骨架
 - CI 基础设施（lint, test, build, audit）

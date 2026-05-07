@@ -22,6 +22,7 @@
 - [版本发布](design/releases/v0.2.md)
 - [RFC 提案](design/rfc/process.md)
   - [RFC 模板](design/rfc/0000-template.md)
+  - [RFC-0001 分层采集与决策路由重构](design/rfc/0001-layered-collection-and-decision-routing.md)
 
 # 团队与开发
 

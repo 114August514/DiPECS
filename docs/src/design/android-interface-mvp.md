@@ -1,7 +1,7 @@
 # Android 接口最小可运行边界
 
 > 日期: 2026-05-05  
-> 范围: 暂不处理 `apps/` 目录, 只梳理 Android 公开接口如何进入现有 Rust 管道。
+> 范围: 梳理 `apps/android-collector` 这类 Android 采集能力如何接入 `aios-collector`, 再进入现有 Rust 管道。
 
 ## 目标
 
@@ -9,15 +9,17 @@
 
 ```text
 Android API / Kotlin service
-    -> RawEvent(JSON 或 JNI 参数)
-    -> PrivacyAirGap
-    -> WindowAggregator
-    -> MockCloudProxy
+    -> apps/android-collector (采集能力来源)
+    -> aios-collector (JSONL / JNI / local socket ingress)
+    -> CollectorEnvelope / RawEvent
+    -> aios-core (PrivacyAirGap -> WindowAggregator)
+    -> StructuredContext
+    -> DecisionRouter
     -> PolicyEngine
     -> ActionExecutor
 ```
 
-Rust 侧的后半段已经在 v0.2 中打通。现在最需要补齐的是 Android 公开 API 到 `aios-spec::RawEvent` 的入口约定, 尤其是哪些字段能拿到、哪些字段不能假装能拿到。
+Rust 侧的后半段已经在 v0.2 中打通。现在最需要稳定的是 Android 公开 API 到 `aios-collector` 的入口约定: app 侧负责拿到真实观测, collector 负责规范化为 `CollectorEnvelope` / `RawEvent`, core 再负责脱敏和 `StructuredContext`。
 
 ## 最小可用数据源
 
@@ -28,7 +30,7 @@ Rust 侧的后半段已经在 v0.2 中打通。现在最需要补齐的是 Andro
 | `ConnectivityManager` | `ACCESS_NETWORK_STATE` | Wi-Fi/蜂窝/离线、是否按流量计费 | `RawEvent::SystemState` | 可直接对接 |
 | `AudioManager` | 无需敏感权限 | 铃声/震动/静音模式 | `RawEvent::SystemState` | 可直接对接 |
 | `PowerManager` / 屏幕广播 | 普通系统能力 | 亮屏、灭屏、锁屏显示/隐藏 | `RawEvent::ScreenState` | 可直接对接 |
-| `UsageStatsManager.queryEvents()` | `PACKAGE_USAGE_STATS` 用户授权 | `ACTIVITY_RESUMED` / `ACTIVITY_PAUSED`、解锁、屏幕状态等事件 | 需要新增 `RawEvent::AppTransition` | 需要补 spec |
+| `UsageStatsManager.queryEvents()` | `PACKAGE_USAGE_STATS` 用户授权 | `ACTIVITY_RESUMED` / `ACTIVITY_PAUSED`、解锁、屏幕状态等事件 | `RawEvent::AppTransition` | 已补 spec, 可对接 |
 | `MediaStore` / `ContentObserver` | 媒体/文件访问权限按版本变化 | 公开媒体或下载目录变化 | 当前 `RawEvent::FileSystemAccess` 偏 daemon 文件路径模型 | 可后置 |
 | `AccessibilityService` | 用户显式授权, 审查和性能成本高 | UI 控件树、窗口切换、点击/滑动 | 需要新增可选 Tier 1 事件 | 不进 MVP |
 
@@ -98,16 +100,16 @@ Android 回调到 Rust 事件的最小映射如下:
 - `UsageEvents.Event.ACTIVITY_RESUMED` 映射为 `AppTransition::Foreground`, `ACTIVITY_PAUSED` 映射为 `AppTransition::Background`。旧的 `MOVE_TO_FOREGROUND` / `MOVE_TO_BACKGROUND` 已在 API 29 被弃用, 只作为兼容兜底。
 - `ConnectivityManager.getNetworkCapabilities(...)` 只取网络 transport / metered 这类粗粒度字段, 不读取带位置敏感含义的 Wi-Fi 细节。
 
-## 需要补齐的最小接口缺口
+## 已补齐的关键接口
 
-`UsageStatsManager` 是 Android 侧最关键的行为接口, 但当前 `RawEvent` 还没有公开 API 级的 App 前后台事件。现在的 `foreground_apps` 主要从 `/proc` 或 `InterAppInteraction` 间接聚合, 这不适合作为 Android App MVP 的主路径。
+`UsageStatsManager` 是 Android 侧最关键的行为接口。当前 `RawEvent::AppTransition` 已经补齐, 可以作为公开 API 级的 App 前后台事件进入 collector/core 管道。这样 `ContextSummary.foreground_apps` 不再只能从 `/proc` 或 `InterAppInteraction` 间接聚合。
 
-建议下一步只补一个最小事件:
+当前事件形态:
 
 ```rust
 pub enum RawEvent {
     AppTransition(AppTransitionRawEvent),
-    // existing variants...
+    // ...
 }
 
 pub struct AppTransitionRawEvent {
@@ -123,7 +125,7 @@ pub enum AppTransition {
 }
 ```
 
-脱敏后可以进入一个新的 `SanitizedEventType::AppTransition`, 或者命名为 `AppForeground`。这样 `UsageStatsManager.queryEvents()` 能稳定进入窗口聚合, `ContextSummary.foreground_apps` 也就有了公开 API 来源。
+脱敏后进入 `SanitizedEventType::AppTransition`。这样 `UsageStatsManager.queryEvents()` 能稳定进入窗口聚合, `ContextSummary.foreground_apps` 也就有了公开 API 来源。
 
 ## 最小演示闭环
 
@@ -137,10 +139,10 @@ pub enum AppTransition {
 
 - 通知正文在 `PrivacyAirGap` 内转成 `TextHint` 和 `SemanticHint`, 原文不越过脱敏边界。
 - `WindowAggregator` 按 10 秒窗口聚合上下文。
-- `MockCloudProxy` 可根据 `FileMention`、屏幕状态、系统状态生成模拟意图。
+- `DecisionRouter` 当前可通过 `RuleBasedBackend` 根据 `FileMention`、前台切换、屏幕状态、系统状态生成低风险意图；后续可接 LocalEvaluator / CloudLlm。
 - `PolicyEngine` 和 `ActionExecutor` 能记录低风险动作结果。
 
-因此当前写作结论是: Android MVP 的接口边界应优先补 `UsageStatsManager -> AppTransitionRawEvent`, 其次接 `NotificationListenerService -> NotificationRawEvent`, 暂不把 eBPF、fanotify、Accessibility 或 `apps/` 目录纳入第一轮。
+因此当前写作结论是: Android MVP 的接口边界应优先把 `apps/android-collector` 观测到的 `UsageStatsManager -> AppTransitionRawEvent` 和 `NotificationListenerService -> NotificationRawEvent` 接入 `aios-collector`; eBPF、fanotify 和 system image 路线作为后续 system 下沉能力增强。
 
 ## 采集正确性的观测方式
 
@@ -148,7 +150,7 @@ pub enum AppTransition {
 
 1. 原始入口层: daemon 在每个窗口关闭时输出 `raw_event_total` 和 `raw_event_stats`, 例如 `app_transition=3 notification_posted=1 system_state=1`。如果手动切换 App 后没有看到 `app_transition`, 说明 Android 入口或桥接没有把事件送进 Rust。
 2. 脱敏边界层: `PrivacyAirGap` 测试验证 `RawEvent::AppTransition` 会变成 `SanitizedEventType::AppTransition`, 通知正文会变成 `TextHint` / `SemanticHint`, 原文不会越过边界。
-3. 窗口语义层: `WindowAggregator` 测试验证 `AppTransition::Foreground` 会进入 `ContextSummary.foreground_apps`; `MockCloudProxy` 测试验证这个前台切换能触发 `SwitchToApp` 意图。
+3. 窗口语义层: `WindowAggregator` 测试验证 `AppTransition::Foreground` 会进入 `ContextSummary.foreground_apps`; `DecisionRouter` / `RuleBasedBackend` 测试验证这个前台切换能触发 `SwitchToApp` 意图。
 
 这三层分别回答: “采到了没有”、“脱敏后是否还保留正确语义”、“后续推理是否能用到这个行为”。调试 Android 入口时优先看第一层日志, 回归测试时优先跑后两层测试。
 

@@ -15,7 +15,7 @@ digraph Pipeline {
     Collecting [label="Collecting\n(采集 RawEvent)"];
     Sanitizing [label="Sanitizing\n(PrivacyAirGap 脱敏)"];
     Aggregating [label="Aggregating\n(窗口累积, 默认 10s)"];
-    Inferring [label="Inferring\n(CloudProxy 云端推理)"];
+    Inferring [label="Inferring\n(DecisionRouter 路由决策)"];
     Evaluating [label="Evaluating\n(PolicyEngine 策略校验)"];
     Executing [label="Executing\n(ActionExecutor 执行)"];
     Recording [label="Recording\n(TraceEngine 写 Trace)"];
@@ -38,11 +38,11 @@ digraph Pipeline {
 | 状态 | 进入条件 | 核心操作 | 异常处理 |
 | :--- | :--- | :--- | :--- |
 | **Idle** | 启动 / Recording 完成 | 等待事件循环 tick | — |
-| **Collecting** | 100ms timer 触发 | adapter 扫描 /proc、Binder tracepoint | 采集源失效 → 降级到可用源 |
+| **Collecting** | 100ms timer 触发 | collector 扫描 /proc、Binder tracepoint | 采集源失效 → 降级到可用源 |
 | **Sanitizing** | mpsc channel 收到 RawEvent | PrivacyAirGap.sanitize()，原始字符串 drop | 脱敏逻辑异常 → 丢弃该事件，记录 warn |
 | **Aggregating** | SanitizedEvent 进入 buffer | WindowAggregator.push()，检测窗口到期 | buffer 溢出 → 强制 flush |
-| **Inferring** | 窗口到期或手动 flush | CloudProxy.evaluate() → HTTP POST | 超时 → 降级到 MockCloudProxy；网络不可用 → 本地保守策略 |
-| **Evaluating** | IntentBatch 到达 | PolicyEngine.evaluate_batch()，逐条校验 risk + confidence | 全部拒绝 → 仍写 trace，跳回 Idle |
+| **Inferring** | 窗口到期或手动 flush | DecisionRouter.evaluate()，选择 RuleBased / LocalEvaluator / CloudLlm / FallbackNoOp | 后端超时或熔断 → 降级到更保守后端，最终 FallbackNoOp |
+| **Evaluating** | IntentBatch 到达 | PolicyEngine.evaluate_batch_with_capability()，逐条校验 risk + confidence + 后端能力 | 全部拒绝 → 仍写 trace，跳回 Idle |
 | **Executing** | PolicyEngine 批准 | ActionExecutor.execute_batch()，按紧迫度排序 | 执行失败 → rollback，记录 ActionResult.failed |
 | **Recording** | 所有 action 处理完毕 | TraceEngine.write(window_id, full_chain) | 写盘失败 → error! 日志，不阻塞管道 |
 

@@ -4,26 +4,29 @@ DiPECS 采用严格的”机制与策略分离”架构（详见[架构概览](o
 
 ## 核心工作区 (Crates)
 
-单向依赖，上层依赖下层：
+依赖按边界自下而上组织：`aios-spec` 是共同协议层，`collector`、`core`、`action`、`agent` 都保持窄职责；`daemon` 负责把这些能力装配成 `dipecsd` 长驻运行时。
 
 ```text
-aios-cli                 CLI 工具入口
-aios-agent               daemon 二进制 (dipecsd) + CloudProxy
-    ↓
-aios-adapter             Binder、/proc、文件系统采集 (纯库)
-    ↓
-aios-kernel              资源管理 + ActionExecutor
-    ↓
-aios-core                ActionBus、PolicyEngine、PrivacyAirGap、WindowAggregator
-    ↓
-aios-spec                数据类型 + Trait 定义 (零外部依赖)
+aios-spec
+  ├─► aios-collector
+  ├─► aios-core
+  ├─► aios-action
+  └─► aios-agent
+
+aios-collector ─┐
+aios-core ──────┼─► aios-daemon (dipecsd)
+aios-action ────┤
+aios-agent ─────┘
+
+aios-cli (独立工具入口)
 ```
 
-- **`crates/aios-spec/`** `src/lib.rs` — 核心数据结构、Trait 接口和 Protobuf IDL。禁止业务逻辑或平台依赖
-- **`crates/aios-core/`** `src/lib.rs` + `src/context_builder.rs` — 状态机、Action 调度、脱敏引擎、策略引擎、窗口聚合。纯同步逻辑
-- **`crates/aios-kernel/`** `src/lib.rs` — 资源管理与 DefaultActionExecutor 骨架
-- **`crates/aios-adapter/`** `src/lib.rs` — Binder 调用、/proc 读取、OfflineAdapter。纯库，不含二进制入口
-- **`crates/aios-agent/`** `src/lib.rs` + `src/main.rs` — MockCloudProxy + **daemon 二进制入口** (`dipecsd`)，含采集循环和完整处理管道
+- **`crates/aios-spec/`** `src/lib.rs` — 核心数据结构、Trait 接口和跨层协议。禁止业务逻辑或平台依赖
+- **`crates/aios-core/`** `src/lib.rs` + `src/context_builder.rs` — 脱敏引擎、窗口聚合、策略引擎、ActionBus。接收 collector 输出的 `RawEvent`, 生成 `SanitizedEvent` / `StructuredContext`
+- **`crates/aios-action/`** `src/lib.rs` — 授权动作执行层与 DefaultActionExecutor 骨架
+- **`crates/aios-collector/`** `src/lib.rs` — Rust 采集层入口。对接 app 侧采集能力与后续 system 下沉来源，统一规范化并输出 `CollectorEnvelope` / `RawEvent`
+- **`crates/aios-agent/`** `src/lib.rs` — DecisionRouter 与本地/云端模型后端，不含 daemon 生命周期
+- **`crates/aios-daemon/`** `src/main.rs` + `src/daemon.rs` — **daemon 二进制入口** (`dipecsd`)，含长期运行主循环、采集循环和完整处理管道
 - **`crates/aios-cli/`** `src/main.rs` — 命令行交互工具
 
 ## 文档生态 (Docs)
@@ -45,14 +48,14 @@ aios-spec                数据类型 + Trait 定义 (零外部依赖)
 
 ## 数据与测试 (Data & Tests)
 
-- **`data/traces/`**: 收集的离线系统轨迹数据，用于 `OfflineAdapter` 的系统状态机物理回滚与验证。
+- **`data/traces/`**: 收集的离线系统轨迹数据，用于离线回放、状态机回归与验证。
 - **`data/evaluation/`**: 系统性能与准确性评估数据集。
 - **`tests/integration/`**: 跨 Crates 的集成测试用例，确保状态转移的正确性。
 
 ## 根目录配置文件
 
 - **`Cargo.toml`**: Cargo Workspace 配置文件，统筹所有 Crates。
-- **`rust-toolchain.toml`**: 锁定 Rust 版本（要求 1.86.0）及交叉编译 Target。
+- **`rust-toolchain.toml`**: 锁定 Rust 版本（要求 1.95.0）及交叉编译 Target。
 - **`deny.toml`**: 依赖项审计配置，防止引入不安全的重型大体积 Crate。
 - **`rustfmt.toml`**: 全局代码格式化规范。
 - **`README.md` & `CONTRIBUTING.md`**: 项目门面介绍及贡献指南。

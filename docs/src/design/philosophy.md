@@ -23,14 +23,17 @@ verify(Action, Policy)   → AuthorizedAction | Denied
 
 工程意义：只要 `spec` 不动，各组可以并行开发。协议变更必须走 RFC 流程。云端返回的 JSON 必须完美契合这里的 Rust `struct`——模型升级导致格式变化时，spec 必须能兼容。
 
-### 2. `aios-kernel` — 触手层
+### 2. `aios-action` — 触手层
 
-AIOS 与底层 Android/Linux 的通信边界：
+AIOS 与底层 Android/Linux 的动作执行边界。它只接收 `PolicyEngine` 审查通过的 `AuthorizedAction`，不读取 app、collector 或 agent 的内部状态。
 
-- **拦截器**：通过 eBPF 或 LSM 截获 App 的系统调用
-- **注入器**：把 Agent 生成的动作（点击、发包）转换成 Linux 指令
+- **PreWarmProcess**：预热目标应用进程
+- **PrefetchFile**：预取热点文件到页缓存
+- **KeepAlive**：保活当前或目标进程
+- **ReleaseMemory**：释放非关键内存
+- **NoOp**：安全兜底
 
-运行在特权级最高的区域，要求高性能、低侵入。
+当前实现仍是 tracing stub；真实 syscall 只在授权动作层接入。
 
 ### 3. `aios-core` — 脊梁层
 
@@ -44,42 +47,49 @@ AIOS 与底层 Android/Linux 的通信边界：
 
 实现方式：Rust 同步优先（不引入不必要的 async），异步点集中在系统边界。
 
-### 4. `aios-agent` — 大脑层
+### 4. `aios-agent` — 决策层
 
-云端驱动的架构下，agent 不再是本地推理机，而是 **会话管理器**：
+agent 接收 `StructuredContext`, 负责选择最小足够的推理后端，并统一返回 `IntentBatch`：
 
-- **Planner**：将模糊意图拆解为具体 Action 链
-- **Memory**：管理长期偏好和短期会话状态
-- **CloudProxy**：API 调用优化——连接池管理、Token 消耗统计、多轮对话状态缓存
-- **降级策略**：云端超时或不可用时，使用本地保守策略 fallback
+- **DecisionRouter**：根据脱敏后的 `StructuredContext` 选择 rule-based、本地小模型、云端 LLM 或 fallback
+- **Capability 声明**：每个后端声明最大风险等级和允许动作类型
+- **降级策略**：云端超时或不可用时，使用本地保守策略或 `FallbackNoOp`
 
-### 5. `aios-adapter` — 适配层
+### 5. `aios-collector` — 采集层
 
-虚拟化层，通过 Rust Trait 实现 **Offline/Online 零成本切换**：
+Rust 侧采集层入口，负责对接 app 侧采集能力和后续下沉到 daemon / system 的来源，并统一产出 `CollectorEnvelope` / `RawEvent`：
 
-- **Offline**：读取 `data/traces/` 的 Golden Trace 进行确定性回放验证
-- **Online**：调用 `aios-kernel` 的 Binder 接口，或通过 HTTPS/gRPC 与云端通信
+- **App source**：接收 `apps/android-collector` 通过 JSONL / JNI / local socket 传入的原始观测
+- **System source**：接收 `/proc`、Binder probe、系统状态采集等 daemon/system 来源
+- **Schema boundary**：校验 schema 版本、来源等级和传输批次边界
 
-## 云端驱动的数据流
+## 分层决策的数据流
 
-大脑在云端，本地 OS 的本质是一个 **"带隔离功能的语义执行器"**。
+大脑可以在云端，但安全边界必须在本地。DiPECS 的本质是一个带隐私隔离、能力分级和授权审查的语义执行器。
 
 ```text
-采集 (Kotlin) → 序列化 → 脱敏 (PrivacyAirGap) → 窗口聚合 → 云端 LLM
-                                                           ↓
-优化执行 (Kotlin) ← 策略校验 (PolicyEngine) ← 结构化输出 ←┘
-     ↓
-Trace 记录 → Golden Trace 回归验证
+apps/android-collector / daemon sources
+    -> aios-collector
+    -> CollectorEnvelope / RawEvent
+    -> PrivacyAirGap
+    -> WindowAggregator
+    -> DecisionRouter
+    -> PolicyEngine
+    -> AuthorizedAction
+    -> ActionExecutor
+    -> Trace
 ```
 
-六个环节：
+主链路环节：
 
-1. **Perception** — 本地 OS 抓取 UI 树、传感器数据、用户上下文
-2. **Redaction** — 数据出海前自动识别并抹除 PII（姓名、卡号等），替换为占位符
-3. **Request** — 将结构化 Context + Intent 发送给云端 API
-4. **Reasoning** — 云端返回结构化的 Action List（JSON/Protobuf）
-5. **Execution** — 本地 Action Bus 解析 JSON，转化为真正的系统调用
-6. **Observation** — 执行结果反馈到云端，决定下一步
+1. **Collection** — Android app 或 system source 产生原始观测
+2. **Ingress** — `aios-collector` 规范化为 `CollectorEnvelope` / `RawEvent`
+3. **Redaction** — `PrivacyAirGap` 抹除 PII，输出 `SanitizedEvent`
+4. **Aggregation** — `WindowAggregator` 生成 `StructuredContext`
+5. **Reasoning** — `DecisionRouter` 选择规则、本地、云端或 fallback 后端
+6. **Authorization** — `PolicyEngine` 结合 `CapabilityLevel` 审查动作
+7. **Execution** — `ActionExecutor` 只执行 `AuthorizedAction`
+8. **Observation** — `ActionResult` 和 Trace 进入回归验证
 
 系统要解决的最核心问题不是"模型准不准"，而是**语义鸿沟**：云端说"把这个文件发给张三"，本地 OS 必须精准定位——哪个文件？哪个张三？对应的 fd 是什么？App 权限够不够？
 
@@ -96,7 +106,7 @@ Trace 记录 → Golden Trace 回归验证
 3. **分发** (`aios-core`)：动作进入 Action Bus
 4. **审计** (Policy Engine)：查询策略，发现"支付额度 > 20 需要人工确认"
 5. **交互**：弹出确认框给用户
-6. **执行** (`aios-kernel`)：用户确认后，通过 adapter 调用支付
+6. **执行** (`aios-action`)：用户确认后，通过 action executor 调用支付
 7. **观测**：管理员看到支付 Action 生命周期结束，状态变为 `COMPLETED`
 
 ## 工程防线

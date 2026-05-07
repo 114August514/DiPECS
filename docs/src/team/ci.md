@@ -33,7 +33,7 @@ DiPECS 跨 Android 内核、自研协议和 AI 逻辑，CI 必须建立多层防
 确保在所有目标平台上能编过。很多代码 Ubuntu 能编过，但 Android NDK 下因链接器符号缺失崩溃。
 
 - **Ubuntu x86_64 Build**: 开发环境构建
-- **Android aarch64 Cross-Build**: NDK 交叉编译，只跑 Release 编译，不跑测试。只要能产出 `aios-cli` 和 `libaios_kernel.so` 就算过。
+- **Android aarch64 Cross-Build**: NDK 交叉编译，只跑 Release 编译，不跑测试。只要能产出 `aios-cli` 和 `libaios_action.so` 就算过。
 - **多版本 NDK 兼容矩阵** (后续): 通过 Strategy Matrix 同时验证多 API Level
 
 ### 3. 逻辑正确性关卡 (Correctness Gate)

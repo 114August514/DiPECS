@@ -8,10 +8,10 @@
 
 ## Table of Contents
 
-1. [LLM-Driven / AI Operating Systems](#1-llm-driven--ai-operating-systems)
-2. [Mobile App & Intent Prediction Systems](#2-mobile-app--intent-prediction-systems)
+1. [LLM-Driven / AI Operating Systems](#1-llm-driven-ai-operating-systems)
+2. [Mobile App & Intent Prediction Systems](#2-mobile-app-intent-prediction-systems)
 3. [Privacy-Preserving AI for User Behavior](#3-privacy-preserving-ai-for-user-behavior)
-4. [Cloud-Edge Hybrid OS & Proactive Systems](#4-cloud-edge-hybrid-os--proactive-systems)
+4. [Cloud-Edge Hybrid OS & Proactive Systems](#4-cloud-edge-hybrid-os-proactive-systems)
 5. [Comparative Analysis](#5-comparative-analysis)
 6. [Benchmark Landscape Summary](#6-benchmark-landscape-summary)
 7. [Differentiation of DiPECS](#7-differentiation-of-dipecs)

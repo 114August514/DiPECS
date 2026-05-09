@@ -1,0 +1,19 @@
+[project]
+name = "dipecs-docs"
+version = "0.1.0"
+description = "DiPECS documentation — MkDocs Material site"
+requires-python = ">=3.12"
+dependencies = [
+    "mkdocs>=1.6",
+    "mkdocs-material>=9.5",
+    "mkdocs-git-revision-date-localized-plugin>=1.2",
+    "mkdocs-minify-plugin>=0.8",
+    "pymdown-extensions>=10",
+]
+
+[tool.uv]
+
+[dependency-groups]
+dev = []
+
+[tool.uv.sources]

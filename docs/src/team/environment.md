@@ -96,7 +96,7 @@ source scripts/setup-env.sh
 | 工具 | 用途 | 谁需要 | 安装方式 |
 | --- | --- | --- | --- |
 | `adb` | Android 设备部署 / 日志 | 移动端开发 | `sudo apt install adb`；WSL2 需 [usbipd](https://github.com/dorssel/usbipd-win) 或走 `adb connect` 网络调试 |
-| `mdBook` | 文档构建与预览 | 写文档的人 | `cargo install mdbook` |
+| `uv` + `MkDocs` | 文档构建与预览 | 写文档的人 | `cd docs && uv sync` |
 | `cargo-deny` | 依赖审计（CI 中也会跑） | 改 `Cargo.toml` 的人 | `cargo install cargo-deny` |
 
 ## 验证
@@ -123,7 +123,7 @@ cargo build --target aarch64-linux-android --release
 | Rust 工具链 | Shell 美化 |
 | Android NDK + linker | Git 身份（name/email/key） |
 | Git hooks（`setup-env.sh` 自动注入） | SSH / GitHub 认证 |
-| 可选工具（adb、mdBook） | Docker / 容器 |
+| 可选工具（adb、MkDocs） | Docker / 容器 |
 | | CI runner 配置 |
 
 原则：**只配"不配就编不过"的东西。**

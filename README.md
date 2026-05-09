@@ -95,18 +95,20 @@ cd apps/android-collector
 | `crates/aios-action` | 授权动作执行。 |
 | `crates/aios-daemon` | `dipecsd` 运行时装配。 |
 | `apps/android-collector` | Android 采集能力验证工具。 |
-| `docs/src` | mdBook 工程文档。 |
-| `docs/academic` | 学术报告材料。 |
+| `docs/src` | MkDocs Material 工程文档。 |
+| `docs/academic-src` | 未来正式学术报告的 LaTeX 源码空壳。 |
 
 ## Documentation
 
-完整工程文档使用 mdBook 管理，CI 自动部署至 [GitHub Pages](https://114august514.github.io/DiPECS/)，工程文档入口见 [站点 Docs 区](https://114august514.github.io/DiPECS/guide/)。
+完整工程文档使用 MkDocs Material 管理，CI 自动部署至 [GitHub Pages](https://114august514.github.io/DiPECS/)。
 
 本地预览：
 
 ```bash
-mdbook build docs        # 构建
-mdbook serve docs        # 本地预览
+cd docs
+uv sync                    # 首次：创建 .venv + 安装依赖
+PYTHONPATH=. uv run mkdocs build        # 构建
+PYTHONPATH=. uv run mkdocs serve        # 本地预览 (http://127.0.0.1:8000)
 ```
 
 - [架构概览](docs/src/design/overview.md)
@@ -115,6 +117,8 @@ mdbook serve docs        # 本地预览
 - [Android 接口 MVP](docs/src/design/android-interface-mvp.md)
 - [RFC 流程](docs/src/design/rfc/process.md)
 - [RFC-0001 分层采集与决策路由](docs/src/design/rfc/0001-layered-collection-and-decision-routing.md)
+- [学术材料](docs/src/academic/index.md)
+- [参考资料](docs/src/refs/index.md)
 - [开发指南](docs/src/team/dev.md)
 - [贡献指南](CONTRIBUTING.md)
 

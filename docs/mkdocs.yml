@@ -1,0 +1,155 @@
+site_name: DiPECS 核心架构指南
+site_url: https://114august514.github.io/DiPECS/
+site_author: DiPECS Team
+site_description: DiPECS — 意图驱动的 AIOS 原型系统架构文档
+copyright: DiPECS Team · <a href="https://github.com/114August514/DiPECS">Apache-2.0</a>
+
+docs_dir: src
+site_dir: site
+
+repo_name: 114August514/DiPECS
+repo_url: https://github.com/114August514/DiPECS
+
+theme:
+  name: material
+  language: zh
+  font:
+    text: Roboto
+    code: Roboto Mono
+  palette:
+    - scheme: default
+      media: "(prefers-color-scheme: light)"
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-7
+        name: 切换至深色模式
+    - scheme: slate
+      media: "(prefers-color-scheme: dark)"
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-4
+        name: 切换至浅色模式
+  icon:
+    repo: octicons/mark-github-16
+  features:
+    - content.code.annotate
+    - content.code.copy
+    - content.footnote.tooltips
+    - content.tooltips
+    - navigation.footer
+    - navigation.indexes
+    - navigation.instant
+    - navigation.instant.progress
+    - navigation.path
+    - navigation.top
+    - navigation.tracking
+    - search.highlight
+    - search.suggest
+    - toc.follow
+
+extra:
+  social:
+    - icon: octicons/mark-github-16
+      link: https://github.com/114August514/DiPECS
+
+extra_css:
+  - stylesheets/extra.css
+
+plugins:
+  - search:
+      lang: zh
+      separator: '[\s\-​　,，、。！？；：（）《》「」『』、‘’“”]+'
+  - git-revision-date-localized:
+      enabled: true
+      type: datetime
+      locale: zh
+  - minify:
+      minify_html: true
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - footnotes
+  - def_list
+  - md_in_html
+  - pymdownx.details
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.keys
+  - pymdownx.mark
+  - pymdownx.snippets
+  - pymdownx.superfences:
+      custom_fences:
+        - name: dot
+          class: dot-diagram
+          format: !!python/name:hooks_dot.dot_formatter
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.tasklist:
+      custom_checkbox: true
+  - pymdownx.tilde
+  - toc:
+      permalink: true
+
+nav:
+  - 项目概览: index.md
+  - 调研分析:
+    - research/index.md
+    - 交付文档:
+      - 需求分析: research/deliverables/requirements.md
+      - 可行性分析: research/deliverables/feasibility.md
+      - 中期报告: research/deliverables/midterm.md
+      - 结题报告: research/deliverables/final.md
+    - 技术调研:
+      - AIOS 参考架构: research/background/aios-arch.md
+      - Android 数据源能力调研: research/background/android-data-sources.md
+      - 文献综述: research/background/related-work.md
+  - 学术材料: academic/index.md
+  - 演示材料:
+    - slides/index.md
+    - 中期演示:
+      - Slidev 源码: slides/midterm/slides.md
+      - 答辩 Q&A: slides/midterm/QA.md
+  - 参考资料: refs/index.md
+  - 系统设计:
+    - 架构概览: design/overview.md
+    - 设计哲学: design/philosophy.md
+    - 代码地图: design/crates-map.md
+    - Daemon 架构设计: design/daemon-architecture.md
+    - Android 接口最小可运行边界: design/android-interface-mvp.md
+    - 状态机设计: design/states.md
+    - 版本发布: design/releases/v0.2.md
+    - RFC 提案:
+      - design/rfc/process.md
+      - RFC-0001 分层采集与决策路由重构: design/rfc/0001-layered-collection-and-decision-routing.md
+  - 团队与开发:
+    - 团队分工: team/roles.md
+    - 会议纪要:
+      - team/meetings/index.md
+      - 第 1 次 · 03-09: team/meetings/meeting-01-2026-03-09.md
+      - 第 2 次 · 03-14: team/meetings/meeting-02-2026-03-14.md
+      - 第 3 次 · 03-18: team/meetings/meeting-03-2026-03-18.md
+      - 第 4 次 · 03-25: team/meetings/meeting-04-2026-03-25.md
+      - 第 5 次 · 03-28: team/meetings/meeting-05-2026-03-28.md
+      - 第 6 次 · 04-15: team/meetings/meeting-06-2026-04-15.md
+      - 第 7 次 · 04-19: team/meetings/meeting-07-2026-04-19.md
+      - 第 8 次 · 05-06: team/meetings/meeting-08-2026-05-06.md
+    - CI 质检体系: team/ci.md
+    - 环境配置: team/environment.md
+    - 开发指南: team/dev.md
+    - 编码规范:
+      - team/conventions/index.md
+      - Rust: team/conventions/rust.md
+      - Kotlin: team/conventions/kotlin.md
+      - Shell: team/conventions/shell.md

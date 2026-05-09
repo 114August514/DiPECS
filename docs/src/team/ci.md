@@ -13,7 +13,7 @@ DiPECS 跨 Android 内核、自研协议和 AI 逻辑，CI 必须建立多层防
 | **Build** | 每天 / PR | 跨平台验证 | `android-cross-build`, `x86-ubuntu-build` |
 | **Security** | 每周 / PR | 系统鲁棒性 | `cargo-audit`, `cargo-deny` |
 | **Bench** | 合并前 | 零退化保证 | `cargo-bloat`, `criterion` |
-| **Docs** | 合并后 | 知识对齐 | `cargo-doc`, `mdBook` → GitHub Pages |
+| **Docs** | 合并后 | 知识对齐 | `cargo doc`, `MkDocs Material` → GitHub Pages |
 
 ---
 

@@ -12,7 +12,7 @@
 按需：
 
 - Android NDK r27d（交叉编译）
-- mdBook（文档构建）
+- MkDocs Material（文档构建）
 
 ## 项目结构
 
@@ -27,7 +27,7 @@ DiPECS/
 │   ├── aios-daemon/     # 编排层：dipecsd 长驻进程入口
 │   └── aios-cli/        # 命令行工具
 ├── apps/                # Android 应用
-├── docs/                # 文档（mdBook + academic）
+├── docs/                # 文档（MkDocs + academic-src）
 ├── data/traces/         # Golden Traces
 └── scripts/             # 自动化脚本
 ```
@@ -45,7 +45,8 @@ cargo build --workspace --release
 cargo build --target aarch64-linux-android
 
 # 文档
-mdbook serve docs
+cd docs
+PYTHONPATH=. uv run mkdocs serve
 ```
 
 ## 提交前检查

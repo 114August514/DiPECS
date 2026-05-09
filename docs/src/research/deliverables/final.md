@@ -49,6 +49,6 @@ DiPECS 在 Android 设备上构建了一条 **本地采集 → 脱敏整理 → 
 
 ## 相关文档
 
-- [v0.2 发布说明](../design/releases/v0.2.md) — 中期工程基线
-- [Daemon 架构设计](../design/daemon-architecture.md) — 技术规格
+- [v0.2 发布说明](../../design/releases/v0.2.md) — 中期工程基线
+- [Daemon 架构设计](../../design/daemon-architecture.md) — 技术规格
 - [可行性分析](feasibility.md) — 技术可行性论证

@@ -1,0 +1,26 @@
+/* dot diagrams: prevent overflow on narrow viewports */
+.dot-diagram {
+    max-width: 100%;
+    overflow-x: auto;
+    margin: 1.5em 0;
+}
+.dot-diagram svg {
+    max-width: 100%;
+    height: auto;
+}
+
+/* section index cards on homepage */
+.md-typeset .grid.cards {
+    grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
+}
+.md-typeset .grid.cards > * {
+    border: 1px solid var(--md-default-fg-color--lightest);
+}
+
+/* Chinese text baseline */
+.md-typeset {
+    font-size: .75rem;
+}
+.md-nav {
+    font-size: .7rem;
+}

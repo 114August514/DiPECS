@@ -48,11 +48,11 @@ apps/android-collector / daemon sources
 | 我想... | 阅读顺序 |
 | :--- | :--- |
 | **快速了解系统** | `overview.md` → `philosophy.md` → `crates-map.md` |
-| **理解为什么这样设计** | `philosophy.md` → `../research/aios-arch.md` |
+| **理解为什么这样设计** | `philosophy.md` → `../research/background/aios-arch.md` |
 | **开始写 daemon 代码** | `crates-map.md` → `daemon-architecture.md` → `states.md` |
-| **写 Android 端采集代码** | `../research/android-data-sources.md` → `android-interface-mvp.md` |
-| **提交设计变更** | `rfc/process.md` → `rfc/0000-template.md` |
-| **了解项目背景** | `../research/requirements.md` → `../research/feasibility.md` |
+| **写 Android 端采集代码** | `../research/background/android-data-sources.md` → `android-interface-mvp.md` |
+| **提交设计变更** | `rfc/process.md` → `docs/templates/rfc/0000-template.md` |
+| **了解项目背景** | `../research/deliverables/requirements.md` → `../research/deliverables/feasibility.md` |
 | **新成员入职** | `index.md` → `overview.md` → `crates-map.md` → `../team/dev.md` |
 
 ## 相关文档
@@ -61,5 +61,5 @@ apps/android-collector / daemon sources
 - [代码地图](crates-map.md) — 代码仓库的文件级导览
 - [Daemon 架构设计](daemon-architecture.md) — 最精确的技术规格
 - [状态机设计](states.md) — 核心状态转移逻辑
-- [AIOS 参考架构](../research/aios-arch.md) — 理论基石
+- [AIOS 参考架构](../research/background/aios-arch.md) — 理论基石
 - [RFC 提案](rfc/process.md) — 变更提案流程

@@ -1043,6 +1043,6 @@ Digital Intelligence Platform for Efficient Computing Systems
 
 <div class="mt-8 text-sm opacity-50">
 
-[Project Repository](https://github.com/anomalyco/DiPECS) · Rust 1.95.0 · Apache 2.0
+[Project Repository](https://github.com/114August514/DiPECS) · Rust 1.95.0 · Apache 2.0
 
 </div>

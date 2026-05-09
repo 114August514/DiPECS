@@ -1,16 +1,16 @@
 # Contributing to DiPECS
 
-DiPECS 是一个处在快速演进中的 AIOS 原型。根目录的贡献指南只说明参与开发需要遵守的最低规则；背景、架构和课程/团队交付材料请阅读 [docs/src](docs/src/SUMMARY.md)。
+DiPECS 是一个处在快速演进中的 AIOS 原型。本文件只说明参与开发需要遵守的最低规则；背景、架构和学术文档请阅读 [文档中心](https://114august514.github.io/DiPECS/)。
 
 ## Before You Start
 
 - Bug 修复：先确认是否已有 Issue；新 Issue 需要包含复现步骤、期望行为和实际行为。
-- 新功能或协议变更：先走 [RFC 流程](docs/src/design/rfc/process.md)，尤其是会影响 `aios-spec`、跨 crate 数据结构或模块边界的改动。
+- 新功能或协议变更：先走 [RFC 流程](https://114august514.github.io/DiPECS/design/rfc/process/)，尤其是会影响 `aios-spec`、跨 crate 数据结构或模块边界的改动。
 - 大改动：先在 Issue / RFC 中说明范围，避免一次 PR 混入架构、实现、格式化和文档重写。
 
 ## Setup
 
-项目工具链由仓库锁定。详细的环境配置步骤见 [环境配置指南](docs/src/team/environment.md)。
+项目工具链由仓库锁定。详细的环境配置步骤见 [环境配置指南](https://114august514.github.io/DiPECS/team/environment/)。
 
 一键自检：
 
@@ -25,7 +25,7 @@ cargo build --workspace
 cargo test --workspace
 ```
 
-本地开发、Android 部署和日志命令见 [开发指南](docs/src/team/dev.md)。
+本地开发、Android 部署和日志命令见 [开发指南](https://114august514.github.io/DiPECS/team/dev/)。
 
 ## Local Checks
 
@@ -43,7 +43,7 @@ cargo test --workspace
 ./scripts/check-all.sh
 ```
 
-CI 红了不能合并。依赖审计和 CI 细节见 [CI 质检体系](docs/src/team/ci.md)。
+CI 红了不能合并。依赖审计和 CI 细节见 [CI 质检体系](https://114august514.github.io/DiPECS/team/ci/)。
 
 ## Architecture Rules
 
@@ -57,7 +57,7 @@ CI 红了不能合并。依赖审计和 CI 细节见 [CI 质检体系](docs/src/
 - `aios-action` 只执行 `PolicyEngine` 授权后的 `AuthorizedAction`。
 - `aios-daemon` 只做运行时装配和生命周期管理。
 
-依赖方向：`aios-spec -> collector/core/action/agent -> aios-daemon`。禁止循环依赖，禁止让 action 读取采集或推理内部状态。详细说明见 [代码地图](docs/src/design/crates-map.md) 和 [RFC-0001](docs/src/design/rfc/0001-layered-collection-and-decision-routing.md)。
+依赖方向：`aios-spec -> collector/core/action/agent -> aios-daemon`。禁止循环依赖，禁止让 action 读取采集或推理内部状态。详细说明见 [代码地图](https://114august514.github.io/DiPECS/design/crates-map/) 和 [RFC-0001](https://114august514.github.io/DiPECS/design/rfc/0001-layered-collection-and-decision-routing/)。
 
 ## Pull Requests
 
@@ -101,7 +101,7 @@ docs(readme): clarify collector boundary
 ## Useful Links
 
 - [README](README.md)
-- [开发指南](docs/src/team/dev.md)
-- [架构概览](docs/src/design/overview.md)
-- [RFC 流程](docs/src/design/rfc/process.md)
-- [团队分工](docs/src/team/roles.md)
+- [开发指南](https://114august514.github.io/DiPECS/team/dev/)
+- [架构概览](https://114august514.github.io/DiPECS/design/overview/)
+- [RFC 流程](https://114august514.github.io/DiPECS/design/rfc/process/)
+- [团队分工](https://114august514.github.io/DiPECS/team/roles/)

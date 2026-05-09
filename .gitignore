@@ -1,4 +1,4 @@
-# --- [ 1. Rust/Cargo 必备 ] ---
+# --- [ 1. 编译产物 ] ---
 # 过滤所有编译产物（这是最大的垃圾来源）
 target/
 # 过滤 Cargo 产生的备份文件
@@ -9,6 +9,11 @@ tests/*.log
 node_modules/
 .venv/
 dist/
+
+# Python / uv
+__pycache__/
+*.pyc
+*.pyo
 
 # --- [ 2. IDE 与开发环境 ] ---
 # VS Code
@@ -45,7 +50,7 @@ data/traces/*.bin
 # 过滤运行时的临时评估日志
 data/evaluation/*.log
 logs/
-book/
+site/
 *.out
 
 # --- [ 5. 密钥与隐私 ] ---

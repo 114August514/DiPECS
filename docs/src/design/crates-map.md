@@ -33,12 +33,13 @@ aios-cli (独立工具入口)
 
 双轨知识库体系，供工程协作与学术验收。
 
-- **`docs/src/`**: 工程知识库 (mdBook)
+- **`docs/src/`**: MkDocs Material 站点源码和公开资料。
   - `design/states.md`: 系统状态机核心设计文档。
   - `team/dev.md`: 开发者指南。
   - `design/rfc/`: 架构设计提案 (Request for Comments) 存放处。
-- **`docs/academic/`**: 学术验收库 (LaTeX)
-  - `01_Survey_Report/` 至 `04_Final_Report/`: 课题调研、可行性、中期及结题报告的 LaTeX 源码。
+- **`docs/academic-src/`**: 未来正式学术报告的 LaTeX 源码空壳。
+  - `01_Survey_Report/` 至 `04_Final_Report/`: 课题调研、可行性、中期及结题报告的 LaTeX 入口。
+- **`docs/src/academic/`**, **`docs/src/refs/`**, **`docs/src/slides/`**: 站点公开的学术材料、参考资料和演示材料。
 
 ## 脚本与工具 (Scripts)
 

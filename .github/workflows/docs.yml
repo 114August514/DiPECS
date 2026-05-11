@@ -25,7 +25,6 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
-  CARGO_INCREMENTAL: 1
 
 jobs:
   # 1. 编译 MkDocs 与 Rust API 文档
@@ -98,55 +97,24 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Cache TeX Live apt packages
-        uses: actions/cache@v4
-        with:
-          path: ~/.cache/apt-archives
-          key: apt-texlive-${{ runner.os }}-${{ hashFiles('.github/workflows/docs.yml') }}
-
-      - name: Restore apt archives
-        run: |
-          if ls ~/.cache/apt-archives/*.deb >/dev/null 2>&1; then
-            sudo cp ~/.cache/apt-archives/*.deb /var/cache/apt/archives/
-          fi
-
-      - name: Install TeX Live
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y texlive-latex-base texlive-latex-recommended texlive-latex-extra latexmk
-          mkdir -p ~/.cache/apt-archives
-          sudo cp /var/cache/apt/archives/*.deb ~/.cache/apt-archives/ 2>/dev/null || true
-          sudo chown -R $(whoami) ~/.cache/apt-archives/
-
       - name: Build Academic Reports
-        working-directory: docs/academic-src
         run: |
-          for tex in \
-            01_Survey_Report/main.tex \
-            02_Feasibility_Report/main.tex \
-            03_Midterm_Report/main.tex \
-            04_Final_Report/main.tex; do
-            echo "=== Building $tex ==="
-            latexmk -pdf -interaction=nonstopmode -shell-escape "$tex" || echo "Warning: $tex compilation failed (may be placeholder)"
+          sudo apt-get update -qq && sudo apt-get install -y -qq texlive-latex-base texlive-latex-recommended latexmk
+          cd docs/academic-src
+          for tex in 01_Survey_Report/main.tex 02_Feasibility_Report/main.tex 03_Midterm_Report/main.tex 04_Final_Report/main.tex; do
+            latexmk -pdf -interaction=nonstopmode "$tex" || true
           done
 
-      - name: Prepare PDF Artifacts
-        id: prepare-pdfs
+      - name: Collect PDFs
         run: |
           mkdir -p academic-pdfs
           for dir in 01_Survey_Report 02_Feasibility_Report 03_Midterm_Report 04_Final_Report; do
             pdf="docs/academic-src/${dir}/main.pdf"
-            name=$(echo "$dir" | sed 's/^[0-9]*_//')
-            if [ -f "$pdf" ]; then
-              cp "$pdf" "academic-pdfs/${name}.pdf"
-            fi
+            [ -f "$pdf" ] && cp "$pdf" "academic-pdfs/$(echo $dir | sed 's/^[0-9]*_//').pdf"
           done
-          # 确保 artifact 永不为空，避免 download-artifact 因 artifact 不存在而失败
           touch academic-pdfs/.placeholder
-          ls -la academic-pdfs/
 
-      - name: Upload Academic Artifacts
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         with:
           name: academic-pdfs
           path: academic-pdfs/
@@ -184,6 +152,22 @@ jobs:
           # 移动 API Docs
           cp -r site-temp/target/doc/* "$PUB/api/"
 
+          # 构建时间戳 (后面的 API index 和首页注入都会用到)
+          BUILD_TIME=$(date -u +"%Y-%m-%d %H:%M UTC")
+
+          # API Docs 缺少根索引页 (cargo doc --no-deps 不生成)，模板在 docs/api-index.html
+          if [ ! -f "$PUB/api/index.html" ]; then
+            crates=""
+            for dir in "$PUB/api/"*/; do
+              [ -f "${dir}index.html" ] || continue
+              name=$(basename "$dir")
+              crates="${crates}<li><a href=\"./${name}/\">${name}</a></li>"
+            done
+            sed -e "s|{{CRATE_LIST}}|${crates}|g" \
+                -e "s|{{BUILD_TIME}}|${BUILD_TIME}|g" \
+                docs/api-index.html > "$PUB/api/index.html"
+          fi
+
           # 动态生成学术报告链接区块
           PDF_HTML_SNIPPET=""
           if [ -d "academic-temp" ] && [ "$(ls -A academic-temp/*.pdf 2>/dev/null)" ]; then
@@ -202,8 +186,7 @@ jobs:
           # 生成归档链接
           ARCHIVE_SNIPPET="<p><em>暂无历史归档记录。</em></p>"
 
-          # 写入构建时间戳
-          BUILD_TIME=$(date -u +"%Y-%m-%d %H:%M UTC")
+          # 写入构建时间戳到站点首页
           TIMESTAMP_SNIPPET="<p class=\"build-timestamp\">构建时间: ${BUILD_TIME}</p>"
 
           # 注入占位符到构建好的首页

@@ -84,7 +84,7 @@ Digital Intelligence Platform for Efficient Computing Systems
 <div>
 
 | 采集源 | 采集方式 | 对应 RawEvent |
-|:---|:---|:---|
+| :--- | :--- | :--- |
 | 应用切换 | UsageStatsManager | `AppTransition` |
 | Binder 事务 | eBPF tracepoint | `BinderTransaction` |
 | /proc 文件系统 | 每 100ms 轮询差分 | `ProcStateChange` |
@@ -96,7 +96,7 @@ Digital Intelligence Platform for Efficient Computing Systems
 <div>
 
 | 采集源 | 采集方式 | 对应 RawEvent |
-|:---|:---|:---|
+| :--- | :--- | :--- |
 | 通知交互 | NotificationListenerService | `NotificationInteraction` |
 | 屏幕状态 | `/sys/class/drm` | `ScreenState` |
 | 系统状态 | `/sys/class/power_supply` 等 | `SystemState` |
@@ -187,6 +187,7 @@ pub enum SanitizedEventType {
 <div>
 
 ### TextHint
+
 通知文本的**形态特征**，不含内容：
 
 - `length_chars` — 字符数
@@ -198,6 +199,7 @@ pub enum SanitizedEventType {
 <div>
 
 ### SemanticHint
+
 **本地关键词匹配** (中英双语)，不传云端：
 
 - FileMention / ImageMention
@@ -210,6 +212,7 @@ pub enum SanitizedEventType {
 <div>
 
 ### ExtensionCategory
+
 文件路径→仅保留**扩展名分类**：
 
 - Document (pdf, docx, txt...)
@@ -270,8 +273,6 @@ pub enum SanitizedEventType {
 
 </div>
 
-
-
 ---
 
 # What · Android Phase-1 采集探针 — `apps/android-collector`
@@ -281,7 +282,7 @@ pub enum SanitizedEventType {
 ### 4 个数据源
 
 | 数据源 | 实现方式 | 采集事件 |
-|:---|:---|:---|
+| :--- | :--- | :--- |
 | 应用使用 | `UsageStatsManager` | 前台 App 切换 (→ `AppTransition`) |
 | 通知 | `NotificationListenerService` | 通知发布/移除 (→ `NotificationPosted`) |
 | 无障碍 | `AccessibilityService` | 窗口、点击、焦点、文本变化 |
@@ -304,7 +305,6 @@ pub enum SanitizedEventType {
 **与 Rust daemon 的关系**: android-collector 是 **Phase-1 探针**，用于 Android 接口可行性验证。各数据源筛选通过后，对应的采集逻辑将提升到 `aios-collector` 的 Rust daemon 中（如 NotificationListenerService → Kotlin↔Rust JNI 桥接）。当前二者为 **互补关系**：daemon 走系统层 (/proc, eBPF)，collector 走系统服务层 (NotificationListener, Accessibility)。
 
 </div>
-
 
 ---
 
@@ -319,7 +319,7 @@ pub enum SanitizedEventType {
 ### 4 个数据源
 
 | 数据源 | 实现方式 | 采集事件 |
-|:---|:---|:---|
+| :--- | :--- | :--- |
 | 应用使用 | `UsageStatsManager` | 前台 App 切换 (→ `AppTransition`) |
 | 通知 | `NotificationListenerService` | 通知发布/移除 (→ `NotificationPosted`) |
 | 无障碍 | `AccessibilityService` | 窗口、点击、焦点、文本变化 |
@@ -342,7 +342,6 @@ pub enum SanitizedEventType {
 **与 Rust daemon 的关系**: android-collector 是 **Phase-1 探针**，用于 Android 接口可行性验证。各数据源筛选通过后，对应的采集逻辑将提升到 `aios-collector` 的 Rust daemon 中（如 NotificationListenerService → Kotlin↔Rust JNI 桥接）。当前二者为 **互补关系**：daemon 走系统层 (/proc, eBPF)，collector 走系统服务层 (NotificationListener, Accessibility)。
 
 </div>
-
 
 ---
 
@@ -677,7 +676,7 @@ sequenceDiagram
 ### 脱敏规则 (每种 RawEvent 一条路径)
 
 | 原始数据 | 脱敏后保留 |
-|:---|:---|
+| :--- | :--- |
 | 通知标题 / 正文 | `TextHint` (长度 + 书写系统 + 纯emoji标记) + `SemanticHint` (本地关键词匹配) |
 | 文件路径 | `ExtensionCategory` (仅扩展名分类) |
 | Binder 负载 | service 名 + 方法名 → `InteractionType` |
@@ -859,7 +858,7 @@ graph TD
 ### Rust daemon 采集任务
 
 | 组件 | 频率 | 输出 |
-|:---|:---|:---|
+| :--- | :--- | :--- |
 | `ProcReader` | 100ms | 进程状态变化 |
 | `BinderProbe` | 100ms | Binder 调用信号 |
 | `SystemCollector` | 30s | 电量 / 网络 / 屏幕 |
@@ -875,7 +874,7 @@ graph TD
 ### Android Phase-1 外部探针
 
 | 数据源 | 通道 |
-|:---|:---|
+| :--- | :--- |
 | UsageStats | JSONL |
 | Notification | JSONL |
 | Accessibility | JSONL |
@@ -932,6 +931,7 @@ graph LR
 # How · 守护进程流水线 — 生命周期与边界
 
 **生命周期**:
+
 - fork + setsid (daemonize)
 - `--no-daemon` 模式用于开发调试
 - SIGTERM/SIGINT 通过 broadcast channel 优雅退出
@@ -941,6 +941,7 @@ graph LR
 # How · 守护进程流水线 — 关键设计
 
 **关键设计**:
+
 - 核心处理是同步的 (aios-core 无 async)
 - 异步仅在 I/O 边界 (collector 读取 / agent HTTPS)
 - 所有步骤通过 `tracing` 打点
@@ -952,7 +953,7 @@ graph LR
 当前阶段使用基于规则的模拟代理，6 条规则覆盖全部动作类型:
 
 | 检测信号 | 生成意图 | 推荐动作 | 置信度 |
-|:---|:---|:---|:---|
+| :--- | :--- | :--- | :--- |
 | 通知含 FileMention | `OpenApp(source_app)` | PreWarmProcess | 0.70 |
 | ActivityLaunch 检测 | `SwitchToApp(target)` | PreWarmProcess + KeepAlive | 0.85 |
 | 文件活动 (任意) | `HandleFile(ext_category)` | PrefetchFile | 0.75 |
@@ -962,7 +963,7 @@ graph LR
 # How · MockCloudProxy — 信号到意图的映射 B
 
 | 检测信号 | 生成意图 | 推荐动作 | 置信度 |
-|:---|:---|:---|:---|
+| :--- | :--- | :--- | :--- |
 | 屏幕 Interactive | `Idle` | KeepAlive(foreground) | 0.60 |
 | 电量 < 20% | `Idle` | ReleaseMemory | 0.80 |
 | 空窗口 (兜底) | `Idle` | NoOp | 0.50 |
@@ -984,7 +985,7 @@ graph LR
 ### 已完成 (v0.3)
 
 | 指标 | 数值 |
-|:---|:---|
+| :--- | :--- |
 | 代码量 | ~4,300 行 Rust + ~1,500 行 Kotlin |
 | Crates | 6 个 (spec/core/kernel/adapter/agent/cli) + 1 Android App |
 | 测试 | 62 个 Rust · 全部通过 + Android Unit Test |
@@ -1035,7 +1036,6 @@ graph LR
 </div>
 
 ---
-
 
 # DiPECS v0.3
 

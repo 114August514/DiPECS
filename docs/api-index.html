@@ -1,0 +1,385 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="Rust API reference for the DiPECS workspace.">
+<title>DiPECS API Reference</title>
+<style>
+  :root {
+    color-scheme: light dark;
+    --bg: #f6f8fb;
+    --surface: #ffffff;
+    --surface-muted: #eef2f7;
+    --text: #172033;
+    --muted: #667085;
+    --border: #d7dee8;
+    --accent: #8a4b24;
+    --accent-strong: #5f3419;
+    --focus: #2f80ed;
+    --shadow: 0 18px 42px rgba(23, 32, 51, .08);
+  }
+
+  * {
+    box-sizing: border-box;
+  }
+
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    line-height: 1.55;
+  }
+
+  a {
+    color: inherit;
+    text-decoration: none;
+  }
+
+  a:focus-visible {
+    outline: 3px solid var(--focus);
+    outline-offset: 3px;
+  }
+
+  .page-shell {
+    width: min(1120px, calc(100% - 32px));
+    margin: 0 auto;
+    padding: 32px 0;
+  }
+
+  .topbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    margin-bottom: 28px;
+  }
+
+  .brand {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    color: var(--muted);
+    font-size: .92rem;
+    font-weight: 650;
+    letter-spacing: .02em;
+    text-transform: uppercase;
+  }
+
+  .brand-mark {
+    display: grid;
+    width: 34px;
+    height: 34px;
+    place-items: center;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--surface);
+    color: var(--accent);
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+    font-size: .9rem;
+    box-shadow: 0 8px 22px rgba(23, 32, 51, .06);
+  }
+
+  .topnav {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 8px;
+  }
+
+  .nav-link {
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--surface);
+    color: var(--text);
+    padding: 8px 12px;
+    font-size: .92rem;
+    font-weight: 600;
+  }
+
+  .nav-link:hover {
+    border-color: color-mix(in srgb, var(--accent) 55%, var(--border));
+    color: var(--accent-strong);
+  }
+
+  .hero {
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--surface);
+    box-shadow: var(--shadow);
+    padding: clamp(28px, 5vw, 56px);
+  }
+
+  .eyebrow {
+    margin: 0 0 12px;
+    color: var(--accent);
+    font-size: .86rem;
+    font-weight: 750;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+  }
+
+  h1 {
+    max-width: 780px;
+    margin: 0;
+    font-size: clamp(2.15rem, 6vw, 4.75rem);
+    line-height: .98;
+    letter-spacing: 0;
+  }
+
+  .lede {
+    max-width: 720px;
+    margin: 20px 0 0;
+    color: var(--muted);
+    font-size: clamp(1rem, 2vw, 1.15rem);
+  }
+
+  .meta-strip {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-top: 28px;
+  }
+
+  .meta-pill {
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--surface-muted);
+    color: var(--muted);
+    padding: 7px 10px;
+    font-size: .86rem;
+    font-weight: 600;
+  }
+
+  .section-header {
+    display: flex;
+    align-items: end;
+    justify-content: space-between;
+    gap: 18px;
+    margin: 34px 0 14px;
+  }
+
+  h2 {
+    margin: 0;
+    font-size: 1.35rem;
+    letter-spacing: 0;
+  }
+
+  .section-note {
+    margin: 0;
+    color: var(--muted);
+    font-size: .95rem;
+  }
+
+  .crate-list {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+    gap: 12px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .crate-list li {
+    min-width: 0;
+  }
+
+  .crate-list a {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 14px;
+    min-height: 58px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--surface);
+    padding: 14px 15px;
+    color: var(--text);
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+    font-size: .96rem;
+    font-weight: 650;
+    overflow-wrap: anywhere;
+    box-shadow: 0 10px 26px rgba(23, 32, 51, .05);
+  }
+
+  .crate-list a::after {
+    content: "Open";
+    flex: 0 0 auto;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--accent) 12%, transparent);
+    color: var(--accent-strong);
+    padding: 3px 8px;
+    font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+    font-size: .72rem;
+    font-weight: 750;
+    letter-spacing: .04em;
+    text-transform: uppercase;
+  }
+
+  .crate-list a:hover {
+    border-color: color-mix(in srgb, var(--accent) 58%, var(--border));
+    transform: translateY(-1px);
+  }
+
+  .quick-links {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 12px;
+    margin-top: 34px;
+  }
+
+  .quick-link {
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--surface);
+    padding: 16px;
+  }
+
+  .quick-link span {
+    display: block;
+    color: var(--accent);
+    font-size: .78rem;
+    font-weight: 750;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+  }
+
+  .quick-link strong {
+    display: block;
+    margin-top: 5px;
+    font-size: 1.02rem;
+  }
+
+  .quick-link p {
+    margin: 6px 0 0;
+    color: var(--muted);
+    font-size: .92rem;
+  }
+
+  .quick-link:hover {
+    border-color: color-mix(in srgb, var(--accent) 58%, var(--border));
+  }
+
+  footer {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    gap: 12px;
+    border-top: 1px solid var(--border);
+    margin-top: 36px;
+    padding-top: 18px;
+    color: var(--muted);
+    font-size: .9rem;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #111318;
+      --surface: #191d24;
+      --surface-muted: #202631;
+      --text: #eef2f7;
+      --muted: #a7b0bf;
+      --border: #303846;
+      --accent: #d49a6a;
+      --accent-strong: #f0c49e;
+      --focus: #78a7ff;
+      --shadow: 0 18px 42px rgba(0, 0, 0, .28);
+    }
+  }
+
+  @media (prefers-reduced-motion: no-preference) {
+    .crate-list a,
+    .nav-link,
+    .quick-link {
+      transition: border-color .15s ease, color .15s ease, transform .15s ease;
+    }
+  }
+
+  @media (max-width: 640px) {
+    .page-shell {
+      width: min(100% - 22px, 1120px);
+      padding: 18px 0;
+    }
+
+    .topbar,
+    .section-header,
+    footer {
+      align-items: stretch;
+      flex-direction: column;
+    }
+
+    .topnav {
+      justify-content: flex-start;
+    }
+
+    .nav-link {
+      flex: 1 1 auto;
+      text-align: center;
+    }
+
+    .hero {
+      padding: 24px;
+    }
+  }
+</style>
+</head>
+<body>
+<main class="page-shell">
+  <header class="topbar" aria-label="Site header">
+    <a class="brand" href="../" aria-label="DiPECS documentation home">
+      <span class="brand-mark" aria-hidden="true">rs</span>
+      <span>DiPECS</span>
+    </a>
+    <nav class="topnav" aria-label="API reference links">
+      <a class="nav-link" href="../">Project documentation</a>
+      <a class="nav-link" href="https://github.com/114August514/DiPECS">Repository</a>
+    </nav>
+  </header>
+
+  <section class="hero" aria-labelledby="api-title">
+    <p class="eyebrow">Rust workspace</p>
+    <h1 id="api-title">DiPECS API Reference</h1>
+    <p class="lede">Crate-level documentation for the DiPECS Rust workspace, generated from source with rustdoc.</p>
+    <div class="meta-strip" aria-label="Build metadata">
+      <span class="meta-pill">Generated: {{BUILD_TIME}}</span>
+      <span class="meta-pill">cargo doc --workspace --no-deps</span>
+      <span class="meta-pill">Apache-2.0</span>
+    </div>
+  </section>
+
+  <section aria-labelledby="crate-list-title">
+    <div class="section-header">
+      <h2 id="crate-list-title">Workspace Crates</h2>
+      <p class="section-note">Open a crate to browse modules, structs, traits, functions, and source links.</p>
+    </div>
+    <ul class="crate-list">
+      {{CRATE_LIST}}
+    </ul>
+  </section>
+
+  <section class="quick-links" aria-label="Related documentation">
+    <a class="quick-link" href="../design/overview/">
+      <span>Guide</span>
+      <strong>Architecture overview</strong>
+      <p>System boundaries, data flow, and design rationale.</p>
+    </a>
+    <a class="quick-link" href="../design/crates-map/">
+      <span>Map</span>
+      <strong>Crates map</strong>
+      <p>Workspace layout and responsibility of each Rust crate.</p>
+    </a>
+    <a class="quick-link" href="https://github.com/114August514/DiPECS/tree/main/crates">
+      <span>Source</span>
+      <strong>Rust sources</strong>
+      <p>Browse the workspace implementation on GitHub.</p>
+    </a>
+  </section>
+
+  <footer>
+    <span>DiPECS Team</span>
+    <span>Generated by GitHub Actions</span>
+  </footer>
+</main>
+</body>
+</html>

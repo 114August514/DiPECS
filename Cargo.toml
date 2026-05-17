@@ -44,6 +44,9 @@ tracing = "0.1"     # 语义化追踪
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 uuid = { version = "1", features = ["v4"] }
 
+# --- CLI ---
+clap = { version = "4", features = ["derive"] }
+
 # --- 移动端与底层 ---
 jni = "0.21"        # Android JNI 交互
 libc = "0.2"        # 系统底层调用
@@ -55,6 +58,7 @@ aios-collector = { path = "crates/aios-collector" }
 aios-core = { path = "crates/aios-core" }
 aios-action = { path = "crates/aios-action" }
 aios-agent = { path = "crates/aios-agent" }
+aios-cli = { path = "crates/aios-cli" }
 
 # 5. 编译优化配置 (Profile)
 [profile.release]

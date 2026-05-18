@@ -31,10 +31,12 @@ jobs:
           targets: aarch64-linux-android
 
       # 使用预编译二进制加速安装
+      # 注：DHAT 在 Rust 侧是 `dhat` 库 crate (作为 dev-dep + #[global_allocator] 实现堆分析)
+      # 通过 `cargo test --features dhat-on` 触发，无需在此安装。
       - name: Install Tools
         uses: taiki-e/install-action@v2
         with:
-          tool: cargo-bloat,cargo-dhat
+          tool: cargo-bloat
 
       - name: Cache Android NDK
         id: cache-ndk

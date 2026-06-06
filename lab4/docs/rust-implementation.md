@@ -69,10 +69,10 @@ Rust 工具不负责：
 不创建 Makefile。常用入口建议写入文档或 Cargo 子命令：
 
 ```bash
-cargo fmt
-cargo check
-cargo clippy --all-targets -- -D warnings
-cargo test --all-targets
+cargo fmt --manifest-path lab4/Cargo.toml
+cargo check --manifest-path lab4/Cargo.toml
+cargo clippy --manifest-path lab4/Cargo.toml --all-targets -- -D warnings
+cargo test --manifest-path lab4/Cargo.toml --all-targets
 ```
 
 当前 `lab4-tools` crate 提供如下二进制：
@@ -87,12 +87,12 @@ cargo test --all-targets
 示例：
 
 ```bash
-cargo run -p lab4-tools --bin lab4-prompts -- lab4/data/prompts/quality-prompts.jsonl
+cargo --manifest-path lab4/Cargo.toml run -p lab4-tools --bin lab4-prompts -- lab4/data/prompts/quality-prompts.jsonl
 
-cargo run -p lab4-tools --bin lab4-env
+cargo --manifest-path lab4/Cargo.toml run -p lab4-tools --bin lab4-env
 
 # smoke：验证 Rust 加载、JSONL 和 RPC 流程，不作为正式 LLM 结果
-cargo run -p lab4-tools --bin lab4-llama -- infer \
+cargo --manifest-path lab4/Cargo.toml run -p lab4-tools --bin lab4-llama -- infer \
   --model lab4/data/models/placeholder.model \
   --prompt "从操作系统角度解释 mmap 和页缓存" \
   --max-tokens 80 \
@@ -100,7 +100,7 @@ cargo run -p lab4-tools --bin lab4-llama -- infer \
   --batch-size 8 \
   --ctx-size 1024
 
-cargo run -p lab4-tools --bin lab4-llama -- bench \
+cargo --manifest-path lab4/Cargo.toml run -p lab4-tools --bin lab4-llama -- bench \
   --prompts lab4/data/prompts/quality-prompts.jsonl \
   --model lab4/data/models/placeholder.model \
   --output lab4/data/results/smoke-rust-llama-quality.jsonl \
@@ -111,7 +111,7 @@ cargo run -p lab4-tools --bin lab4-llama -- bench \
   --ctx-size 1024
 
 # 正式实验：调用 llama.cpp
-cargo run -p lab4-tools --bin lab4-bench -- \
+cargo --manifest-path lab4/Cargo.toml run -p lab4-tools --bin lab4-bench -- \
   --prompts lab4/data/prompts/quality-prompts.jsonl \
   --executable lab4/third_party/llama.cpp/build/bin/llama-cli \
   --model lab4/data/models/qwen2.5-1.5b-instruct-q4_k_m.gguf \
@@ -120,7 +120,7 @@ cargo run -p lab4-tools --bin lab4-bench -- \
   --case-prefix single-quality \
   --arg=--threads --arg=8
 
-cargo run -p lab4-tools --bin lab4-storage -- read \
+cargo --manifest-path lab4/Cargo.toml run -p lab4-tools --bin lab4-storage -- read \
   --case-id local-model-read-001 \
   /path/to/model.gguf \
   --output lab4/data/results/storage-local-read.jsonl

@@ -9,7 +9,7 @@
 环境采集命令：
 
 ```bash
-cargo run -p lab4-tools --bin lab4-env
+cargo --manifest-path lab4/Cargo.toml run -p lab4-tools --bin lab4-env
 ```
 
 | 节点 | 角色 | CPU | 内存 | GPU | OS / Kernel | IP | 备注 |
@@ -54,7 +54,7 @@ lab4/third_party/llama.cpp/build/bin/llama-cli \
 Rust 工具批量测量命令：
 
 ```bash
-cargo run -p lab4-tools --bin lab4-bench -- \
+cargo --manifest-path lab4/Cargo.toml run -p lab4-tools --bin lab4-bench -- \
   --prompts lab4/data/prompts/quality-prompts.jsonl \
   --executable lab4/third_party/llama.cpp/build/bin/llama-cli \
   --model lab4/data/models/qwen2.5-1.5b-instruct-q4_k_m.gguf \
@@ -97,12 +97,12 @@ lab4/third_party/llama.cpp/build/bin/llama-cli \
 存储测量命令示例：
 
 ```bash
-cargo run -p lab4-tools --bin lab4-storage -- read \
+cargo --manifest-path lab4/Cargo.toml run -p lab4-tools --bin lab4-storage -- read \
   --case-id local-model-read-001 \
   /path/to/model.gguf \
   --output lab4/data/results/storage-local-read.jsonl
 
-cargo run -p lab4-tools --bin lab4-storage -- read \
+cargo --manifest-path lab4/Cargo.toml run -p lab4-tools --bin lab4-storage -- read \
   --case-id ceph-model-read-001 \
   /mnt/ceph/model.gguf \
   --output lab4/data/results/storage-ceph-read.jsonl

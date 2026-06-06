@@ -20,7 +20,7 @@
 汇总命令：
 
 ```bash
-cargo run -p lab4-tools --bin lab4-summarize -- lab4/data/results/single-quality.jsonl
+cargo --manifest-path lab4/Cargo.toml run -p lab4-tools --bin lab4-summarize -- lab4/data/results/single-quality.jsonl
 ```
 
 | 配置 | 平均耗时 ms | tokens/s | 备注 |
@@ -56,7 +56,7 @@ cargo run -p lab4-tools --bin lab4-summarize -- lab4/data/results/single-quality
 汇总命令：
 
 ```bash
-cargo run -p lab4-tools --bin lab4-summarize -- lab4/data/results/rpc-quality.jsonl
+cargo --manifest-path lab4/Cargo.toml run -p lab4-tools --bin lab4-summarize -- lab4/data/results/rpc-quality.jsonl
 ```
 
 | 模式 | 平均耗时 ms | tokens/s | 成功数 | 现象 |

@@ -51,6 +51,10 @@ pub struct BenchRecord {
     pub stdout_bytes: usize,
     /// Captured stderr size in bytes.
     pub stderr_bytes: usize,
+    /// Captured stdout text, including generated model output.
+    pub stdout: String,
+    /// Captured stderr text, including llama.cpp diagnostics and timings.
+    pub stderr: String,
     /// Full command vector for reproducibility.
     pub command: Vec<String>,
 }
@@ -98,6 +102,8 @@ pub fn run_llama_case(
         tokens_per_second,
         stdout_bytes: output.stdout.len(),
         stderr_bytes: output.stderr.len(),
+        stdout: stdout.into_owned(),
+        stderr: stderr.into_owned(),
         command: command_args,
     })
 }
@@ -139,6 +145,19 @@ pub fn parse_tokens_per_second(text: &str) -> Option<f64> {
 }
 
 fn parse_line_tokens_per_second(line: &str) -> Option<f64> {
+    if let Some(generation_index) = line.find("Generation:") {
+        let generation = &line[generation_index + "Generation:".len()..];
+        if let Some(marker_index) = generation.find("t/s") {
+            let before_marker = &generation[..marker_index];
+            if let Some(value) = before_marker
+                .split_whitespace()
+                .find_map(|token| token.parse::<f64>().ok())
+            {
+                return Some(value);
+            }
+        }
+    }
+
     let markers = ["tokens per second", "tokens/s"];
     for marker in markers {
         if let Some(marker_index) = line.find(marker) {
@@ -177,6 +196,12 @@ mod tests {
     #[test]
     fn test_parse_tokens_per_second__returns_none_without_metric() {
         assert_eq!(parse_tokens_per_second("no throughput here"), None);
+    }
+
+    #[test]
+    fn test_parse_tokens_per_second__reads_new_timing_summary() {
+        let output = "[ Prompt: 232.1 t/s | Generation: 41.9 t/s ]";
+        assert_eq!(parse_tokens_per_second(output), Some(41.9));
     }
 
     #[test]

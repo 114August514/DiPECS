@@ -47,3 +47,4 @@ Lab4 要围绕本地大模型推理系统完成一次从部署、测量、优化
 - `lab4/reports/deployment.md`：部署说明模板。
 - `lab4/reports/performance-analysis.md`：性能分析模板。
 - `lab4/reports/ceph-analysis.md`：Ceph 扩展分析模板。
+- `lab4/reports/smoke.md`：真实 GGUF 单机推理与基准冒烟结果。

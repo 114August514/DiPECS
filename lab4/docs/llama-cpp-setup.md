@@ -122,7 +122,7 @@ lab4/third_party/llama.cpp/build/bin/llama-cli \
 使用 Rust 工具记录结果：
 
 ```bash
-cargo run -p lab4-tools --bin lab4-bench -- \
+cargo --manifest-path lab4/Cargo.toml run -p lab4-tools --bin lab4-bench -- \
   --prompts lab4/data/prompts/quality-prompts.jsonl \
   --executable lab4/third_party/llama.cpp/build/bin/llama-cli \
   --model lab4/data/models/qwen2.5-1.5b-instruct-q4_k_m.gguf \

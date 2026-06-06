@@ -209,6 +209,8 @@ mod tests {
             tokens_per_second,
             stdout_bytes: 0,
             stderr_bytes: 0,
+            stdout: String::new(),
+            stderr: String::new(),
             command: Vec::new(),
         }
     }

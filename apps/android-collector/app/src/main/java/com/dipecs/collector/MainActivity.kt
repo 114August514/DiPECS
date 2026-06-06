@@ -3,6 +3,8 @@ package com.dipecs.collector
 import android.Manifest
 import android.app.Activity
 import android.content.Intent
+import android.content.Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION
+import android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION
 import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
@@ -20,6 +22,7 @@ import android.widget.ScrollView
 import android.widget.Spinner
 import android.widget.TextView
 import android.widget.Toast
+import com.dipecs.collector.actions.ActionExecutorBridge
 import com.dipecs.collector.net.CloudUploader
 import com.dipecs.collector.services.CollectorForegroundService
 import com.dipecs.collector.storage.CollectorPreferences
@@ -36,6 +39,9 @@ class MainActivity : Activity() {
     private lateinit var eventPreviewView: TextView
     private lateinit var endpointInput: EditText
     private lateinit var apiKeyInput: EditText
+    private lateinit var prefetchTargetInput: EditText
+    private lateinit var authorizedActionInput: EditText
+    private lateinit var actionSocketPortInput: EditText
     private lateinit var modeSpinner: Spinner
     private lateinit var usageCheck: CheckBox
     private lateinit var notificationCheck: CheckBox
@@ -51,6 +57,30 @@ class MainActivity : Activity() {
 
     override fun onResume() {
         super.onResume()
+        refreshStatus()
+    }
+
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode != REQUEST_OPEN_DOCUMENT || resultCode != RESULT_OK) {
+            return
+        }
+        val uri = data?.data ?: return
+        val grantFlags = data.flags and FLAG_GRANT_READ_URI_PERMISSION
+        if (grantFlags != 0) {
+            runCatching {
+                contentResolver.takePersistableUriPermission(uri, grantFlags)
+            }
+        }
+        CollectorPreferences.setPrefetchTarget(this, "uri:$uri")
+        prefetchTargetInput.setText(CollectorPreferences.prefetchTarget(this))
+        EventRepository.recordInternal(
+            this,
+            "prefetch_uri_selected",
+            "Prefetch document URI selected",
+            JSONObject().put("target", CollectorPreferences.prefetchTarget(this)),
+        )
+        toast("Saved URI prefetch target")
         refreshStatus()
     }
 
@@ -117,6 +147,8 @@ class MainActivity : Activity() {
         })
 
         root.addView(uploadConfigCard())
+        root.addView(prefetchCard())
+        root.addView(authorizedActionCard())
         root.addView(controlCard())
 
         traceStatusView = TextView(this).apply {
@@ -221,6 +253,144 @@ class MainActivity : Activity() {
         return card("Run controls", content)
     }
 
+    private fun prefetchCard(): View {
+        val content = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+        }
+
+        prefetchTargetInput = EditText(this).apply {
+            hint = "url:https://example.test/feed.json or uri:content://..."
+            inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_VARIATION_URI
+            setSingleLine(true)
+        }
+        content.addView(sectionLabel("Prefetch target"))
+        content.addView(prefetchTargetInput)
+        content.addView(TextView(this).apply {
+            text = "Supports url:http(s) and persisted uri:content:// targets. Prefetched content is stored in app cache."
+            textSize = 12f
+            setTextColor(Color.rgb(75, 85, 99))
+            setPadding(0, 8, 0, 10)
+        })
+        content.addView(rowButton("Save Prefetch Target") {
+            CollectorPreferences.setPrefetchTarget(this@MainActivity, prefetchTargetInput.text.toString())
+            EventRepository.recordInternal(
+                this@MainActivity,
+                "prefetch_target_saved",
+                "Prefetch target saved",
+                JSONObject().put("target", CollectorPreferences.prefetchTarget(this@MainActivity)),
+            )
+            toast("Prefetch target saved")
+            refreshStatus()
+        })
+        content.addView(rowButton("Run Prefetch Now") {
+            val target = prefetchTargetInput.text.toString().trim()
+            CollectorPreferences.setPrefetchTarget(this@MainActivity, target)
+            ActionExecutorBridge.dispatch(
+                this@MainActivity,
+                ActionExecutorBridge.ACTION_TYPE_PREFETCH_FILE,
+                target,
+                reason = "manual",
+            )
+            toast("Prefetch queued")
+            refreshStatus()
+        })
+        content.addView(rowButton("Run Prefetch Via Service") {
+            val target = prefetchTargetInput.text.toString().trim()
+            CollectorPreferences.setPrefetchTarget(this@MainActivity, target)
+            startCollectorService(
+                action = CollectorForegroundService.ACTION_PREFETCH_NOW,
+                prefetchTarget = target,
+            )
+            toast("Service prefetch queued")
+        })
+        content.addView(rowButton("Pick Document URI") {
+            val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+                addCategory(Intent.CATEGORY_OPENABLE)
+                type = "*/*"
+                addFlags(FLAG_GRANT_READ_URI_PERMISSION or FLAG_GRANT_PERSISTABLE_URI_PERMISSION)
+            }
+            startActivityForResult(intent, REQUEST_OPEN_DOCUMENT)
+        })
+        return card("Prefetch action", content)
+    }
+
+    private fun authorizedActionCard(): View {
+        val content = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+        }
+
+        authorizedActionInput = EditText(this).apply {
+            hint = """{"intent_id":"demo","action":{"action_type":"PrefetchFile","target":"url:https://example.test/feed.json","urgency":"IdleTime"},"authorized_at_ms":0}"""
+            minLines = 4
+            maxLines = 8
+            setText(CollectorPreferences.authorizedActionJson(this@MainActivity))
+        }
+        content.addView(sectionLabel("AuthorizedAction JSON"))
+        content.addView(authorizedActionInput)
+        actionSocketPortInput = EditText(this).apply {
+            hint = "46321"
+            inputType = android.text.InputType.TYPE_CLASS_NUMBER
+            setSingleLine(true)
+            setText(CollectorPreferences.actionSocketPort(this@MainActivity).toString())
+        }
+        content.addView(sectionLabel("Action socket port"))
+        content.addView(actionSocketPortInput)
+        content.addView(TextView(this).apply {
+            text = "Use Rust AuthorizedAction JSON shape directly, or send it over the localhost socket from aios-cli. From a desktop host, usually run adb forward tcp:PORT tcp:PORT first."
+            textSize = 12f
+            setTextColor(Color.rgb(75, 85, 99))
+            setPadding(0, 8, 0, 10)
+        })
+        content.addView(rowButton("Save AuthorizedAction JSON") {
+            CollectorPreferences.setAuthorizedActionJson(this@MainActivity, authorizedActionInput.text.toString())
+            saveActionSocketPort()
+            EventRepository.recordInternal(
+                this@MainActivity,
+                "authorized_action_saved",
+                "AuthorizedAction JSON saved",
+            )
+            toast("AuthorizedAction JSON saved")
+            refreshStatus()
+        })
+        content.addView(rowButton("Run AuthorizedAction Now") {
+            val payload = authorizedActionInput.text.toString().trim()
+            CollectorPreferences.setAuthorizedActionJson(this@MainActivity, payload)
+            val dispatched = runCatching { JSONObject(payload) }
+                .map { json ->
+                    ActionExecutorBridge.dispatchAuthorizedActionJson(
+                        this@MainActivity,
+                        json,
+                        reason = "manual_authorized_action",
+                    )
+                }
+                .getOrElse { error ->
+                    EventRepository.recordInternal(
+                        this@MainActivity,
+                        "authorized_action_rejected",
+                        error.message ?: "Invalid AuthorizedAction JSON",
+                        JSONObject().put("payload", payload.take(2048)),
+                    )
+                    false
+                }
+            if (dispatched) {
+                toast("AuthorizedAction queued")
+            } else {
+                toast("AuthorizedAction rejected")
+            }
+            refreshStatus()
+        })
+        content.addView(rowButton("Run AuthorizedAction Via Service") {
+            val payload = authorizedActionInput.text.toString().trim()
+            CollectorPreferences.setAuthorizedActionJson(this@MainActivity, payload)
+            startCollectorService(
+                action = CollectorForegroundService.ACTION_EXECUTE_AUTHORIZED_ACTION,
+                authorizedActionJson = payload,
+            )
+            toast("AuthorizedAction service dispatch queued")
+        })
+        return card("Authorized action bridge", content)
+    }
+
     private fun sourceCard(
         title: String,
         detail: String,
@@ -320,6 +490,9 @@ class MainActivity : Activity() {
     private fun loadPreferences() {
         endpointInput.setText(CollectorPreferences.endpoint(this))
         apiKeyInput.setText(CollectorPreferences.apiKey(this))
+        prefetchTargetInput.setText(CollectorPreferences.prefetchTarget(this))
+        authorizedActionInput.setText(CollectorPreferences.authorizedActionJson(this))
+        actionSocketPortInput.setText(CollectorPreferences.actionSocketPort(this).toString())
         val mode = CollectorPreferences.uploadMode(this)
         modeSpinner.setSelection(if (mode == CollectorPreferences.MODE_LLM) 1 else 0)
         usageCheck.isChecked = CollectorPreferences.isUsageEnabled(this)
@@ -331,6 +504,9 @@ class MainActivity : Activity() {
     private fun savePreferences(showToast: Boolean = true) {
         CollectorPreferences.setEndpoint(this, endpointInput.text.toString())
         CollectorPreferences.setApiKey(this, apiKeyInput.text.toString())
+        CollectorPreferences.setPrefetchTarget(this, prefetchTargetInput.text.toString())
+        CollectorPreferences.setAuthorizedActionJson(this, authorizedActionInput.text.toString())
+        saveActionSocketPort()
         EventRepository.recordInternal(
             this,
             "upload_config_saved",
@@ -363,6 +539,9 @@ class MainActivity : Activity() {
             appendLine("Trace events: ${store.lineCount()}")
             appendLine("Upload endpoint: ${CollectorPreferences.endpoint(this@MainActivity).ifBlank { "(not set)" }}")
             appendLine("Upload mode: ${CollectorPreferences.uploadMode(this@MainActivity)}")
+            appendLine("Prefetch target: ${CollectorPreferences.prefetchTarget(this@MainActivity).ifBlank { "(not set)" }}")
+            appendLine("AuthorizedAction JSON: ${if (CollectorPreferences.authorizedActionJson(this@MainActivity).isBlank()) "(not set)" else "configured"}")
+            appendLine("Action socket: 127.0.0.1:${CollectorPreferences.actionSocketPort(this@MainActivity)}")
             appendLine()
         }
         eventPreviewView.text = formatRecentEvents(store)
@@ -421,8 +600,21 @@ class MainActivity : Activity() {
 
     private fun toggleMark(enabled: Boolean): String = if (enabled) "enabled" else "disabled"
 
-    private fun startCollectorService(action: String) {
+    private fun startCollectorService(
+        action: String,
+        prefetchTarget: String? = null,
+        authorizedActionJson: String? = null,
+    ) {
         val intent = Intent(this, CollectorForegroundService::class.java).setAction(action)
+        if (!prefetchTarget.isNullOrBlank()) {
+            intent.putExtra(CollectorForegroundService.EXTRA_PREFETCH_TARGET, prefetchTarget)
+        }
+        if (!authorizedActionJson.isNullOrBlank()) {
+            intent.putExtra(
+                CollectorForegroundService.EXTRA_AUTHORIZED_ACTION_JSON,
+                authorizedActionJson,
+            )
+        }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && action == CollectorForegroundService.ACTION_START) {
             startForegroundService(intent)
         } else {
@@ -439,11 +631,19 @@ class MainActivity : Activity() {
         }
     }
 
+    private fun saveActionSocketPort() {
+        val port = actionSocketPortInput.text.toString().trim().toIntOrNull()
+        if (port != null && port in 1024..65535) {
+            CollectorPreferences.setActionSocketPort(this, port)
+        }
+    }
+
     private fun toast(message: String) {
         Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
     }
 
     companion object {
         private const val REQUEST_POST_NOTIFICATIONS = 3301
+        private const val REQUEST_OPEN_DOCUMENT = 3302
     }
 }

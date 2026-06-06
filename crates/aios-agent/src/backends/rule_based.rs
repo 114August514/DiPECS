@@ -11,6 +11,7 @@ use aios_spec::{
     SuggestedAction,
 };
 
+use super::prefetch_target::default_prefetch_target;
 use crate::{new_id, DecisionBackend};
 
 pub struct RuleBasedBackend;
@@ -58,7 +59,9 @@ impl RuleBasedBackend {
                     observed_foreground_apps.push(package_name.clone());
                 },
                 SanitizedEventType::FileActivity {
-                    extension_category, ..
+                    package_name,
+                    extension_category,
+                    ..
                 } => {
                     intents.push(Intent {
                         intent_id: new_id(),
@@ -67,7 +70,10 @@ impl RuleBasedBackend {
                         risk_level: RiskLevel::Low,
                         suggested_actions: vec![SuggestedAction {
                             action_type: ActionType::PrefetchFile,
-                            target: None,
+                            target: Some(default_prefetch_target(
+                                extension_category,
+                                package_name.as_deref(),
+                            )),
                             urgency: ActionUrgency::IdleTime,
                         }],
                         rationale_tags: vec![format!("{:?}", extension_category)],

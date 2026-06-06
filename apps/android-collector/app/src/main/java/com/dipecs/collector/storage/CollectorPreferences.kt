@@ -10,6 +10,9 @@ object CollectorPreferences {
     private const val KEY_UPLOAD_MODE = "upload_mode"
     private const val KEY_ENDPOINT = "endpoint"
     private const val KEY_API_KEY = "api_key"
+    private const val KEY_PREFETCH_TARGET = "prefetch_target"
+    private const val KEY_AUTHORIZED_ACTION_JSON = "authorized_action_json"
+    private const val KEY_ACTION_SOCKET_PORT = "action_socket_port"
     private const val KEY_LAST_USAGE_QUERY_MS = "last_usage_query_ms"
     private const val KEY_FOREGROUND_PACKAGE = "foreground_package"
     private const val KEY_FOREGROUND_CLASS = "foreground_class"
@@ -37,6 +40,27 @@ object CollectorPreferences {
 
     fun setApiKey(context: Context, apiKey: String) {
         prefs(context).edit().putString(KEY_API_KEY, apiKey.trim()).apply()
+    }
+
+    fun prefetchTarget(context: Context): String =
+        prefs(context).getString(KEY_PREFETCH_TARGET, "") ?: ""
+
+    fun setPrefetchTarget(context: Context, target: String) {
+        prefs(context).edit().putString(KEY_PREFETCH_TARGET, target.trim()).apply()
+    }
+
+    fun authorizedActionJson(context: Context): String =
+        prefs(context).getString(KEY_AUTHORIZED_ACTION_JSON, "") ?: ""
+
+    fun setAuthorizedActionJson(context: Context, payload: String) {
+        prefs(context).edit().putString(KEY_AUTHORIZED_ACTION_JSON, payload.trim()).apply()
+    }
+
+    fun actionSocketPort(context: Context): Int =
+        prefs(context).getInt(KEY_ACTION_SOCKET_PORT, DEFAULT_ACTION_SOCKET_PORT)
+
+    fun setActionSocketPort(context: Context, port: Int) {
+        prefs(context).edit().putInt(KEY_ACTION_SOCKET_PORT, port).apply()
     }
 
     fun lastUsageQueryMs(context: Context): Long =
@@ -89,4 +113,6 @@ object CollectorPreferences {
 
     private fun prefs(context: Context) =
         context.applicationContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+
+    private const val DEFAULT_ACTION_SOCKET_PORT = 46321
 }

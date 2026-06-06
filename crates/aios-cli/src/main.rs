@@ -4,6 +4,7 @@ use std::fs::File;
 use std::io::{self, BufReader, BufWriter, Write};
 use std::path::PathBuf;
 
+use aios_cli::android_bridge;
 use aios_cli::replay::{self, Stage};
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
@@ -34,6 +35,30 @@ enum Command {
         /// NDJSON output sink. Defaults to stdout.
         #[arg(long)]
         output: Option<PathBuf>,
+    },
+    /// Send an AuthorizedAction JSON payload to the Android localhost socket
+    /// bridge.
+    SendAuthorizedAction {
+        /// Raw AuthorizedAction JSON text.
+        #[arg(long, conflicts_with_all = ["file", "prefetch_target"])]
+        json: Option<String>,
+
+        /// Path to a file containing AuthorizedAction JSON.
+        #[arg(long, conflicts_with_all = ["json", "prefetch_target"])]
+        file: Option<PathBuf>,
+
+        /// Convenience mode: build a PrefetchFile AuthorizedAction around this
+        /// target, for example `url:https://...` or `uri:content://...`.
+        #[arg(long, conflicts_with_all = ["json", "file"])]
+        prefetch_target: Option<String>,
+
+        /// Target host. Defaults to Android loopback.
+        #[arg(long, default_value = "127.0.0.1")]
+        host: String,
+
+        /// Target port. Must match the Android collector socket port.
+        #[arg(long, default_value_t = 46321)]
+        port: u16,
     },
 }
 
@@ -72,6 +97,22 @@ fn main() -> Result<()> {
                 actions_authorized = summary.actions_authorized,
                 "replay complete"
             );
+            Ok(())
+        },
+        Command::SendAuthorizedAction {
+            json,
+            file,
+            prefetch_target,
+            host,
+            port,
+        } => {
+            let payload = android_bridge::load_payload(
+                json.as_deref(),
+                file.as_deref(),
+                prefetch_target.as_deref(),
+            )?;
+            android_bridge::send_authorized_action(&host, port, &payload)?;
+            tracing::info!(host = %host, port, "authorized action sent");
             Ok(())
         },
     }

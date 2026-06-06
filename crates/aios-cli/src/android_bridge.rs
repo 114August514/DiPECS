@@ -1,0 +1,84 @@
+use std::fs;
+use std::io::Write;
+use std::net::TcpStream;
+use std::path::Path;
+
+use anyhow::{Context, Result, bail};
+use serde_json::{Value, json};
+
+pub fn load_payload(
+    json_text: Option<&str>,
+    payload_file: Option<&Path>,
+    prefetch_target: Option<&str>,
+) -> Result<String> {
+    match (json_text, payload_file, prefetch_target) {
+        (Some(_), Some(_), _) | (Some(_), _, Some(_)) | (_, Some(_), Some(_)) => {
+            bail!("choose exactly one of --json, --file, or --prefetch-target")
+        },
+        (Some(text), None, None) => validate_and_compact(text),
+        (None, Some(path), None) => {
+            let text = fs::read_to_string(path)
+                .with_context(|| format!("reading payload file {}", path.display()))?;
+            validate_and_compact(&text)
+        },
+        (None, None, Some(target)) => Ok(
+            json!({
+                "intent_id": "manual-prefetch",
+                "action": {
+                    "action_type": "PrefetchFile",
+                    "target": target,
+                    "urgency": "IdleTime"
+                },
+                "authorized_at_ms": 0
+            })
+            .to_string(),
+        ),
+        (None, None, None) => {
+            bail!("provide one of --json, --file, or --prefetch-target")
+        },
+    }
+}
+
+pub fn send_authorized_action(host: &str, port: u16, payload: &str) -> Result<()> {
+    let mut stream = TcpStream::connect((host, port))
+        .with_context(|| format!("connecting to {host}:{port}"))?;
+    stream
+        .write_all(payload.as_bytes())
+        .with_context(|| format!("writing payload to {host}:{port}"))?;
+    stream
+        .flush()
+        .with_context(|| format!("flushing payload to {host}:{port}"))?;
+    Ok(())
+}
+
+fn validate_and_compact(text: &str) -> Result<String> {
+    let value: Value = serde_json::from_str(text).context("payload is not valid JSON")?;
+    Ok(value.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::load_payload;
+    use serde_json::Value;
+
+    #[test]
+    fn build_prefetch_payload_from_target() {
+        let payload = load_payload(None, None, Some("url:https://example.test/feed.json")).unwrap();
+        let value: Value = serde_json::from_str(&payload).unwrap();
+
+        assert_eq!(value["action"]["action_type"], "PrefetchFile");
+        assert_eq!(value["action"]["target"], "url:https://example.test/feed.json");
+    }
+
+    #[test]
+    fn compact_json_payload() {
+        let payload = load_payload(
+            Some("{\n  \"intent_id\": \"demo\",\n  \"action\": {\"action_type\": \"NoOp\", \"urgency\": \"IdleTime\"},\n  \"authorized_at_ms\": 0\n}"),
+            None,
+            None,
+        )
+        .unwrap();
+
+        assert!(!payload.contains('\n'));
+    }
+}

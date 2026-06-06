@@ -51,6 +51,7 @@ apps/android-collector / daemon sources
 | **理解为什么这样设计** | `philosophy.md` → `../research/background/aios-arch.md` |
 | **开始写 daemon 代码** | `crates-map.md` → `daemon-architecture.md` → `states.md` |
 | **写 Android 端采集代码** | `../research/background/android-data-sources.md` → `android-interface-mvp.md` |
+| **改 Android 动作层** | `android-action-boundary.md` → `philosophy.md` → `../research/deliverables/feasibility.md` |
 | **提交设计变更** | `rfc/process.md` → `docs/templates/rfc/0000-template.md` |
 | **了解项目背景** | `../research/deliverables/requirements.md` → `../research/deliverables/feasibility.md` |
 | **新成员入职** | `index.md` → `overview.md` → `crates-map.md` → `../team/dev.md` |

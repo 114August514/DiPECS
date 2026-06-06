@@ -11,6 +11,7 @@ use reqwest::blocking::Client;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
+use super::prefetch_target::{default_prefetch_target, looks_like_package_name};
 use crate::{new_id, DecisionBackend};
 
 const DEFAULT_TIMEOUT_SECS: u64 = 15;
@@ -44,6 +45,9 @@ Rules:
 - Return JSON only, no markdown fences.
 - Use at most 3 intents.
 - If uncertain, return one Idle intent with one NoOp action.
+- For PrefetchFile, use a concrete Android bridge target when possible:
+  `url:https://...` for network-accessible content or `uri:content://...` for
+  persisted document/content-provider access.
 - Use short snake_case rationale tags.
 "#;
 
@@ -184,7 +188,7 @@ impl CloudLlmBackend {
                     );
                 }
             },
-            CloudProvider::GenericOpenAiCompatible => {}
+            CloudProvider::GenericOpenAiCompatible => {},
         }
 
         Ok(request)
@@ -249,8 +253,8 @@ impl CloudLlmConfig {
             );
         }
 
-        let model =
-            read_var("DIPECS_CLOUD_LLM_MODEL").unwrap_or_else(|| provider.default_model().to_string());
+        let model = read_var("DIPECS_CLOUD_LLM_MODEL")
+            .unwrap_or_else(|| provider.default_model().to_string());
         if model.is_empty() {
             return Err("DIPECS_CLOUD_LLM_MODEL is required when cloud LLM is enabled".to_string());
         }
@@ -287,7 +291,7 @@ impl CloudProvider {
         match raw.trim().to_ascii_lowercase().as_str() {
             "generic" | "openai-compatible" | "openai_compatible" | "openai" => {
                 Ok(Self::GenericOpenAiCompatible)
-            }
+            },
             "deepseek" => Ok(Self::DeepSeek),
             "qwen" | "dashscope" => Ok(Self::Qwen),
             _ => Err(format!(
@@ -360,6 +364,8 @@ fn translate_intents(intents: Vec<ModelIntent>) -> Result<Vec<Intent>, String> {
 }
 
 fn translate_intent(intent: ModelIntent) -> Result<Intent, String> {
+    let prefetch_category = infer_prefetch_category(&intent);
+    let prefetched_target = infer_prefetch_target(&intent, prefetch_category.as_ref());
     let intent_type = parse_intent_type(
         &intent.intent_type,
         intent.target.clone(),
@@ -375,7 +381,13 @@ fn translate_intent(intent: ModelIntent) -> Result<Intent, String> {
         intent
             .actions
             .into_iter()
-            .map(translate_action)
+            .map(|action| {
+                translate_action(
+                    action,
+                    prefetched_target.as_deref(),
+                    prefetch_category.as_ref(),
+                )
+            })
             .collect::<Result<Vec<_>, _>>()?
     };
 
@@ -393,10 +405,23 @@ fn translate_intent(intent: ModelIntent) -> Result<Intent, String> {
     })
 }
 
-fn translate_action(action: ModelAction) -> Result<SuggestedAction, String> {
+fn translate_action(
+    action: ModelAction,
+    fallback_prefetch_target: Option<&str>,
+    prefetch_category: Option<&ExtensionCategory>,
+) -> Result<SuggestedAction, String> {
+    let action_type = parse_action_type(&action.action_type)?;
+    let target = match action_type {
+        ActionType::PrefetchFile => normalize_prefetch_target(
+            action.target.filter(|value| !value.trim().is_empty()),
+            fallback_prefetch_target,
+            prefetch_category,
+        ),
+        _ => action.target.filter(|value| !value.trim().is_empty()),
+    };
     Ok(SuggestedAction {
-        action_type: parse_action_type(&action.action_type)?,
-        target: action.target.filter(|value| !value.trim().is_empty()),
+        action_type,
+        target,
         urgency: action
             .urgency
             .as_deref()
@@ -465,6 +490,63 @@ fn parse_extension_category(raw: &str) -> Result<ExtensionCategory, String> {
         "unknown" => Ok(ExtensionCategory::Unknown),
         _ => Err(format!("unsupported extension_category: {raw}")),
     }
+}
+
+fn infer_prefetch_category(intent: &ModelIntent) -> Option<ExtensionCategory> {
+    if normalize_enum_name(&intent.intent_type) != "handlefile" {
+        return None;
+    }
+
+    Some(
+        intent
+            .extension_category
+            .as_deref()
+            .and_then(|raw| parse_extension_category(raw).ok())
+            .unwrap_or(ExtensionCategory::Unknown),
+    )
+}
+
+fn infer_prefetch_target(
+    intent: &ModelIntent,
+    extension_category: Option<&ExtensionCategory>,
+) -> Option<String> {
+    if normalize_enum_name(&intent.intent_type) != "handlefile" {
+        return None;
+    }
+
+    let category = extension_category
+        .cloned()
+        .unwrap_or(ExtensionCategory::Unknown);
+    Some(default_prefetch_target(&category, intent.target.as_deref()))
+}
+
+fn normalize_prefetch_target(
+    target: Option<String>,
+    fallback: Option<&str>,
+    prefetch_category: Option<&ExtensionCategory>,
+) -> Option<String> {
+    let normalized = target
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .and_then(|value| {
+            if value.starts_with("url:") || value.starts_with("uri:") {
+                Some(value.to_string())
+            } else if value.starts_with("http://") || value.starts_with("https://") {
+                Some(format!("url:{value}"))
+            } else if value.starts_with("content://") {
+                Some(format!("uri:{value}"))
+            } else if let Some(package_name) = value.strip_prefix("pkg:") {
+                prefetch_category
+                    .map(|category| default_prefetch_target(category, Some(package_name.trim())))
+            } else if looks_like_package_name(value) {
+                prefetch_category.map(|category| default_prefetch_target(category, Some(value)))
+            } else {
+                None
+            }
+        });
+
+    normalized.or_else(|| fallback.map(str::to_string))
 }
 
 fn normalize_enum_name(raw: &str) -> String {
@@ -589,7 +671,12 @@ struct ModelAction {
 
 #[cfg(test)]
 mod tests {
-    use super::{parse_bool, CloudProvider};
+    use super::{
+        infer_prefetch_category, infer_prefetch_target, normalize_prefetch_target, parse_bool,
+        translate_action, CloudProvider, ModelAction, ModelIntent,
+    };
+    use crate::backends::prefetch_target::default_prefetch_target;
+    use aios_spec::{ActionType, ExtensionCategory};
 
     #[test]
     fn provider_parser_accepts_known_values() {
@@ -610,5 +697,75 @@ mod tests {
         assert_eq!(parse_bool("1"), Some(true));
         assert_eq!(parse_bool("false"), Some(false));
         assert_eq!(parse_bool("0"), Some(false));
+    }
+
+    #[test]
+    fn normalize_prefetch_target_adds_url_prefix() {
+        let target =
+            normalize_prefetch_target(Some("https://example.test/feed.json".into()), None, None);
+        assert_eq!(
+            target.as_deref(),
+            Some("url:https://example.test/feed.json")
+        );
+    }
+
+    #[test]
+    fn normalize_prefetch_target_adds_uri_prefix() {
+        let target =
+            normalize_prefetch_target(Some("content://downloads/document/1".into()), None, None);
+        assert_eq!(
+            target.as_deref(),
+            Some("uri:content://downloads/document/1")
+        );
+    }
+
+    #[test]
+    fn normalize_prefetch_target_resolves_pkg_target() {
+        let target = normalize_prefetch_target(
+            Some("pkg:com.ss.android.lark".into()),
+            None,
+            Some(&ExtensionCategory::Document),
+        );
+        assert_eq!(target.as_deref(), Some("url:https://www.feishu.cn/docx/"));
+    }
+
+    #[test]
+    fn translate_action_uses_fallback_prefetch_target() {
+        let action = translate_action(
+            ModelAction {
+                action_type: "PrefetchFile".into(),
+                target: None,
+                urgency: Some("IdleTime".into()),
+            },
+            Some("url:https://www.feishu.cn/docx/"),
+            Some(&ExtensionCategory::Document),
+        )
+        .unwrap();
+
+        assert!(matches!(action.action_type, ActionType::PrefetchFile));
+        assert_eq!(
+            action.target.as_deref(),
+            Some("url:https://www.feishu.cn/docx/")
+        );
+    }
+
+    #[test]
+    fn infer_prefetch_target_for_handle_file_uses_extension_category() {
+        let intent = ModelIntent {
+            intent_type: "HandleFile".into(),
+            target: Some("com.example.files".into()),
+            extension_category: Some("Document".into()),
+            confidence: 0.8,
+            risk_level: "Low".into(),
+            actions: vec![],
+            rationale_tags: vec![],
+        };
+
+        let category = infer_prefetch_category(&intent).unwrap();
+        let target = infer_prefetch_target(&intent, Some(&category)).unwrap();
+        assert_eq!(
+            target,
+            default_prefetch_target(&ExtensionCategory::Document, Some("com.example.files"))
+        );
     }
 }

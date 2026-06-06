@@ -16,6 +16,7 @@ name = "aios-action"
 version = "0.1.0"
 dependencies = [
  "aios-spec",
+ "serde_json",
  "tracing",
 ]
 

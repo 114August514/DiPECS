@@ -8,6 +8,9 @@ repository.workspace = true
 
 [dependencies]
 aios-spec = { workspace = true }
+reqwest = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
 tracing = { workspace = true }
 uuid = { workspace = true }
 

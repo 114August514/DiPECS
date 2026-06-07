@@ -11,3 +11,6 @@ aios-spec = { workspace = true }
 tokio = { workspace = true, features = ["sync", "macros"] }
 thiserror = { workspace = true }
 uuid = { workspace = true }
+
+[dev-dependencies]
+serde_json = { workspace = true }

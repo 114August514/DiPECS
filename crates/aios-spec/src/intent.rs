@@ -143,6 +143,33 @@ pub struct CapabilityLevel {
     pub allowed_actions: Vec<ActionType>,
 }
 
+/// Structured rejection reason emitted by `PolicyEngine`.
+///
+/// Replaces the previous `Option<String>` channel so downstream consumers
+/// (replay summary, golden tests, observability) can count denials per
+/// reason without parsing free-form strings. `BTreeMap` keying requires
+/// `Ord`; `Hash` keeps the door open for `HashMap` callers.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+pub enum DenialReason {
+    /// Intent risk exceeds the engine's configured `max_auto_risk`.
+    RiskExceedsConfig,
+    /// Intent risk exceeds the decision backend's `CapabilityLevel.max_risk`.
+    RiskExceedsCapability,
+    /// Intent confidence is below the engine's floor.
+    ConfidenceTooLow,
+    /// Action type matches the engine's blocked-action substring list.
+    ActionTypeBlocked,
+    /// Action urgency is `Deferred` — not in scope for this batch.
+    ActionUrgencyDeferred,
+    /// Action type is not in the backend `CapabilityLevel.allowed_actions`.
+    ActionCapabilityDenied,
+    /// Action targets a package or path that was not observed in the
+    /// `StructuredContext` that produced this batch.
+    TargetNotInContext,
+    /// Per-intent action count is above the engine's `max_actions_per_batch`.
+    BatchActionCapExceeded,
+}
+
 impl CapabilityLevel {
     /// 根据路由选择返回对应的能力等级。
     pub fn for_route(route: DecisionRoute) -> Self {

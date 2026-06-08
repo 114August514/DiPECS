@@ -10,6 +10,7 @@ repository.workspace = true
 aios-spec = { workspace = true }
 tokio = { workspace = true, features = ["sync", "macros"] }
 thiserror = { workspace = true }
+tracing = { workspace = true }
 uuid = { workspace = true }
 
 [dev-dependencies]

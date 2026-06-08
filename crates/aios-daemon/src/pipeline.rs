@@ -37,7 +37,7 @@ pub(crate) fn process_window(
 
     let capability = CapabilityLevel::for_route(decision_result.route);
     let decisions =
-        policy.evaluate_batch_with_capability(&decision_result.intent_batch, &capability);
+        policy.evaluate_batch_with_context(&decision_result.intent_batch, &capability, ctx);
 
     let mut executed = 0u32;
     for decision in &decisions {
@@ -60,11 +60,11 @@ pub(crate) fn process_window(
                 "intent rejected by policy"
             );
         }
-        for denial in &decision.capability_denials {
+        for denial in &decision.action_denials {
             tracing::warn!(
                 intent_id = %decision.intent_id,
-                "action blocked by backend capability: {}",
-                denial
+                reason = ?denial,
+                "action denied by policy"
             );
         }
     }

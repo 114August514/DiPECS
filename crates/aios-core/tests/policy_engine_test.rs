@@ -132,11 +132,10 @@ fn test_low_confidence_rejected() {
     let decisions = engine.evaluate_batch(&batch);
 
     assert!(!decisions[0].approved);
-    assert!(decisions[0]
-        .rejection_reason
-        .as_deref()
-        .unwrap()
-        .contains("confidence"));
+    assert_eq!(
+        decisions[0].rejection_reason,
+        Some(DenialReason::ConfidenceTooLow)
+    );
 }
 
 #[test]
@@ -366,11 +365,10 @@ fn test_rule_based_backend_rejects_medium_risk() {
         !decisions[0].approved,
         "RuleBased backend should reject Medium risk"
     );
-    assert!(decisions[0]
-        .rejection_reason
-        .as_deref()
-        .unwrap()
-        .contains("backend capability"));
+    assert_eq!(
+        decisions[0].rejection_reason,
+        Some(DenialReason::RiskExceedsCapability)
+    );
 }
 
 #[test]
@@ -400,8 +398,11 @@ fn test_fallback_noop_blocks_prewarm() {
         decisions[0].approved_actions[0].action.action_type,
         ActionType::NoOp
     ));
-    assert_eq!(decisions[0].capability_denials.len(), 1);
-    assert!(decisions[0].capability_denials[0].contains("PreWarmProcess"));
+    assert_eq!(decisions[0].action_denials.len(), 1);
+    assert_eq!(
+        decisions[0].action_denials[0],
+        DenialReason::ActionCapabilityDenied
+    );
 }
 
 #[test]
@@ -425,11 +426,10 @@ fn test_cloud_llm_allows_medium_risk() {
     // CloudLlm allows Medium, but config default only allows Low
     // So the config-level check should reject it
     assert!(!decisions[0].approved);
-    assert!(decisions[0]
-        .rejection_reason
-        .as_deref()
-        .unwrap()
-        .contains("exceeds max allowed"));
+    assert_eq!(
+        decisions[0].rejection_reason,
+        Some(DenialReason::RiskExceedsConfig)
+    );
 }
 
 #[test]
@@ -459,4 +459,133 @@ fn test_cloud_llm_medium_risk_with_relaxed_config() {
         "CloudLlm + relaxed config should allow Medium risk"
     );
     assert_eq!(decisions[0].approved_actions.len(), 1);
+}
+
+// ===== Target-not-in-context (only enforced via evaluate_batch_with_context) =====
+
+fn ctx_with_packages(pkgs: &[&str]) -> StructuredContext {
+    StructuredContext {
+        window_id: "w-ctx".into(),
+        window_start_ms: 0,
+        window_end_ms: 10_000,
+        duration_secs: 10,
+        events: vec![],
+        summary: ContextSummary {
+            foreground_apps: pkgs.iter().map(|s| (*s).into()).collect(),
+            notified_apps: vec![],
+            all_semantic_hints: vec![],
+            file_activity: vec![],
+            latest_system_status: None,
+            source_tier: SourceTier::PublicApi,
+        },
+    }
+}
+
+#[test]
+fn test_target_in_context_approved() {
+    let engine = PolicyEngine::default();
+    let capability = CapabilityLevel::for_route(DecisionRoute::CloudLlm);
+    let ctx = ctx_with_packages(&["com.known"]);
+    let intent = make_intent(
+        "i1",
+        IntentType::SwitchToApp("com.known".into()),
+        0.8,
+        RiskLevel::Low,
+        vec![make_action(
+            ActionType::KeepAlive,
+            Some("com.known"),
+            ActionUrgency::Immediate,
+        )],
+    );
+    let batch = make_batch(vec![intent]);
+    let decisions = engine.evaluate_batch_with_context(&batch, &capability, &ctx);
+
+    assert!(decisions[0].approved);
+    assert_eq!(decisions[0].approved_actions.len(), 1);
+    assert!(decisions[0].action_denials.is_empty());
+}
+
+#[test]
+fn test_target_not_in_context_denied() {
+    let engine = PolicyEngine::default();
+    let capability = CapabilityLevel::for_route(DecisionRoute::CloudLlm);
+    let ctx = ctx_with_packages(&["com.known"]);
+    let intent = make_intent(
+        "i1",
+        IntentType::SwitchToApp("com.unseen".into()),
+        0.8,
+        RiskLevel::Low,
+        vec![make_action(
+            ActionType::KeepAlive,
+            Some("com.unseen"),
+            ActionUrgency::Immediate,
+        )],
+    );
+    let batch = make_batch(vec![intent]);
+    let decisions = engine.evaluate_batch_with_context(&batch, &capability, &ctx);
+
+    // intent itself stays approved (no risk/conf rejection), but the action is
+    // denied for hallucinated target.
+    assert!(decisions[0].approved);
+    assert!(decisions[0].approved_actions.is_empty());
+    assert_eq!(decisions[0].action_denials.len(), 1);
+    assert_eq!(
+        decisions[0].action_denials[0],
+        DenialReason::TargetNotInContext
+    );
+}
+
+#[test]
+fn test_noop_target_irrelevant() {
+    // NoOp doesn't care about target — even an empty context should approve.
+    let engine = PolicyEngine::default();
+    let capability = CapabilityLevel::for_route(DecisionRoute::FallbackNoOp);
+    let ctx = ctx_with_packages(&[]);
+    let intent = make_intent(
+        "i1",
+        IntentType::Idle,
+        0.8,
+        RiskLevel::Low,
+        vec![make_action(
+            ActionType::NoOp,
+            None,
+            ActionUrgency::Immediate,
+        )],
+    );
+    let batch = make_batch(vec![intent]);
+    let decisions = engine.evaluate_batch_with_context(&batch, &capability, &ctx);
+
+    assert!(decisions[0].approved);
+    assert_eq!(decisions[0].approved_actions.len(), 1);
+    assert!(decisions[0].action_denials.is_empty());
+}
+
+#[test]
+fn test_prewarm_without_target_denied() {
+    // PreWarmProcess with target=None must be denied even if the backend
+    // capability would otherwise allow PreWarmProcess.
+    let engine = PolicyEngine::default();
+    let capability = CapabilityLevel::for_route(DecisionRoute::CloudLlm);
+    let ctx = ctx_with_packages(&["com.known"]);
+    let intent = make_intent(
+        "i1",
+        IntentType::OpenApp("com.known".into()),
+        0.8,
+        RiskLevel::Low,
+        vec![make_action(
+            ActionType::PreWarmProcess,
+            None,
+            ActionUrgency::Immediate,
+        )],
+    );
+    let batch = make_batch(vec![intent]);
+    let decisions = engine.evaluate_batch_with_context(&batch, &capability, &ctx);
+
+    assert!(decisions[0].approved);
+    assert!(decisions[0].approved_actions.is_empty());
+    assert_eq!(decisions[0].action_denials.len(), 1);
+    assert_eq!(
+        decisions[0].action_denials[0],
+        DenialReason::TargetNotInContext
+    );
 }

@@ -13,6 +13,7 @@
 //! any divergence in the pipeline's observable state transitions for a given
 //! input trace is caught immediately.
 
+use std::collections::BTreeMap;
 use std::io::{BufRead, Write};
 
 use aios_action::DefaultActionExecutor;
@@ -23,7 +24,8 @@ use aios_core::policy_engine::PolicyEngine;
 use aios_core::privacy_airgap::DefaultPrivacyAirGap;
 use aios_spec::traits::{ActionExecutor, PrivacySanitizer};
 use aios_spec::{
-    CapabilityLevel, CollectorEnvelope, IngestedRawEvent, RawEvent, SourceTier, StructuredContext,
+    CapabilityLevel, CollectorEnvelope, DenialReason, IngestedRawEvent, RawEvent, SourceTier,
+    StructuredContext,
 };
 use anyhow::{Context, Result};
 use serde::Serialize;
@@ -64,6 +66,10 @@ impl Stage {
 /// `audit_hash` is a hex SHA-256 of the canonical projection of every
 /// per-stage record (everything except the final summary record itself).
 /// Identical inputs must yield identical hashes; pin this in golden tests.
+///
+/// `denial_counts` keys are `DenialReason` enum variants; the `BTreeMap`
+/// gives a stable, canonical iteration order so the JSON projection is
+/// deterministic and folds into `audit_hash` without extra effort.
 #[derive(Debug, Default, Clone, Serialize, PartialEq, Eq)]
 pub struct ReplaySummary {
     pub lines_total: u64,
@@ -72,7 +78,11 @@ pub struct ReplaySummary {
     pub events_ingested: u64,
     pub windows_closed: u64,
     pub intents_total: u64,
+    pub intents_approved: u64,
+    pub intents_rejected: u64,
     pub actions_authorized: u64,
+    pub actions_denied: u64,
+    pub denial_counts: BTreeMap<DenialReason, u64>,
     pub audit_hash: String,
 }
 
@@ -309,10 +319,20 @@ fn process_window(
         return Ok(());
     }
     let capability = CapabilityLevel::for_route(decision.route);
-    let decisions = policy.evaluate_batch_with_capability(&decision.intent_batch, &capability);
+    let decisions = policy.evaluate_batch_with_context(&decision.intent_batch, &capability, ctx);
     for d in &decisions {
         if d.approved {
+            summary.intents_approved += 1;
             summary.actions_authorized += d.approved_actions.len() as u64;
+        } else {
+            summary.intents_rejected += 1;
+        }
+        if let Some(reason) = d.rejection_reason {
+            *summary.denial_counts.entry(reason).or_insert(0) += 1;
+        }
+        for denial in &d.action_denials {
+            *summary.denial_counts.entry(*denial).or_insert(0) += 1;
+            summary.actions_denied += 1;
         }
         emitter.emit(&json!({
             "stage": "policy",
@@ -320,7 +340,7 @@ fn process_window(
             "intent_id": d.intent_id,
             "approved": d.approved,
             "rejection_reason": d.rejection_reason,
-            "capability_denials": d.capability_denials,
+            "action_denials": d.action_denials,
             "approved_actions": d.approved_actions,
         }))?;
     }

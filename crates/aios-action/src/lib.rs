@@ -206,9 +206,7 @@ fn env_flag(name: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        AndroidBridgeConfig, ForwardOutcome, env_flag, try_forward_to_android_bridge,
-    };
+    use super::{env_flag, try_forward_to_android_bridge, AndroidBridgeConfig, ForwardOutcome};
     use aios_spec::{ActionType, ActionUrgency, AuthorizedAction, SuggestedAction};
 
     fn make_action(action_type: ActionType, target: Option<&str>) -> AuthorizedAction {

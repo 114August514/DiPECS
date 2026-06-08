@@ -3,8 +3,8 @@ use std::io::Write;
 use std::net::TcpStream;
 use std::path::Path;
 
-use anyhow::{Context, Result, bail};
-use serde_json::{Value, json};
+use anyhow::{bail, Context, Result};
+use serde_json::{json, Value};
 
 pub fn load_payload(
     json_text: Option<&str>,
@@ -21,18 +21,16 @@ pub fn load_payload(
                 .with_context(|| format!("reading payload file {}", path.display()))?;
             validate_and_compact(&text)
         },
-        (None, None, Some(target)) => Ok(
-            json!({
-                "intent_id": "manual-prefetch",
-                "action": {
-                    "action_type": "PrefetchFile",
-                    "target": target,
-                    "urgency": "IdleTime"
-                },
-                "authorized_at_ms": 0
-            })
-            .to_string(),
-        ),
+        (None, None, Some(target)) => Ok(json!({
+            "intent_id": "manual-prefetch",
+            "action": {
+                "action_type": "PrefetchFile",
+                "target": target,
+                "urgency": "IdleTime"
+            },
+            "authorized_at_ms": 0
+        })
+        .to_string()),
         (None, None, None) => {
             bail!("provide one of --json, --file, or --prefetch-target")
         },
@@ -40,8 +38,8 @@ pub fn load_payload(
 }
 
 pub fn send_authorized_action(host: &str, port: u16, payload: &str) -> Result<()> {
-    let mut stream = TcpStream::connect((host, port))
-        .with_context(|| format!("connecting to {host}:{port}"))?;
+    let mut stream =
+        TcpStream::connect((host, port)).with_context(|| format!("connecting to {host}:{port}"))?;
     stream
         .write_all(payload.as_bytes())
         .with_context(|| format!("writing payload to {host}:{port}"))?;
@@ -67,7 +65,10 @@ mod tests {
         let value: Value = serde_json::from_str(&payload).unwrap();
 
         assert_eq!(value["action"]["action_type"], "PrefetchFile");
-        assert_eq!(value["action"]["target"], "url:https://example.test/feed.json");
+        assert_eq!(
+            value["action"]["target"],
+            "url:https://example.test/feed.json"
+        );
     }
 
     #[test]

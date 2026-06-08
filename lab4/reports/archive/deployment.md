@@ -2,7 +2,9 @@
 
 ## 总览
 
-本文记录 `llama.cpp` 单机部署、RPC 分布式部署和 Ceph 扩展环境。每条命令都应保留运行机器、工作目录和输出路径，便于复现实验。`lab4-llama` 只用于 Rust smoke，不作为正式推理结果。
+本文记录 `llama.cpp` 单机部署、RPC 分布式部署和 Ray 扩展环境。每条命令保留
+运行机器、工作目录和输出路径，便于复现实验。`lab4-llama` 只用于 Rust smoke，
+不作为正式推理结果。
 
 ## 分项一：硬件与系统环境
 
@@ -15,7 +17,7 @@ cargo run --manifest-path lab4/Cargo.toml -p lab4-tools --bin lab4-env
 | 节点 | 角色 | CPU | 内存 | GPU | OS / Kernel | IP | 备注 |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
 | archlinux | 主机 | Intel Core i7-13700H，14C/20T | 15,981,548 KiB | Intel Iris Xe + NVIDIA RTX 4060 Laptop | Arch Linux / 7.0.11-arch1-1 | 按实验网络填写 | 当前实验使用 CPU 后端 |
-| host-b | 从机 | 待填写 | 待填写 | 待填写 | 待填写 | 待填写 | 运行 `rpc-server` |
+| rpc-worker | 从机 | Xeon Silver 4314，2 vCPU | 6 GiB | 无 | Ubuntu LXC / Linux 7.0.0-3-pve | 已脱敏 | USTC Vlab，运行 `rpc-server` |
 
 ## 分项二：模型信息
 
@@ -77,7 +79,8 @@ cargo run --manifest-path lab4/Cargo.toml -p lab4-tools --bin lab4-bench -- \
 
 完整部署步骤见
 [`lab4/docs/rpc-two-machine-setup.md`](../docs/rpc-two-machine-setup.md)。正式实验后
-在本节补充实际 IP、网络类型、worker 后端、启动日志和截图。
+实际实验结果、脱敏后的网络信息和启动日志见
+[`lab4/reports/rpc-experiment-report.md`](../reports/rpc-experiment-report.md)。
 
 从机最小命令：
 
@@ -105,27 +108,12 @@ lab4/third_party/llama.cpp/build/bin/llama-cli \
   --rpc <WORKER_IP>:50052
 ```
 
-## 分项五：Ceph 环境
+## 分项五：Ray 环境
 
-| 字段 | 内容 |
-| :--- | :--- |
-| 部署方式 | 待填写 |
-| Monitor 数量 | 待填写 |
-| OSD 数量 | 待填写 |
-| Pool / CephFS | 待填写 |
-| 副本数 | 待填写 |
-| 挂载或对象路径 | 待填写 |
+本仓库扩展路线选择 Ray，不再以 Ceph 作为必做 20 分方向。Ray 采用单机多进程模拟：
 
-存储测量命令示例：
+- 两个 `llama-server` 分别监听 8080、8081。
+- Ray head 注册 `server_s1`、`server_s2` 自定义资源。
+- Ray Task 绑定资源标签并调用对应后端。
 
-```bash
-cargo run --manifest-path lab4/Cargo.toml -p lab4-tools --bin lab4-storage -- read \
-  --case-id local-model-read-001 \
-  /path/to/model.gguf \
-  --output lab4/data/results/storage-local-read.jsonl
-
-cargo run --manifest-path lab4/Cargo.toml -p lab4-tools --bin lab4-storage -- read \
-  --case-id ceph-model-read-001 \
-  /mnt/ceph/model.gguf \
-  --output lab4/data/results/storage-ceph-read.jsonl
-```
+启动与结果见 [`lab4/reports/ray-experiment-report.md`](../reports/ray-experiment-report.md)。

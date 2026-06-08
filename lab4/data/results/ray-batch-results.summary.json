@@ -1,0 +1,106 @@
+[
+  {
+    "strategy": "serial",
+    "total_prompts": 20,
+    "success": 20,
+    "failed": 0,
+    "wall_time_ms": 64078.226862999145,
+    "throughput_prompts_per_sec": 0.31211849920192863,
+    "throughput_tokens_per_sec": 29.963375923385147,
+    "avg_latency_ms": 3203.8314232499033,
+    "server_stats": {
+      "s1": {
+        "count": 20,
+        "avg_ms": 3203.8314232499033,
+        "median_ms": 3228.637914500723,
+        "p95_ms": 3327.0909669990942,
+        "min_ms": 3065.489221997268,
+        "max_ms": 3347.1266890010156
+      }
+    }
+  },
+  {
+    "strategy": "fixed_partition",
+    "total_prompts": 20,
+    "success": 20,
+    "failed": 0,
+    "wall_time_ms": 57607.268986001145,
+    "throughput_prompts_per_sec": 0.347178409114657,
+    "throughput_tokens_per_sec": 33.329127275007075,
+    "avg_latency_ms": 5324.2231446000005,
+    "server_stats": {
+      "s1": {
+        "count": 10,
+        "avg_ms": 4898.39261599991,
+        "median_ms": 4912.375025000074,
+        "p95_ms": 5024.007378000533,
+        "min_ms": 4665.472458000295,
+        "max_ms": 5024.007378000533
+      },
+      "s2": {
+        "count": 10,
+        "avg_ms": 5750.053673200091,
+        "median_ms": 6154.181320000134,
+        "p95_ms": 6602.163150000706,
+        "min_ms": 3845.117920998746,
+        "max_ms": 6602.163150000706
+      }
+    }
+  },
+  {
+    "strategy": "round_robin",
+    "total_prompts": 20,
+    "success": 20,
+    "failed": 0,
+    "wall_time_ms": 57823.38339299895,
+    "throughput_prompts_per_sec": 0.34588083274320347,
+    "throughput_tokens_per_sec": 33.20455994334753,
+    "avg_latency_ms": 5310.391316749883,
+    "server_stats": {
+      "s1": {
+        "count": 10,
+        "avg_ms": 4841.06793059982,
+        "median_ms": 4863.054036499307,
+        "p95_ms": 5062.603308000689,
+        "min_ms": 4619.034666000516,
+        "max_ms": 5062.603308000689
+      },
+      "s2": {
+        "count": 10,
+        "avg_ms": 5779.714702899946,
+        "median_ms": 6176.632393999171,
+        "p95_ms": 6820.897681998758,
+        "min_ms": 3880.235877000814,
+        "max_ms": 6820.897681998758
+      }
+    }
+  },
+  {
+    "strategy": "latency_based",
+    "total_prompts": 20,
+    "success": 20,
+    "failed": 0,
+    "wall_time_ms": 63646.20249500149,
+    "throughput_prompts_per_sec": 0.31423712988329067,
+    "throughput_tokens_per_sec": 30.1667644687959,
+    "avg_latency_ms": 5513.3958019498095,
+    "server_stats": {
+      "s1": {
+        "count": 11,
+        "avg_ms": 4894.410217363739,
+        "median_ms": 4940.7836370010045,
+        "p95_ms": 5170.012557002337,
+        "min_ms": 4572.589046001667,
+        "max_ms": 5170.012557002337
+      },
+      "s2": {
+        "count": 9,
+        "avg_ms": 6269.933738666117,
+        "median_ms": 6306.365831998846,
+        "p95_ms": 6830.818280999665,
+        "min_ms": 4890.039401001559,
+        "max_ms": 6830.818280999665
+      }
+    }
+  }
+]

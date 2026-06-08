@@ -1,59 +1,47 @@
 # Lab4 文档索引
 
-本目录先完成 Lab4 的任务梳理与知识点整理，后续代码和实验记录均围绕这里定义的路线展开。
-
-参考资料来自 `/home/august/Work/os/osh-2026.github.io/docs/lab4`：
-
-- `README.md`：Lab4 总要求、评分和提交说明。
-- `llama_cpp.md`：llama.cpp 单机部署、性能参数、RPC 分布式推理和评估方式。
-- `ray.md`：使用 Ray 做多机批量推理任务调度。
-- `ceph.md`：使用 Ceph 做模型、prompt 和日志的分布式存储。
-
 ## 总目标
 
-Lab4 要围绕本地大模型推理系统完成一次从部署、测量、优化到分布式扩展的系统实验。主线任务对应课程中的 `llama.cpp` 部分；本仓库使用 `llama.cpp` 完成正式推理，用 Rust 编写实验工具和数据处理代码。扩展任务需要在 Ray 和 Ceph 中二选一。
+Lab4 围绕 Qwen3.5-2B Q4_K_M 与 `llama.cpp`，完成本地部署、性能测量、参数优化、
+输出质量评估、双机 RPC 和 Ray 批量任务调度。课程必做部分采用
+“`llama.cpp` 80 分 + Ray 20 分”路线。
 
-结合本仓库“代码必须使用 Rust 编写、不能出现 Makefile 文件”的约束，默认建议选择 **Ceph 方向** 作为扩展任务：Ceph 的模型文件、prompt 数据和日志读写可以自然地由 Rust 测试工具封装；Ray 官方实验路径偏 Python，若坚持 Rust-only，会增加不必要的适配成本。
+代码边界如下：
 
-## 分项文档
+- Rust：Prompt 校验、命令包装、JSONL 记录、统计和存储测量。
+- Python：仅用于 Ray 官方 Task API、HTTP 并发与参数实验编排。
+- C/C++：不自行编写；`llama.cpp` 仅以 Git submodule 指针引入。
 
-- [任务拆解](task-breakdown.md)：按“总-分”结构列出必做、选做、交付物和建议执行顺序。
-- [OS 知识点](os-knowledge.md)：总结本实验涉及的操作系统与分布式系统知识点。
-- [Rust 实现约束](rust-implementation.md)：约定后续代码目录、工具边界、测试方式和仓库规范。
-- [llama.cpp 与 GGUF 模型接入](llama-cpp-setup.md)：说明 submodule、CMake 构建和模型下载流程。
-- [RPC 双机操作手册](rpc-two-machine-setup.md)：说明 Linux 主机与 WSL2/Ubuntu 从机的 CPU、CUDA、网络和对照实验流程。
+## 辅助文档
 
-## 当前执行路线
+- [任务拆解](task-breakdown.md)：总分结构、评分点、完成状态和剩余材料。
+- [OS 知识点](os-knowledge.md)：进程、线程、虚拟内存、页缓存、RPC 与调度分析。
+- [Rust 实现约束](rust-implementation.md)：Rust 工具边界与编码规范。
+- [llama.cpp 接入](llama-cpp-setup.md)：submodule、CMake 与 GGUF 模型准备。
+- [RPC 双机手册](rpc-two-machine-setup.md)：主机与 USTC Vlab 从机操作步骤。
 
-1. 先完成文档与实验设计。
-2. 使用 `lab4/crates/lab4-tools` 中的 Rust 工具记录 prompt、命令、存储和汇总数据。
-3. 使用 `llama.cpp` 完成正式单机推理、性能测量、参数优化和 RPC 分布式推理。
-4. 扩展任务优先选择 Ceph：完成共享数据路径、存储指标测试和本地路径对比。
-5. 汇总部署说明、性能分析、系统原因解释和必要截图。
+## 正式实验报告
 
-## 交付边界
+见 [`lab4/reports/`](../reports/) 目录：
 
-- 文档、配置、数据样例和 Rust 工具放在 `lab4/` 下。
-- 不创建 `Makefile`，所有自动化入口使用 `cargo`、Rust 二进制或普通文档命令说明。
+- [参数优化报告](../reports/param-optimization-report.md)：Qwen3.5 线程、batch、输入长度和 mmap。
+- [RPC 实验报告](../reports/rpc-experiment-report.md)：单机与双机 RPC 对照。
+- [Ray 实验报告](../reports/ray-experiment-report.md)：20 条 Prompt、四种执行模式。
+- [Ray 加分报告](../reports/ray-bonus-report.md)：30 条负载均衡与 Ray 故障重试。
+- [并发压力报告](../reports/concurrency-stress-report.md)：并发度 1、2、4 对照。
+
+## 当前状态
+
+已完成本地推理、参数优化、5 类质量 Prompt、双机 RPC、Ray 基础实验、30 条 Ray
+负载均衡、Ray 故障重试和三档并发压力实验。模型和实验版本均已固定，原始数据位于
+`lab4/data/results/`。
+
+提交前剩余的人工材料主要是必要截图和最终检查；Ceph 未选用，不属于本仓库当前
+20 分扩展路线。
+
+## 规范
+
+- 不在本仓库维护 Makefile。
+- GGUF 权重不提交 Git，只记录文件名、大小和 SHA-256。
 - Rust 代码遵守 [Rust 编码规范](../../docs/src/team/conventions/rust.md)。
-- 参考文档中的截止时间为 **2026-06-08 23:59**，实验记录应尽早固定环境和命令。
-
-## 已落地内容
-
-- `lab4/crates/lab4-tools`：实验测量、命令封装、smoke、RPC 辅助和数据整理工具。
-- `lab4/third_party/`：第三方依赖指针目录，推荐用 submodule 放 `llama.cpp`。
-- `lab4/data/models/placeholder.model`：用于验证 Rust llama 流程的占位模型，不作为正式实验模型。
-- `lab4/data/prompts/quality-prompts.jsonl`：5 条输出质量评估 prompt。
-- `lab4/data/prompts/batch-prompts.jsonl`：20 条批量测试 prompt。
-- `lab4/reports/deployment.md`：部署说明模板。
-- `lab4/reports/performance-analysis.md`：本机参数矩阵、系统原因与推荐配置。
-- `lab4/reports/quality-evaluation.md`：固定 prompt 的温度对比与人工评分。
-- `lab4/reports/ceph-analysis.md`：Ceph 扩展分析模板。
-- `lab4/reports/smoke.md`：真实 GGUF 单机推理与基准冒烟结果。
-- `lab4/docs/rpc-two-machine-setup.md`：可直接执行的 RPC 双机部署与测量步骤。
-
-## 当前进度
-
-- 已完成：Qwen2.5-1.5B 单机 smoke、线程矩阵、batch 矩阵、上下文与 `mmap` 对比、两组温度质量评估。
-- 当前模型：后续实验切换为 Qwen3.5-2B Q4_K_M；已有 Qwen2.5 数据保留为历史基线，参数结论需要在新模型上重新验证。
-- 待补充：Qwen3.5 单机重跑、峰值 RSS、真实 TTFT、双机 RPC、Ceph 存储对比和最终截图。
+- 截止时间：**2026-06-08 23:59**。

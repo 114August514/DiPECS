@@ -43,6 +43,7 @@ thiserror = "1.0"   # 定义结构化系统错误
 tracing = "0.1"     # 语义化追踪
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 uuid = { version = "1", features = ["v4"] }
+sha2 = "0.10"       # 回放确定性指纹
 
 # --- CLI ---
 clap = { version = "4", features = ["derive"] }

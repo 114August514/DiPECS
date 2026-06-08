@@ -43,7 +43,15 @@ impl PrivacySanitizer for DefaultPrivacyAirGap {
                     },
                     semantic_hints: vec![],
                     is_ongoing: false,
-                    group_key: Some(e.notification_key),
+                    // The Android NotificationListenerService key has shape
+                    // "<userId>|<package>|<id>|<tag>|<uid>" — the *tag*
+                    // portion is user-controlled and can carry PII (contact
+                    // names, chat thread IDs). No downstream consumer uses
+                    // this key for dedup today, so the safe choice is to
+                    // drop it at the air-gap. If a future feature genuinely
+                    // needs cross-interaction correlation, replace this
+                    // with a one-way hash of the key.
+                    group_key: None,
                 },
                 source_tier: SourceTier::PublicApi,
                 app_package: Some(e.package_name),

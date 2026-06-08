@@ -57,7 +57,7 @@ pub struct Intent {
 }
 
 /// 意图类型
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum IntentType {
     /// 用户将打开某个 app
     OpenApp(String),
@@ -74,7 +74,7 @@ pub enum IntentType {
 }
 
 /// 风险等级
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum RiskLevel {
     /// 可自动执行
     Low,
@@ -118,7 +118,7 @@ pub enum ActionType {
 }
 
 /// 动作紧迫度
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ActionUrgency {
     /// 立即执行
     Immediate,
@@ -141,6 +141,33 @@ pub enum ActionUrgency {
 pub struct CapabilityLevel {
     pub max_risk: RiskLevel,
     pub allowed_actions: Vec<ActionType>,
+}
+
+/// Structured rejection reason emitted by `PolicyEngine`.
+///
+/// Replaces the previous `Option<String>` channel so downstream consumers
+/// (replay summary, golden tests, observability) can count denials per
+/// reason without parsing free-form strings. `BTreeMap` keying requires
+/// `Ord`; `Hash` keeps the door open for `HashMap` callers.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+pub enum DenialReason {
+    /// Intent risk exceeds the engine's configured `max_auto_risk`.
+    RiskExceedsConfig,
+    /// Intent risk exceeds the decision backend's `CapabilityLevel.max_risk`.
+    RiskExceedsCapability,
+    /// Intent confidence is below the engine's floor.
+    ConfidenceTooLow,
+    /// Action type matches the engine's blocked-action substring list.
+    ActionTypeBlocked,
+    /// Action urgency is `Deferred` — not in scope for this batch.
+    ActionUrgencyDeferred,
+    /// Action type is not in the backend `CapabilityLevel.allowed_actions`.
+    ActionCapabilityDenied,
+    /// Action targets a package or path that was not observed in the
+    /// `StructuredContext` that produced this batch.
+    TargetNotInContext,
+    /// Per-intent action count is above the engine's `max_actions_per_batch`.
+    BatchActionCapExceeded,
 }
 
 impl CapabilityLevel {

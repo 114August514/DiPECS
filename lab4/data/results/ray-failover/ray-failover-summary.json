@@ -1,0 +1,10 @@
+{
+  "total": 20,
+  "phase1_success": 10,
+  "phase1_failed": 10,
+  "phase2_retry_success": 10,
+  "phase2_retry_failed": 0,
+  "final_success": 20,
+  "final_success_rate": 100.0,
+  "failure_injection": "killed llama-server on port 8081 (server s2)"
+}

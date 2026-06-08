@@ -90,8 +90,7 @@ lab4/data/models/*.pth
 !lab4/data/models/placeholder.model
 !lab4/data/models/README.md
 
-# 实验结果：只保留 smoke/基线，个人实验不提交。
-lab4/data/results/*.jsonl
+# Lab4 的实验结果体积较小，是报告可复现性的评分证据，随代码提交。
 
 # llama.cpp 作为 submodule 指针提交，构建产物不提交。
 lab4/third_party/llama.cpp/build*/

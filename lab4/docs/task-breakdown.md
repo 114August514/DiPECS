@@ -2,227 +2,148 @@
 
 ## 总览
 
-Lab4 的核心问题是：在普通个人电脑或小组多机环境中，如何部署、测量、优化并扩展一个基于 `llama.cpp` 的本地大模型推理系统。本仓库的代码部分使用 Rust 编写，负责实验工具、数据记录、结果汇总和存储测量；正式模型推理仍使用 `llama.cpp`。
+Lab4 要回答的核心问题是：如何在普通主机和小规模多机环境中部署、测量、优化并扩展
+本地大模型推理系统。
 
-实验由两层组成：
+本仓库采用：
 
-- 主线任务：`llama.cpp` 本地与 RPC 推理，必做，80 分。
-- 扩展任务：Ray 或 Ceph 二选一，必做，20 分。
-- 选做加分：主线最多 10 分，扩展最多 10 分。
+- 主线：`llama.cpp` 本地与 RPC 推理，80 分。
+- 扩展：Ray 批量推理任务调度，20 分。
+- 加分：Ray 负载均衡、故障重试和 llama-server 并发压力测试。
 
-本仓库实现时选择“`llama.cpp` 主线 + Rust 实验工具 + Ceph 扩展”的路线。`llama.cpp` 通过 `lab4/third_party/llama.cpp` submodule 引入，只提交第三方指针；GGUF 模型放在 `lab4/data/models/` 本地目录，不提交 Git。若后续改选 Ray，需要单独说明为什么在 Rust-only 约束下仍能满足 Ray Task/Actor 的实验要求。
+正式推理由 `lab4/third_party/llama.cpp` submodule 提供；Rust 工具负责实验记录和
+数据处理。Ray 官方接口部分使用 Python，并在报告中明确说明这一边界。
 
 ## 当前完成度
 
-| 工作项 | 状态 | 已有证据 |
+| 工作项 | 状态 | 证据 |
 | :--- | :--- | :--- |
-| Rust 实验工具与测试 | 已完成基础版 | `lab4/crates/lab4-tools`，支持 JSONL、命令记录、汇总和重复执行 |
-| llama.cpp 与真实 GGUF 接入 | 已完成 | 固定 submodule commit；Qwen2.5 为历史基线，Qwen3.5-2B Q4_K_M 为当前模型 |
-| 单机冒烟 | 已完成 | `lab4/reports/smoke.md` |
-| 单机参数实验 | Qwen2.5 首轮已完成 | 线程、batch、上下文、`mmap`；切换 Qwen3.5 后需要重跑 |
-| 输出质量评估 | Qwen2.5 首轮已完成 | 5 类 prompt、2 组温度；切换 Qwen3.5 后需要重跑 |
-| 内存峰值与真实 TTFT | 待补充 | 当前工具未单独采集峰值 RSS 和首 token 时间 |
-| RPC 双机推理 | 待执行 | 需要第二台机器运行 `rpc-server` |
-| Ceph 扩展 | 待执行 | 需要部署或提供可访问的 Ceph 环境 |
-| 最终截图与提交材料 | 待整理 | 在 RPC、Ceph 完成后统一整理 |
+| 5 个以上性能指标与合理性 | 已完成 | `docs/param-optimization-report.md` |
+| Qwen3.5-2B GGUF 本地部署 | 已完成 | `reports/smoke.md`、`docs/llama-cpp-setup.md` |
+| 至少 3 个指标的实际测量 | 已完成 | Prompt/Generation 吞吐、启动耗时、端到端延迟 |
+| 参数优化 | 已完成并重跑 | 线程、batch、输入长度、mmap |
+| 5 类 Prompt 质量评估 | 已完成 | `data/prompts/quality-prompts.jsonl`、质量报告 |
+| 双机 RPC | 已完成 | 本地主机 + USTC Vlab LXC |
+| 单机与 RPC 对比 | 已完成 | `docs/rpc-experiment-report.md` |
+| Ray 部署与 Task 调度 | 已完成 | 单机 head + 两类自定义资源 |
+| 20 条批量 Prompt | 已完成 | 4 种模式，80 条请求记录 |
+| Ray 性能对比与分析 | 已完成 | wall time、延迟、吞吐、节点统计 |
+| Ray 负载均衡加分 | 已完成 | 30 条 Prompt、2 种真实 Ray 策略 |
+| Ray 故障重试加分 | 已完成 | kill s2，失败 Task 重试到 s1，最终 100% |
+| 并发压力测试 | 已完成 | 并发度 1、2、4 |
+| 最终截图 | 待人工整理 | 本地推理、RPC、Ray status/日志 |
 
-## 分项一：llama.cpp 主线任务
-
-### 0. 仓库实现边界
-
-课程文档中的 `llama.cpp` 工具与本仓库交付物的对应关系如下：
-
-| 课程参考对象 | 本仓库交付 | 说明 |
-| :--- | :--- | :--- |
-| `llama-cli` | `lab4/third_party/llama.cpp/build/bin/llama-cli` | 正式单机推理入口。 |
-| `llama-bench` | `llama-bench` 或 Rust `lab4-bench` 包装 | 性能测量和 JSONL 记录。 |
-| `llama-server` | `llama-server`，选做 | 轻量服务与并发测试。 |
-| `rpc-server` | `llama.cpp` 的 `rpc-server` | 正式 RPC 分布式推理从机。 |
-| Rust 工具 | `lab4-tools` | prompt 校验、命令调用、存储测量、结果汇总。 |
-| Rust smoke | `lab4-llama` | 只用于验证本仓库 Rust 流程，不作为正式 LLM 推理结果。 |
-
-仓库内不创建 Makefile，不复制 `llama.cpp` 源码快照，不提交 GGUF 大模型。
+## 分项一：llama.cpp 主线
 
 ### 1. 指标设计
 
-需要拟定不少于 5 个 LLM 部署性能指标，并说明合理性。
+至少选取 5 个指标，并解释其系统意义：
 
-建议指标：
+- Prompt throughput：prefill 阶段矩阵计算和 batch 利用率。
+- Generation throughput：逐 token decode、内存带宽和同步效率。
+- 模型加载/启动时间：文件 I/O、`mmap`、缺页异常和页缓存。
+- 端到端延迟：进程启动、模型加载、prefill、decode 和 RPC 的总成本。
+- 内存占用：模型权重、KV cache、进程与 Ray runtime 的资源压力。
+- CPU 利用率：线程数、P/E core 调度、上下文切换和缓存竞争。
+- 成功率/P95：服务稳定性和长尾延迟。
 
-- 模型加载时间：反映模型文件 I/O、mmap、页缓存和初始化开销。
-- 首 Token 延迟：反映 prompt prefill、调度和用户可感知响应速度。
-- 生成吞吐：通常用 tokens/s 衡量 decode 阶段效率。
-- 总响应时间：覆盖从启动请求到生成完成的端到端耗时。
-- CPU 利用率：观察线程数、调度和计算饱和程度。
-- 内存占用：观察模型权重、KV cache、batch 和上下文窗口的资源压力。
-- RPC 网络耗时：用于分析分布式推理中通信和同步开销。
+### 2. 本地部署
 
-### 2. 单机部署
+固定信息：
 
-需要选择一款 GGUF 量化模型，并完成单机推理。本仓库当前使用 Qwen3.5-2B 的 Q4_K_M 量化版本；此前 Qwen2.5-1.5B 数据保留为历史基线。
+| 项目 | 值 |
+| :--- | :--- |
+| 模型 | Qwen3.5-2B Q4_K_M |
+| 文件 | `qwen3.5-2b-q4_k_m.gguf` |
+| SHA-256 | `57a1085840f497d764a7fc5d346922dbde961efb54cc792ea81d694fd846a1d8` |
+| llama.cpp commit | `c4a278d68efa17811006f2123a84081dac03fac7` |
+| 后端 | CPU |
 
-报告需要记录：
+### 3. 参数优化
 
-- 硬件环境：CPU、内存、GPU、磁盘、网络。
-- 操作系统：发行版、内核版本、架构。
-- 模型信息：模型名称、参数规模、量化格式、文件大小。
-- `llama.cpp` 版本：submodule commit hash、构建参数。
-- 运行命令：`llama-cli`、`llama-bench`、`llama-server` 或 Rust `lab4-bench` 包装命令。
+使用 `llama-bench` 比较：
 
-推荐从 1B 或 3B 量化模型开始，优先保证可复现，再考虑 7B 或更大模型。
+- `--threads 4/8/12`
+- `--batch-size 32/64/128`
+- `--n-prompt 128/512/1024`
+- 默认 `mmap` 与 `--mmap 0`
 
-### 3. 实际测量
+每条 benchmark 内部重复 3 次。报告同时说明笔记本 CPU 温度、后台负载和混合核心
+调度造成的跨轮波动，避免把噪声误写成因果关系。
 
-需要设计测试任务，并从指标列表中选择至少 3 个指标进行测量。
+### 4. 输出质量
 
-建议做法：
+固定 5 条 Prompt，覆盖：
 
-- 使用固定 prompt 集，避免每轮测试任务差异过大。
-- 每组参数至少重复 3 次，记录均值，必要时记录最小值和最大值。
-- 记录原始输出到 JSONL，后续报告只引用汇总表。
-- 用 Rust 工具统一调用 `llama.cpp` 命令、计时、解析输出和写入结果。
+- 中文问答
+- 摘要
+- Rust 代码解释
+- 系统推理
+- OS 专项知识
 
-### 4. 参数优化
+比较不同温度配置的相关性、完整性、准确性、重复和幻觉。
 
-需要基于已有参数做分析、测试和优化。
+### 5. 双机 RPC
 
-优先测试参数：
+主机运行 `llama-cli --rpc`，USTC Vlab LXC 运行 `rpc-server`。报告记录：
 
-- `--threads`：观察 CPU 线程数与吞吐、延迟、上下文切换之间的关系。
-- `--batch-size`：观察 batch 增大后吞吐和内存压力变化。
-- `--ctx-size`：观察上下文窗口对 KV cache 和延迟的影响。
-- `--n-gpu-layers`：有 GPU 时测试 offload 层数；无 GPU 时明确标注为不适用。
-- `--no-mmap`：观察模型加载、页缓存和内存占用变化。
+- 两端硬件和软件版本
+- Tailscale 网络与端口
+- 成功的设备发现和推理命令
+- 单机/RPC Prompt 吞吐、Generation 吞吐、端到端耗时
+- 2 vCPU 从机、TCP/VPN、同步和张量传输造成的性能下降
 
-优化目标不是追求最高性能，而是解释现象：为什么某个参数让系统更快、更慢或更不稳定。
+## 分项二：Ray 扩展
 
-### 5. 输出质量评估
+### 1. 部署
 
-需要设计 5 个 prompt，并覆盖至少 3 类任务。
+单机多进程模拟两台异构推理节点：
 
-建议任务类型：
+- s1：`llama-server --threads 8 --port 8080`
+- s2：`llama-server --threads 4 --port 8081`
+- Ray head 注册 `server_s1` 和 `server_s2` 自定义资源
+- Ray Task 根据资源标签访问对应 HTTP 后端
 
-- 中文问答。
-- 摘要。
-- 代码解释。
-- 推理题。
-- OS 课程相关问题。
+由于两个后端共享同一 CPU，报告明确区分“调度功能验证”与“真实物理多机加速”。
 
-需要分析不同配置对输出质量的影响，例如温度、上下文长度、重复惩罚、量化格式和模型规模。质量评估可以采用人工评分表，重点记录相关性、完整性、准确性、重复程度和幻觉。
+### 2. 基础实验
 
-### 6. RPC 分布式推理
+固定前 20 条 Prompt，比较：
 
-需要至少使用 2 台机器，其中一台主机运行 `llama-cli --rpc`，至少一台从机运行 `rpc-server`。
+- serial
+- fixed partition
+- round robin
+- latency based
 
-本仓库的主机、WSL2/Ubuntu 从机、CPU/CUDA 构建、网络配置和正式测量步骤见
-[RPC 双机操作手册](rpc-two-machine-setup.md)。
+记录请求开始/结束形成的端到端延迟、输出 token 数、总 wall time、吞吐和节点统计。
+计时从 Ray Task 提交前开始，覆盖调度与结果回收。
 
-报告需要记录：
+### 3. 加分实验
 
-- 主机和从机 IP、端口、网络环境。
-- 每台机器的硬件和后端配置。
-- `llama.cpp` RPC 编译命令和运行命令。
-- 一次成功推理结果。
-- 单机和 RPC 的性能对比数据。
+- 负载均衡：同一 30 条 Prompt 比较 round robin 与 latency based。
+- 故障重试：提交后终止 s2，把失败请求重新提交到 s1。
+- 并发压力：并发度 1、2、4，记录平均/P95 延迟、吞吐和失败数。
 
-RPC 结果不要求比单机更快。分析重点是网络延迟、带宽、同步等待、计算划分和异构设备差异。
+## 分项三：OS 知识点
 
-最低可交付范围：
+实验结论应联系以下机制：
 
-- 从机启动 `rpc-server`，监听 TCP 端口。
-- 主机使用 `llama-cli --rpc <worker-ip>:<port>` 发起推理。
-- 至少完成一次跨机器请求、响应和耗时记录。
-- 报告中说明 RPC backend 当前仍偏实验性质，不应暴露在公网。
+- 进程、线程和 CPU 调度
+- P/E core、上下文切换和线程过量
+- 虚拟地址空间、`mmap`、缺页异常与页缓存
+- KV cache 和内存工作集
+- RPC 序列化、TCP、VPN、RTT 与同步等待
+- Ray Task、资源标签、调度开销和故障恢复
+- 并发下的吞吐/延迟权衡与长尾效应
+- OOM 保护：Ray 在节点内存超过阈值时主动终止 worker
 
-## 分项二：Ceph 扩展任务
+完整说明见 [OS 知识点](os-knowledge.md)。
 
-### 1. 部署小规模 Ceph 环境
+## 提交检查
 
-需要完成一个小规模 Ceph 环境，并记录：
-
-- 部署方式：真实多机、虚拟机或 Docker。
-- 节点数量。
-- Monitor、OSD、Pool 配置。
-- 使用方式：对象存储、CephFS 或两者之一。
-
-### 2. 存储实验文件
-
-需要将实验相关文件放入 Ceph：
-
-- 至少一个模型文件，或在资源受限时使用模型占位测试文件。
-- 一组 prompt 数据。
-- 一份推理结果日志。
-
-### 3. 设计推理工作流
-
-工作流应覆盖：
-
-1. 从 Ceph 读取 prompt。
-2. 调用 `llama.cpp` 完成推理。
-3. 将输出结果写回 Ceph。
-4. 记录每一步耗时和状态。
-
-### 4. 测量存储指标
-
-至少测量两个存储相关指标：
-
-- 上传时间。
-- 下载时间。
-- 读取吞吐。
-- 写入吞吐。
-- 模型加载时间。
-- 日志写入延迟。
-
-### 5. 对比本地路径与 Ceph 路径
-
-可以比较以下任意一项：
-
-- 模型文件读取或加载。
-- prompt 数据读取。
-- 推理日志写入。
-
-实验需要说明文件大小、重复次数和平均结果。
-
-### 6. 分析系统原因
-
-分析应覆盖：
-
-- 副本数对写入成本和可靠性的影响。
-- 网络和磁盘 I/O 对读写路径的影响。
-- 小对象与大对象的性能差异。
-- 页缓存和客户端缓存造成的重复测试偏差。
-- 多节点共享数据时的命名、冲突和一致性问题。
-
-## 分项三：选做加分
-
-### llama.cpp 加分候选
-
-优先级从高到低：
-
-1. 比较同一模型的不同量化格式，如 Q4、Q5、Q8。
-2. 使用 `llama-server` 搭建轻量服务，并测试并发请求。
-3. 比较不同网络环境下的 RPC 推理效果。
-4. 阅读并解释一个关键机制，如 GGUF 加载、KV cache、batch、tokenizer 或 RPC backend。
-5. 尝试多从机 RPC 推理。
-
-### Ceph 加分候选
-
-优先级从高到低：
-
-1. 比较副本数 `size=1` 与 `size=2/3` 的读写吞吐、耗时和空间开销。
-2. 比较本地文件系统、CephFS 或对象存储中至少两种路径。
-3. 让两个 `llama.cpp` 节点共享 prompt 并写回统一日志前缀。
-4. 手动停止一个 OSD 或节点，观察故障恢复。
-
-## 建议执行顺序
-
-1. 固定模型、机器、网络和测试 prompt。
-2. 以 submodule 方式拉取 `llama.cpp`，固定 commit hash。
-3. 下载 GGUF 模型，完成最小 `llama-cli` 单机推理。
-4. 跑单机基线，记录加载时间、首 Token 延迟、吞吐和内存。
-5. 调整 `--threads`、`--batch-size`、`--ctx-size`、`--no-mmap` 等参数。
-6. 构建 `-DGGML_RPC=ON`，完成 `rpc-server` 与 `llama-cli --rpc` 双机推理。
-7. 对比单机和 RPC 结果，说明网络、同步和异构硬件影响。
-8. 部署 Ceph，把 prompt、日志或模型占位文件放入共享路径。
-9. 用 `lab4-storage` 比较本地路径和 Ceph 路径。
-10. 汇总报告：部署说明、测试表格、系统分析、截图和原始数据路径。
+1. 确认 GGUF 权重仍被 `.gitignore` 排除。
+2. 提交 Rust/Python 源码、Prompt、原始结果和汇总 JSON。
+3. 核对报告引用的文件均存在。
+4. 运行 Rust fmt、Clippy、测试和 Python unittest。
+5. 补充必要截图并检查脱敏。
+6. 在 **2026-06-08 23:59** 前提交。

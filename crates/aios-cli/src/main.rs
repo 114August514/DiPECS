@@ -8,6 +8,7 @@ use aios_cli::android_bridge;
 use aios_cli::replay::{self, Stage};
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
+use tracing::info;
 
 #[derive(Parser, Debug)]
 #[command(name = "aios-cli", about = "DiPECS internal tooling", version)]
@@ -35,6 +36,13 @@ enum Command {
         /// NDJSON output sink. Defaults to stdout.
         #[arg(long)]
         output: Option<PathBuf>,
+
+        /// Append-only canonical audit log (sorted-key, volatility-stripped
+        /// projection of every state transition). When set, the replay also
+        /// reports a stable `audit_hash` that can be pinned in regression
+        /// tests. Parent directories are created automatically.
+        #[arg(long)]
+        audit: Option<PathBuf>,
     },
     /// Send an AuthorizedAction JSON payload to the Android localhost socket
     /// bridge.
@@ -77,6 +85,7 @@ fn main() -> Result<()> {
             window_secs,
             stages,
             output,
+            audit,
         } => {
             let file =
                 File::open(&path).with_context(|| format!("opening trace {}", path.display()))?;
@@ -87,14 +96,51 @@ fn main() -> Result<()> {
                 )),
                 None => Box::new(BufWriter::new(io::stdout().lock())),
             };
-            let summary = replay::run(reader, &mut sink, window_secs, stages)?;
+
+            let summary = match audit {
+                Some(audit_path) => {
+                    if let Some(parent) = audit_path.parent() {
+                        if !parent.as_os_str().is_empty() {
+                            std::fs::create_dir_all(parent).with_context(|| {
+                                format!("creating audit dir {}", parent.display())
+                            })?;
+                        }
+                    }
+                    let mut audit_sink = BufWriter::new(
+                        std::fs::OpenOptions::new()
+                            .create(true)
+                            .append(true)
+                            .open(&audit_path)
+                            .with_context(|| {
+                                format!("opening audit file {}", audit_path.display())
+                            })?,
+                    );
+                    let outcome = replay::run_with_audit(
+                        reader,
+                        &mut sink,
+                        &mut audit_sink,
+                        window_secs,
+                        stages,
+                    )?;
+                    audit_sink.flush()?;
+                    info!(
+                        audit_path = %audit_path.display(),
+                        audit_hash = %outcome.audit_hash,
+                        "audit log written"
+                    );
+                    outcome.summary
+                },
+                None => replay::run(reader, &mut sink, window_secs, stages)?,
+            };
             sink.flush()?;
-            tracing::info!(
+
+            info!(
                 lines_total = summary.lines_total,
                 events_ingested = summary.events_ingested,
                 windows_closed = summary.windows_closed,
                 intents_total = summary.intents_total,
                 actions_authorized = summary.actions_authorized,
+                audit_hash = %summary.audit_hash,
                 "replay complete"
             );
             Ok(())

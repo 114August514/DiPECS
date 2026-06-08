@@ -1,0 +1,57 @@
+[
+  {
+    "配置": "threads-4",
+    "Prompt (t/s)": 152.38,
+    "Generation (t/s)": 30.34
+  },
+  {
+    "配置": "threads-8",
+    "Prompt (t/s)": 180.99,
+    "Generation (t/s)": 34.16
+  },
+  {
+    "配置": "threads-12",
+    "Prompt (t/s)": 208.73,
+    "Generation (t/s)": 33.89
+  },
+  {
+    "配置": "batch-32",
+    "Prompt (t/s)": 203.56,
+    "Generation (t/s)": 31.0
+  },
+  {
+    "配置": "batch-64",
+    "Prompt (t/s)": 152.8,
+    "Generation (t/s)": 29.37
+  },
+  {
+    "配置": "batch-128",
+    "Prompt (t/s)": 157.47,
+    "Generation (t/s)": 29.65
+  },
+  {
+    "配置": "n-prompt-128",
+    "Prompt (t/s)": 154.06,
+    "Generation (t/s)": 29.64
+  },
+  {
+    "配置": "n-prompt-512",
+    "Prompt (t/s)": 147.26,
+    "Generation (t/s)": 30.89
+  },
+  {
+    "配置": "n-prompt-1024",
+    "Prompt (t/s)": 141.98,
+    "Generation (t/s)": 31.23
+  },
+  {
+    "配置": "mmap-default",
+    "Prompt (t/s)": 155.38,
+    "Generation (t/s)": 31.03
+  },
+  {
+    "配置": "no-mmap",
+    "Prompt (t/s)": 153.21,
+    "Generation (t/s)": 31.3
+  }
+]

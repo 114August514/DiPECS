@@ -57,7 +57,7 @@ pub struct Intent {
 }
 
 /// 意图类型
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum IntentType {
     /// 用户将打开某个 app
     OpenApp(String),
@@ -74,7 +74,7 @@ pub enum IntentType {
 }
 
 /// 风险等级
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum RiskLevel {
     /// 可自动执行
     Low,
@@ -118,7 +118,7 @@ pub enum ActionType {
 }
 
 /// 动作紧迫度
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ActionUrgency {
     /// 立即执行
     Immediate,

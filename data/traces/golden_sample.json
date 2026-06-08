@@ -95,7 +95,7 @@
         "suggested_actions": [
           {
             "action_type": "PrefetchFile",
-            "target": null,
+            "target": "url:https://httpbin.org/image/png",
             "urgency": "IdleTime"
           }
         ],

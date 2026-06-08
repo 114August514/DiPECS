@@ -1,0 +1,165 @@
+{
+  "trace_id": "golden-sample-v1",
+  "window_start_ms": 1000,
+  "window_end_ms": 3000,
+  "raw_events": [
+    {
+      "AppTransition": {
+        "timestamp_ms": 1000,
+        "package_name": "com.android.chrome",
+        "activity_class": "MainActivity",
+        "transition": "Foreground"
+      }
+    },
+    {
+      "FileSystemAccess": {
+        "timestamp_ms": 2000,
+        "pid": 42,
+        "uid": 10042,
+        "file_path": "/storage/emulated/0/DCIM/photo.jpg",
+        "access_type": "OpenRead",
+        "bytes_transferred": 4096
+      }
+    },
+    {
+      "SystemState": {
+        "timestamp_ms": 3000,
+        "battery_pct": 10,
+        "is_charging": false,
+        "network": "Wifi",
+        "ringer_mode": "Normal",
+        "location_type": "Unknown",
+        "headphone_connected": false,
+        "bluetooth_connected": false
+      }
+    }
+  ],
+  "expected_sanitized": [
+    {
+      "event_id": "4b94314e-6dc6-465d-93b1-2552df9204b5",
+      "timestamp_ms": 1000,
+      "event_type": {
+        "AppTransition": {
+          "package_name": "com.android.chrome",
+          "activity_class": "MainActivity",
+          "transition": "Foreground"
+        }
+      },
+      "source_tier": "PublicApi",
+      "app_package": "com.android.chrome",
+      "uid": null
+    },
+    {
+      "event_id": "a33d0045-c2d8-4c52-be45-e6875c543aa3",
+      "timestamp_ms": 2000,
+      "event_type": {
+        "FileActivity": {
+          "package_name": null,
+          "extension_category": "Image",
+          "activity_type": "Read",
+          "is_hot_file": false
+        }
+      },
+      "source_tier": "Daemon",
+      "app_package": null,
+      "uid": 10042
+    },
+    {
+      "event_id": "d8cb57f3-056a-4036-aac4-3b077952be85",
+      "timestamp_ms": 3000,
+      "event_type": {
+        "SystemStatus": {
+          "battery_pct": 10,
+          "is_charging": false,
+          "network": "Wifi",
+          "ringer_mode": "Normal",
+          "location_type": "Unknown",
+          "headphone_connected": false
+        }
+      },
+      "source_tier": "PublicApi",
+      "app_package": null,
+      "uid": null
+    }
+  ],
+  "expected_intents": {
+    "window_id": "8d0ad777-783a-4068-a688-a9eb06e70508",
+    "intents": [
+      {
+        "intent_id": "ce766c97-b28a-49b0-bde4-6609697d1f70",
+        "intent_type": {
+          "HandleFile": "Image"
+        },
+        "confidence": 0.75,
+        "risk_level": "Low",
+        "suggested_actions": [
+          {
+            "action_type": "PrefetchFile",
+            "target": null,
+            "urgency": "IdleTime"
+          }
+        ],
+        "rationale_tags": [
+          "Image"
+        ]
+      },
+      {
+        "intent_id": "bc5687bb-1eaf-4160-98c6-168456e7cc63",
+        "intent_type": {
+          "SwitchToApp": "com.android.chrome"
+        },
+        "confidence": 0.8,
+        "risk_level": "Low",
+        "suggested_actions": [
+          {
+            "action_type": "PreWarmProcess",
+            "target": "com.android.chrome",
+            "urgency": "Immediate"
+          },
+          {
+            "action_type": "KeepAlive",
+            "target": "com.android.chrome",
+            "urgency": "Immediate"
+          }
+        ],
+        "rationale_tags": [
+          "app_foreground_observed"
+        ]
+      },
+      {
+        "intent_id": "81479804-baa1-456b-ac40-5712fa8eeed0",
+        "intent_type": "Idle",
+        "confidence": 0.8,
+        "risk_level": "Low",
+        "suggested_actions": [
+          {
+            "action_type": "ReleaseMemory",
+            "target": null,
+            "urgency": "Immediate"
+          }
+        ],
+        "rationale_tags": [
+          "low_battery"
+        ]
+      }
+    ],
+    "generated_at_ms": 3000,
+    "model": "rule-based-v0.2"
+  },
+  "expected_actions": [
+    {
+      "action_type": "KeepAlive",
+      "target": "com.android.chrome",
+      "executed_at_ms": 3000,
+      "success": true,
+      "error_reason": null
+    },
+    {
+      "action_type": "ReleaseMemory",
+      "target": null,
+      "executed_at_ms": 3000,
+      "success": true,
+      "error_reason": null
+    }
+  ]
+}

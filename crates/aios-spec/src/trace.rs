@@ -65,4 +65,16 @@ pub struct ReplayResult {
     pub policy_match: bool,
     /// 不一致的策略决策描述
     pub policy_divergences: Vec<String>,
+    /// 执行结果是否完全一致
+    pub execution_match: bool,
+    /// 不一致的 ExecutedAction 索引
+    pub execution_divergences: Vec<usize>,
+}
+
+impl ReplayResult {
+    /// True iff sanitize + policy + execute all matched. The single boolean
+    /// that golden tests should pin against.
+    pub fn all_match(&self) -> bool {
+        self.sanitization_match && self.policy_match && self.execution_match
+    }
 }

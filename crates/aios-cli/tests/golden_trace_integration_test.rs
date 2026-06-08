@@ -1,0 +1,267 @@
+//! GoldenTrace integration test — closes the determinism loop.
+//!
+//! Every prior slice pinned a *property* of the pipeline (audit hash,
+//! denial counts, privacy-leak absence). This test pins the
+//! *observable input → output map* of the whole pipeline through the
+//! `GoldenTrace` shape from `aios_spec::trace`, driving the actual
+//! sanitizer / router / policy / executor and comparing against an
+//! expected `(sanitized, intents, executed)` triple committed to
+//! `data/traces/golden_sample.json`.
+//!
+//! Equality is *semantic*: volatile fields (uuids, wall-clock timestamps)
+//! are deliberately ignored so the test stays meaningful under uuid churn.
+//! For byte-exact pinning use `ReplaySummary.audit_hash` instead.
+//!
+//! ## Regenerating the fixture
+//!
+//! ```bash
+//! REGEN_GOLDEN=1 cargo test --test golden_trace_integration_test regen_golden_sample
+//! ```
+//!
+//! This rewrites `data/traces/golden_sample.json` from the current
+//! pipeline output. Use it when policy, sanitization, or backend rules
+//! intentionally change.
+
+use std::fs;
+use std::path::PathBuf;
+
+use aios_action::DefaultActionExecutor;
+use aios_agent::DecisionRouter;
+use aios_core::context_builder::WindowAggregator;
+use aios_core::policy_engine::PolicyEngine;
+use aios_core::privacy_airgap::DefaultPrivacyAirGap;
+use aios_core::trace_engine::DefaultTraceEngine;
+use aios_spec::traits::{ActionExecutor, PrivacySanitizer};
+use aios_spec::{
+    AppTransition, AppTransitionRawEvent, CapabilityLevel, ExecutedAction, FsAccessEvent,
+    FsAccessType, GoldenTrace, IntentBatch, LocationType, NetworkType, RawEvent, RingerMode,
+    SanitizedEvent, SystemStateEvent,
+};
+
+fn golden_path() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../data/traces/golden_sample.json")
+}
+
+/// The exact same RawEvent sequence the GoldenTrace pins. Authored in
+/// code so the regen path and the validation path share a single source
+/// of truth for the inputs — the golden file is then just the captured
+/// output side.
+fn fixture_raw_events() -> Vec<RawEvent> {
+    vec![
+        RawEvent::AppTransition(AppTransitionRawEvent {
+            timestamp_ms: 1_000,
+            package_name: "com.android.chrome".into(),
+            activity_class: Some("MainActivity".into()),
+            transition: AppTransition::Foreground,
+        }),
+        RawEvent::FileSystemAccess(FsAccessEvent {
+            timestamp_ms: 2_000,
+            pid: 42,
+            uid: 10_042,
+            file_path: "/storage/emulated/0/DCIM/photo.jpg".into(),
+            access_type: FsAccessType::OpenRead,
+            bytes_transferred: Some(4_096),
+        }),
+        RawEvent::SystemState(SystemStateEvent {
+            timestamp_ms: 3_000,
+            battery_pct: Some(10),
+            is_charging: false,
+            network: NetworkType::Wifi,
+            ringer_mode: RingerMode::Normal,
+            location_type: LocationType::Unknown,
+            headphone_connected: false,
+            bluetooth_connected: false,
+        }),
+    ]
+}
+
+/// Drive the full pipeline on `fixture_raw_events()` and return the
+/// observable outputs (sanitized events, intent batch, executed actions).
+/// This is the *single* place that knows how to wire the components.
+fn drive_pipeline() -> (Vec<SanitizedEvent>, IntentBatch, Vec<ExecutedAction>) {
+    let raw_events = fixture_raw_events();
+    let sanitizer = DefaultPrivacyAirGap;
+    let sanitized: Vec<SanitizedEvent> = raw_events
+        .iter()
+        .cloned()
+        .map(|r| sanitizer.sanitize(r))
+        .collect();
+
+    let mut agg = WindowAggregator::new(10, 1_000);
+    for s in &sanitized {
+        agg.push(s.clone());
+    }
+    let ctx = agg
+        .close(3_000)
+        .expect("non-empty window must produce a StructuredContext");
+
+    let router = DecisionRouter::default();
+    let decision = router.evaluate(&ctx);
+    let capability = CapabilityLevel::for_route(decision.route);
+
+    let policy = PolicyEngine::default();
+    let policy_decisions =
+        policy.evaluate_batch_with_context(&decision.intent_batch, &capability, &ctx);
+
+    let executor = DefaultActionExecutor;
+    let mut executed: Vec<ExecutedAction> = Vec::new();
+    for d in &policy_decisions {
+        if !d.approved {
+            continue;
+        }
+        for r in executor.execute_batch(&d.approved_actions) {
+            executed.push(ExecutedAction {
+                action_type: r.action_type,
+                target: r.target,
+                executed_at_ms: ctx.window_end_ms,
+                success: r.success,
+                error_reason: r.error,
+            });
+        }
+    }
+
+    (sanitized, decision.intent_batch, executed)
+}
+
+fn load_golden() -> GoldenTrace {
+    let bytes = fs::read(golden_path()).unwrap_or_else(|e| {
+        panic!(
+            "golden file missing at {}: {e}. Run with REGEN_GOLDEN=1 to create it.",
+            golden_path().display()
+        )
+    });
+    serde_json::from_slice(&bytes).expect("golden file is valid GoldenTrace JSON")
+}
+
+#[test]
+fn replay_matches_golden_sample() {
+    let golden = load_golden();
+    let (sanitized, intents, executed) = drive_pipeline();
+
+    let engine = DefaultTraceEngine::new(DefaultPrivacyAirGap);
+    let result = engine.validate_full(&golden, &intents, &executed);
+
+    assert!(
+        result.sanitization_match,
+        "sanitization divergences at indices {:?} — pipeline drifted from \
+         golden expected_sanitized; if intentional, REGEN_GOLDEN=1",
+        result.sanitization_divergences
+    );
+    assert!(
+        result.policy_match,
+        "policy divergences: {:#?} — intent batch drifted from golden \
+         expected_intents; if intentional, REGEN_GOLDEN=1",
+        result.policy_divergences
+    );
+    assert!(
+        result.execution_match,
+        "execution divergences at indices {:?} — executor drifted from \
+         golden expected_actions; if intentional, REGEN_GOLDEN=1",
+        result.execution_divergences
+    );
+    assert!(result.all_match());
+
+    // Sanity: the golden's own counts are what we expect (denial.jsonl
+    // shape — 2 ActionCapabilityDenied → 2 approved actions executed).
+    assert_eq!(
+        sanitized.len(),
+        3,
+        "fixture has 3 raw events, sanitizer is 1:1"
+    );
+    assert_eq!(
+        executed.len(),
+        2,
+        "exactly 2 actions survive policy: KeepAlive(com.android.chrome) + ReleaseMemory(None)"
+    );
+}
+
+#[test]
+fn mutated_expected_sanitized_is_flagged() {
+    let mut golden = load_golden();
+    let (sanitized, intents, executed) = drive_pipeline();
+
+    // Flip a structural field on the *expected* side and confirm the
+    // engine catches it. We pick `app_package` because `sanitized_eq`
+    // compares it explicitly.
+    assert!(
+        !golden.expected_sanitized.is_empty(),
+        "golden has at least one expected sanitized event"
+    );
+    golden.expected_sanitized[0].app_package = Some("com.intentional-drift".into());
+
+    let engine = DefaultTraceEngine::new(DefaultPrivacyAirGap);
+    let result = engine.validate_full(&golden, &intents, &executed);
+
+    assert!(!result.sanitization_match);
+    assert_eq!(
+        result.sanitization_divergences,
+        vec![0],
+        "the mutation was on index 0 — engine should pinpoint it"
+    );
+    // Policy and execution should still match (we didn't touch them).
+    assert!(result.policy_match);
+    assert!(result.execution_match);
+    assert!(
+        !result.all_match(),
+        "all_match() must be false when any layer diverges"
+    );
+
+    // Unused binding kept around for clarity — `sanitized` is what the
+    // pipeline actually produced; the test mutates the *expected* side.
+    let _ = sanitized;
+}
+
+#[test]
+fn mutated_expected_intent_count_is_flagged() {
+    let mut golden = load_golden();
+    let (_, intents, executed) = drive_pipeline();
+
+    // Drop one expected intent — the engine should flag a count mismatch.
+    let original_count = golden.expected_intents.intents.len();
+    assert!(
+        original_count > 0,
+        "golden should have at least one expected intent"
+    );
+    golden.expected_intents.intents.pop();
+
+    let engine = DefaultTraceEngine::new(DefaultPrivacyAirGap);
+    let result = engine.validate_full(&golden, &intents, &executed);
+
+    assert!(!result.policy_match);
+    assert!(
+        result
+            .policy_divergences
+            .iter()
+            .any(|d| d.contains("intent count mismatch")),
+        "expected an intent-count mismatch divergence, got {:#?}",
+        result.policy_divergences
+    );
+}
+
+/// Regenerate `data/traces/golden_sample.json` from the current pipeline.
+/// No-op unless `REGEN_GOLDEN=1` is set in the environment, so plain
+/// `cargo test` never rewrites the committed golden.
+#[test]
+fn regen_golden_sample() {
+    if std::env::var("REGEN_GOLDEN").ok().as_deref() != Some("1") {
+        eprintln!("regen_golden_sample: set REGEN_GOLDEN=1 to rewrite the fixture");
+        return;
+    }
+    let (sanitized, intents, executed) = drive_pipeline();
+    let golden = GoldenTrace {
+        trace_id: "golden-sample-v1".into(),
+        window_start_ms: 1_000,
+        window_end_ms: 3_000,
+        raw_events: fixture_raw_events(),
+        expected_sanitized: sanitized,
+        expected_intents: intents,
+        expected_actions: executed,
+    };
+    let json = serde_json::to_string_pretty(&golden).expect("GoldenTrace serializes");
+    let path = golden_path();
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).expect("create traces dir");
+    }
+    fs::write(&path, json).expect("write golden file");
+    eprintln!("wrote {}", path.display());
+}

@@ -31,7 +31,7 @@ use aios_core::context_builder::WindowAggregator;
 use aios_core::policy_engine::PolicyEngine;
 use aios_core::privacy_airgap::DefaultPrivacyAirGap;
 use aios_core::trace_engine::DefaultTraceEngine;
-use aios_spec::traits::{ActionExecutor, PrivacySanitizer};
+use aios_spec::traits::{ActionExecutor, PrivacySanitizer, TraceValidator};
 use aios_spec::{
     AppTransition, AppTransitionRawEvent, CapabilityLevel, ExecutedAction, FsAccessEvent,
     FsAccessType, GoldenTrace, IntentBatch, LocationType, NetworkType, RawEvent, RingerMode,
@@ -139,7 +139,7 @@ fn replay_matches_golden_sample() {
     let (sanitized, intents, executed) = drive_pipeline();
 
     let engine = DefaultTraceEngine::new(DefaultPrivacyAirGap);
-    let result = engine.validate_full(&golden, &intents, &executed);
+    let result = engine.validate(&golden, &intents, &executed);
 
     assert!(
         result.sanitization_match,
@@ -190,7 +190,7 @@ fn mutated_expected_sanitized_is_flagged() {
     golden.expected_sanitized[0].app_package = Some("com.intentional-drift".into());
 
     let engine = DefaultTraceEngine::new(DefaultPrivacyAirGap);
-    let result = engine.validate_full(&golden, &intents, &executed);
+    let result = engine.validate(&golden, &intents, &executed);
 
     assert!(!result.sanitization_match);
     assert_eq!(
@@ -212,6 +212,62 @@ fn mutated_expected_sanitized_is_flagged() {
 }
 
 #[test]
+fn mutated_rationale_tags_is_flagged() {
+    // rationale_tags is part of observable intent output — drift there is
+    // real (the RuleBased backend encodes its reasoning into tags like
+    // "low_battery"), so the engine must surface it as a policy divergence.
+    let mut golden = load_golden();
+    let (_, intents, executed) = drive_pipeline();
+
+    assert!(
+        !golden.expected_intents.intents.is_empty(),
+        "golden has at least one expected intent"
+    );
+    golden.expected_intents.intents[0]
+        .rationale_tags
+        .push("intentional-drift".into());
+
+    let engine = DefaultTraceEngine::new(DefaultPrivacyAirGap);
+    let result = engine.validate(&golden, &intents, &executed);
+
+    assert!(!result.policy_match);
+    assert!(
+        result
+            .policy_divergences
+            .iter()
+            .any(|d| d.contains("rationale_tags")),
+        "expected a rationale_tags divergence, got {:#?}",
+        result.policy_divergences
+    );
+}
+
+#[test]
+fn validate_sanitization_marks_unchecked_layers_false() {
+    // The sanitization-only entry point must not silently report
+    // policy_match/execution_match as true — that would let callers
+    // misread "not checked" as "passed".
+    let golden = load_golden();
+
+    let engine = DefaultTraceEngine::new(DefaultPrivacyAirGap);
+    let result = engine.validate_sanitization(&golden);
+
+    assert!(result.sanitization_match);
+    assert!(!result.policy_match);
+    assert!(!result.execution_match);
+    assert!(
+        result
+            .policy_divergences
+            .iter()
+            .any(|d| d.contains("not validated")),
+        "policy_divergences must explicitly flag the unchecked layer"
+    );
+    assert!(
+        !result.all_match(),
+        "all_match() must be false when policy/execution were not actually checked"
+    );
+}
+
+#[test]
 fn mutated_expected_intent_count_is_flagged() {
     let mut golden = load_golden();
     let (_, intents, executed) = drive_pipeline();
@@ -225,7 +281,7 @@ fn mutated_expected_intent_count_is_flagged() {
     golden.expected_intents.intents.pop();
 
     let engine = DefaultTraceEngine::new(DefaultPrivacyAirGap);
-    let result = engine.validate_full(&golden, &intents, &executed);
+    let result = engine.validate(&golden, &intents, &executed);
 
     assert!(!result.policy_match);
     assert!(

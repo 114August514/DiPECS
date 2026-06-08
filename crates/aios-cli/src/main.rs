@@ -81,10 +81,15 @@ fn main() -> Result<()> {
                             })?;
                         }
                     }
-                    let mut audit_sink =
-                        BufWriter::new(File::create(&audit_path).with_context(|| {
-                            format!("creating audit file {}", audit_path.display())
-                        })?);
+                    let mut audit_sink = BufWriter::new(
+                        std::fs::OpenOptions::new()
+                            .create(true)
+                            .append(true)
+                            .open(&audit_path)
+                            .with_context(|| {
+                                format!("opening audit file {}", audit_path.display())
+                            })?,
+                    );
                     let outcome = replay::run_with_audit(
                         reader,
                         &mut sink,

@@ -284,8 +284,8 @@ struct ModelAction {
 #[cfg(test)]
 mod tests {
     use super::{
-        infer_prefetch_category, infer_prefetch_target, normalize_prefetch_target, translate_action,
-        ModelAction, ModelIntent,
+        infer_prefetch_category, infer_prefetch_target, normalize_prefetch_target,
+        translate_action, ModelAction, ModelIntent,
     };
     use crate::backends::prefetch_target::default_prefetch_target;
     use aios_spec::{ActionType, ExtensionCategory};

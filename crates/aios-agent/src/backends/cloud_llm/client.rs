@@ -3,7 +3,6 @@ use std::time::{Duration, Instant};
 use aios_spec::{DecisionBackendResult, DecisionRoute, IntentBatch, StructuredContext};
 use reqwest::blocking::Client;
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
 
 use super::config::{CloudLlmConfig, CloudProvider};
 use super::translate::{idle_batch, parse_model_output, translate_intents};
@@ -74,7 +73,10 @@ impl CloudLlmBackend {
         ))
     }
 
-    fn build_request_body(&self, context: &StructuredContext) -> Result<Value, String> {
+    fn build_request_body(
+        &self,
+        context: &StructuredContext,
+    ) -> Result<ChatCompletionRequest, String> {
         let messages = vec![
             ChatMessage {
                 role: "system".to_string(),
@@ -85,48 +87,16 @@ impl CloudLlmBackend {
                 content: self.render_user_prompt(context)?,
             },
         ];
-        let mut request = json!({
-            "model": self.config.model,
-            "temperature": self.config.temperature,
-            "response_format": ChatResponseFormat {
+        Ok(ChatCompletionRequest {
+            model: self.config.model.clone(),
+            temperature: self.config.temperature,
+            response_format: ChatResponseFormat {
                 kind: "json_object".to_string(),
             },
-            "messages": messages,
-        });
-
-        if let Some(reasoning_effort) = &self.config.reasoning_effort {
-            insert_json_field(
-                &mut request,
-                "reasoning_effort",
-                Value::String(reasoning_effort.clone()),
-            );
-        }
-
-        match self.config.provider {
-            CloudProvider::DeepSeek => {
-                if let Some(enable_thinking) = self.config.enable_thinking {
-                    insert_json_field(
-                        &mut request,
-                        "thinking",
-                        json!({
-                            "type": if enable_thinking { "enabled" } else { "disabled" }
-                        }),
-                    );
-                }
-            },
-            CloudProvider::Qwen => {
-                if let Some(enable_thinking) = self.config.enable_thinking {
-                    insert_json_field(
-                        &mut request,
-                        "enable_thinking",
-                        Value::Bool(enable_thinking),
-                    );
-                }
-            },
-            CloudProvider::GenericOpenAiCompatible => {},
-        }
-
-        Ok(request)
+            messages,
+            reasoning_effort: self.config.reasoning_effort.clone(),
+            provider_options: ProviderRequestOptions::from_config(&self.config),
+        })
     }
 }
 
@@ -159,14 +129,52 @@ impl DecisionBackend for CloudLlmBackend {
     }
 }
 
-fn insert_json_field(target: &mut Value, key: &str, value: Value) {
-    if let Some(object) = target.as_object_mut() {
-        object.insert(key.to_string(), value);
+fn truncate(text: &str, limit: usize) -> String {
+    text.chars().take(limit).collect()
+}
+
+#[derive(Debug, Serialize)]
+struct ChatCompletionRequest {
+    model: String,
+    temperature: f32,
+    response_format: ChatResponseFormat,
+    messages: Vec<ChatMessage>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    reasoning_effort: Option<String>,
+    #[serde(flatten)]
+    provider_options: ProviderRequestOptions,
+}
+
+#[derive(Debug, Default, Serialize)]
+struct ProviderRequestOptions {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    thinking: Option<ThinkingConfig>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    enable_thinking: Option<bool>,
+}
+
+impl ProviderRequestOptions {
+    fn from_config(config: &CloudLlmConfig) -> Self {
+        match config.provider {
+            CloudProvider::DeepSeek => Self {
+                thinking: config.enable_thinking.map(|enabled| ThinkingConfig {
+                    kind: if enabled { "enabled" } else { "disabled" }.to_string(),
+                }),
+                enable_thinking: None,
+            },
+            CloudProvider::Qwen => Self {
+                thinking: None,
+                enable_thinking: config.enable_thinking,
+            },
+            CloudProvider::GenericOpenAiCompatible => Self::default(),
+        }
     }
 }
 
-fn truncate(text: &str, limit: usize) -> String {
-    text.chars().take(limit).collect()
+#[derive(Debug, Serialize)]
+struct ThinkingConfig {
+    #[serde(rename = "type")]
+    kind: String,
 }
 
 #[derive(Debug, Serialize)]

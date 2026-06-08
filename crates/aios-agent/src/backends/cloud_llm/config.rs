@@ -1,5 +1,18 @@
 use std::env;
 
+const ENV_ENABLED: &str = "DIPECS_CLOUD_LLM_ENABLED";
+const ENV_PROVIDER: &str = "DIPECS_CLOUD_LLM_PROVIDER";
+const ENV_ENDPOINT: &str = "DIPECS_CLOUD_LLM_ENDPOINT";
+const ENV_MODEL: &str = "DIPECS_CLOUD_LLM_MODEL";
+const ENV_API_KEY: &str = "DIPECS_CLOUD_LLM_API_KEY";
+const ENV_TIMEOUT_SECS: &str = "DIPECS_CLOUD_LLM_TIMEOUT_SECS";
+const ENV_TEMPERATURE: &str = "DIPECS_CLOUD_LLM_TEMPERATURE";
+const ENV_SYSTEM_PROMPT: &str = "DIPECS_CLOUD_LLM_SYSTEM_PROMPT";
+const ENV_REASONING_EFFORT: &str = "DIPECS_CLOUD_LLM_REASONING_EFFORT";
+const ENV_ENABLE_THINKING: &str = "DIPECS_CLOUD_LLM_ENABLE_THINKING";
+const ENV_DEEPSEEK_API_KEY: &str = "DEEPSEEK_API_KEY";
+const ENV_DASHSCOPE_API_KEY: &str = "DASHSCOPE_API_KEY";
+
 const DEFAULT_TIMEOUT_SECS: u64 = 15;
 const DEFAULT_TEMPERATURE: f32 = 0.1;
 const DEFAULT_DEEPSEEK_ENDPOINT: &str = "https://api.deepseek.com/chat/completions";
@@ -38,7 +51,7 @@ Rules:
 "#;
 
 pub(super) fn cloud_llm_enabled() -> bool {
-    read_bool_var("DIPECS_CLOUD_LLM_ENABLED").unwrap_or(false)
+    read_bool_var(ENV_ENABLED).unwrap_or(false)
 }
 
 #[derive(Debug, Clone)]
@@ -56,24 +69,23 @@ pub(super) struct CloudLlmConfig {
 
 impl CloudLlmConfig {
     pub(super) fn from_env() -> Result<Self, String> {
-        let provider = read_var("DIPECS_CLOUD_LLM_PROVIDER")
+        let provider = read_var(ENV_PROVIDER)
             .as_deref()
             .map(CloudProvider::parse)
             .transpose()?
             .unwrap_or(CloudProvider::DeepSeek);
 
-        let endpoint = read_var("DIPECS_CLOUD_LLM_ENDPOINT")
-            .unwrap_or_else(|| provider.default_endpoint().to_string());
+        let endpoint =
+            read_var(ENV_ENDPOINT).unwrap_or_else(|| provider.default_endpoint().to_string());
         if endpoint.is_empty() {
-            return Err(
-                "DIPECS_CLOUD_LLM_ENDPOINT is required when cloud LLM is enabled".to_string(),
-            );
+            return Err(format!(
+                "{ENV_ENDPOINT} is required when cloud LLM is enabled"
+            ));
         }
 
-        let model = read_var("DIPECS_CLOUD_LLM_MODEL")
-            .unwrap_or_else(|| provider.default_model().to_string());
+        let model = read_var(ENV_MODEL).unwrap_or_else(|| provider.default_model().to_string());
         if model.is_empty() {
-            return Err("DIPECS_CLOUD_LLM_MODEL is required when cloud LLM is enabled".to_string());
+            return Err(format!("{ENV_MODEL} is required when cloud LLM is enabled"));
         }
 
         Ok(Self {
@@ -84,14 +96,12 @@ impl CloudLlmConfig {
                 .api_key_candidates()
                 .iter()
                 .find_map(|key| read_var(key)),
-            timeout_secs: read_u64_var("DIPECS_CLOUD_LLM_TIMEOUT_SECS")
-                .unwrap_or(DEFAULT_TIMEOUT_SECS),
-            temperature: read_f32_var("DIPECS_CLOUD_LLM_TEMPERATURE")
-                .unwrap_or(DEFAULT_TEMPERATURE),
-            system_prompt: read_var("DIPECS_CLOUD_LLM_SYSTEM_PROMPT")
+            timeout_secs: read_u64_var(ENV_TIMEOUT_SECS).unwrap_or(DEFAULT_TIMEOUT_SECS),
+            temperature: read_f32_var(ENV_TEMPERATURE).unwrap_or(DEFAULT_TEMPERATURE),
+            system_prompt: read_var(ENV_SYSTEM_PROMPT)
                 .unwrap_or_else(|| DEFAULT_SYSTEM_PROMPT.to_string()),
-            reasoning_effort: read_var("DIPECS_CLOUD_LLM_REASONING_EFFORT"),
-            enable_thinking: read_bool_var("DIPECS_CLOUD_LLM_ENABLE_THINKING"),
+            reasoning_effort: read_var(ENV_REASONING_EFFORT),
+            enable_thinking: read_bool_var(ENV_ENABLE_THINKING),
         })
     }
 }
@@ -135,9 +145,9 @@ impl CloudProvider {
 
     fn api_key_candidates(self) -> &'static [&'static str] {
         match self {
-            Self::GenericOpenAiCompatible => &["DIPECS_CLOUD_LLM_API_KEY"],
-            Self::DeepSeek => &["DIPECS_CLOUD_LLM_API_KEY", "DEEPSEEK_API_KEY"],
-            Self::Qwen => &["DIPECS_CLOUD_LLM_API_KEY", "DASHSCOPE_API_KEY"],
+            Self::GenericOpenAiCompatible => &[ENV_API_KEY],
+            Self::DeepSeek => &[ENV_API_KEY, ENV_DEEPSEEK_API_KEY],
+            Self::Qwen => &[ENV_API_KEY, ENV_DASHSCOPE_API_KEY],
         }
     }
 }

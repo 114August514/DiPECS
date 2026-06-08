@@ -32,10 +32,15 @@ impl DefaultTraceEngine {
         }
     }
 
-    /// 仅校验脱敏。`policy_match` / `execution_match` 字段会被显式置为
-    /// `false` 且各自携带一个 `"not validated"` 占位 divergence——这样
-    /// 调用方读到一个 `ReplayResult` 时不会把"未校验"误读为"通过"。
-    /// 要做端到端验证请改用 [`TraceValidator::validate`]。
+    /// 仅校验脱敏。`policy_match` 与 `execution_match` 显式置为 `false`，
+    /// 且对应的 divergence 列表为空 —— 含义是"这一层未被检查"，而不是
+    /// "检查过且失败"。两层语义分离：
+    ///
+    /// - match flag 回答"该层是否通过校验"。
+    /// - divergence 列表回答"如果失败了，是哪里失败"。
+    ///
+    /// 调用方通过 `result.all_match()` 自然区分；想做端到端校验请改用
+    /// [`TraceValidator::validate`]，它会把三层都填出来。
     pub fn validate_sanitization(&self, golden: &GoldenTrace) -> ReplayResult {
         let sanitization_divergences = self.sanitization_divergences(golden);
         ReplayResult {
@@ -43,7 +48,7 @@ impl DefaultTraceEngine {
             sanitization_match: sanitization_divergences.is_empty(),
             sanitization_divergences,
             policy_match: false,
-            policy_divergences: vec!["not validated by validate_sanitization".into()],
+            policy_divergences: vec![],
             execution_match: false,
             execution_divergences: vec![],
         }

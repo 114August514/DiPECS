@@ -245,7 +245,11 @@ fn mutated_rationale_tags_is_flagged() {
 fn validate_sanitization_marks_unchecked_layers_false() {
     // The sanitization-only entry point must not silently report
     // policy_match/execution_match as true — that would let callers
-    // misread "not checked" as "passed".
+    // misread "not checked" as "passed". The contract is: match flags
+    // answer "did this layer pass"; divergence lists answer "if it
+    // failed, where". Unchecked layers therefore have match=false AND
+    // empty divergence lists (not a sentinel string — that would
+    // conflate "not checked" with "checked and these are the problems").
     let golden = load_golden();
 
     let engine = DefaultTraceEngine::new(DefaultPrivacyAirGap);
@@ -255,12 +259,10 @@ fn validate_sanitization_marks_unchecked_layers_false() {
     assert!(!result.policy_match);
     assert!(!result.execution_match);
     assert!(
-        result
-            .policy_divergences
-            .iter()
-            .any(|d| d.contains("not validated")),
-        "policy_divergences must explicitly flag the unchecked layer"
+        result.policy_divergences.is_empty(),
+        "unchecked layers must have empty divergence lists, not sentinels"
     );
+    assert!(result.execution_divergences.is_empty());
     assert!(
         !result.all_match(),
         "all_match() must be false when policy/execution were not actually checked"

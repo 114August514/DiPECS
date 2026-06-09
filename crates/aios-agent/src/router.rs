@@ -13,6 +13,7 @@ use aios_spec::{
     DecisionBackendResult, DecisionRoute, SanitizedEventType, SemanticHint, StructuredContext,
 };
 
+use crate::backends::cloud_llm::CloudBackendState;
 use crate::backends::fallback::FallbackNoOpBackend;
 use crate::backends::rule_based::RuleBasedBackend;
 use crate::DecisionBackend;
@@ -83,8 +84,9 @@ enum RoutingReason {
     CircuitBreakerTripped { failure_count: u32 },
     PrivacySensitive { score: usize },
     LowComplexity,
-    MediumComplexity,
-    HighComplexity,
+    CloudPreferred { complexity: &'static str },
+    CloudDisabled { complexity: &'static str },
+    CloudMisconfigured { complexity: &'static str },
 }
 
 impl RoutingReason {
@@ -97,10 +99,15 @@ impl RoutingReason {
                 format!("routing:privacy_sensitive(score={})", score)
             },
             RoutingReason::LowComplexity => "routing:low_complexity".into(),
-            RoutingReason::MediumComplexity => {
-                "routing:medium_complexity(rule_based_fallback)".into()
+            RoutingReason::CloudPreferred { complexity } => {
+                format!("routing:{complexity}_complexity(cloud_llm)")
             },
-            RoutingReason::HighComplexity => "routing:high_complexity(rule_based_fallback)".into(),
+            RoutingReason::CloudDisabled { complexity } => {
+                format!("routing:{complexity}_complexity(rule_based_cloud_disabled)")
+            },
+            RoutingReason::CloudMisconfigured { complexity } => {
+                format!("routing:{complexity}_complexity(rule_based_cloud_misconfigured)")
+            },
         }
     }
 }
@@ -113,15 +120,24 @@ pub struct DecisionRouter {
     config: RouterConfig,
     rule_based: RuleBasedBackend,
     fallback: FallbackNoOpBackend,
+    cloud_llm: CloudBackendState,
     circuit_state: RefCell<CircuitState>,
 }
 
 impl DecisionRouter {
     pub fn new(config: RouterConfig) -> Self {
+        let cloud_llm = CloudBackendState::from_env();
+        if let CloudBackendState::Misconfigured(error) = &cloud_llm {
+            tracing::warn!(
+                error = %error,
+                "cloud llm backend configuration ignored; DecisionRouter will stay local"
+            );
+        }
         Self {
             config,
             rule_based: RuleBasedBackend,
             fallback: FallbackNoOpBackend,
+            cloud_llm,
             circuit_state: RefCell::new(CircuitState::default()),
         }
     }
@@ -132,16 +148,35 @@ impl DecisionRouter {
     /// across calls without requiring `&mut self`.
     pub fn evaluate(&self, context: &StructuredContext) -> DecisionBackendResult {
         let (route, reason) = self.determine_route(context);
+        let reason_tag = reason.tag();
 
         let mut result = match route {
             DecisionRoute::RuleBased => self.rule_based.evaluate(context),
+            DecisionRoute::CloudLlm => match &self.cloud_llm {
+                CloudBackendState::Ready(backend) => {
+                    let cloud_result = backend.evaluate(context);
+                    if let Some(error) = cloud_result.error.clone() {
+                        let mut fallback = self.rule_based.evaluate(context);
+                        fallback.error = Some(format!("cloud llm backend failed: {error}"));
+                        fallback
+                            .rationale_tags
+                            .push("backend:cloud_llm_error(rule_based_fallback)".to_string());
+                        fallback
+                    } else {
+                        cloud_result
+                    }
+                },
+                _ => self.rule_based.evaluate(context),
+            },
             DecisionRoute::FallbackNoOp => self.fallback.evaluate(context),
-            // Future routes (LocalEvaluator, CloudLlm) fall back to RuleBased
+            // Future routes (LocalEvaluator) fall back to RuleBased
             _ => self.rule_based.evaluate(context),
         };
 
         // Inject routing reason tag
-        result.rationale_tags.push(reason.tag());
+        if !result.rationale_tags.iter().any(|tag| tag == &reason_tag) {
+            result.rationale_tags.push(reason_tag);
+        }
 
         // Update circuit breaker state
         let mut state = self.circuit_state.borrow_mut();
@@ -186,8 +221,25 @@ impl DecisionRouter {
         let unique_types = Self::count_unique_semantic_hint_types(context);
         match unique_types {
             0 | 1 => (DecisionRoute::RuleBased, RoutingReason::LowComplexity),
-            2 | 3 => (DecisionRoute::RuleBased, RoutingReason::MediumComplexity),
-            _ => (DecisionRoute::RuleBased, RoutingReason::HighComplexity),
+            2 | 3 => self.cloud_route_or_fallback("medium"),
+            _ => self.cloud_route_or_fallback("high"),
+        }
+    }
+
+    fn cloud_route_or_fallback(&self, complexity: &'static str) -> (DecisionRoute, RoutingReason) {
+        match &self.cloud_llm {
+            CloudBackendState::Ready(_) => (
+                DecisionRoute::CloudLlm,
+                RoutingReason::CloudPreferred { complexity },
+            ),
+            CloudBackendState::Disabled => (
+                DecisionRoute::RuleBased,
+                RoutingReason::CloudDisabled { complexity },
+            ),
+            CloudBackendState::Misconfigured(_) => (
+                DecisionRoute::RuleBased,
+                RoutingReason::CloudMisconfigured { complexity },
+            ),
         }
     }
 

@@ -13,6 +13,9 @@ db-urls = ["https://github.com/rustsec/advisory-db"]
 allow = [
     "MIT",
     "Apache-2.0",
+    "ISC",
+    "BSD-3-Clause",
+    "CDLA-Permissive-2.0",
     "Unicode-3.0",
 ]
 confidence-threshold = 0.8
@@ -24,10 +27,21 @@ deny = [
     { name = "openssl", reason = "Use rustls for better Android cross-compilation and smaller size." },
     { name = "glob", reason = "Use walkdir for more robust cross-platform file traversal." }
 ]
-skip = [
-    { name = "wit-bindgen", reason = "wasip2/wasip3 pulled by getrandom depend on different versions" },
-]
 skip-tree = []
+
+[[bans.skip]]
+name = "wit-bindgen"
+reason = "wasip2/wasip3 pulled by getrandom depend on different versions"
+
+[[bans.skip]]
+name = "getrandom"
+version = "=0.2.17"
+reason = "ring/rustls and uuid currently require different major lines"
+
+[[bans.skip]]
+name = "windows-sys"
+version = "=0.52.0"
+reason = "ring still pulls an older windows-sys line transitively"
 
 [sources]
 unknown-registry = "deny"

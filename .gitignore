@@ -56,6 +56,8 @@ site/
 # --- [ 5. 密钥与隐私 ] ---
 # 严禁将任何密钥、Token 提交到 Git
 .env
+.env.*
+!.env.example
 *.pem
 *.key
 *.p12

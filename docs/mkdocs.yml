@@ -128,6 +128,8 @@ nav:
     - 代码地图: design/crates-map.md
     - Daemon 架构设计: design/daemon-architecture.md
     - Android 接口最小可运行边界: design/android-interface-mvp.md
+    - Android 动作能力边界: design/android-action-boundary.md
+    - Android 动作实现手册: design/android-action-implementation.md
     - 状态机设计: design/states.md
     - 版本发布: design/releases/v0.2.md
     - RFC 提案:

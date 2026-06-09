@@ -260,6 +260,13 @@ fn test_file_activity_generates_handle_file() {
         handle.suggested_actions[0].action_type,
         ActionType::PrefetchFile
     ));
+    assert!(
+        handle.suggested_actions[0]
+            .target
+            .as_deref()
+            .is_some_and(|target| target.starts_with("url:")),
+        "PrefetchFile should emit an Android bridge prefetch target"
+    );
 }
 
 #[test]

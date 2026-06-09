@@ -1,25 +1,22 @@
-//! # aios-action — 授权动作执行层
+//! # aios-action — authorized action execution layer
 //!
-//! 职责: 接收 PolicyEngine 校验通过的动作, 执行系统级操作。
+//! Responsibility: receive `AuthorizedAction` values approved by
+//! `PolicyEngine` and execute low-risk operations behind the action boundary.
 //!
-//! 当前阶段提供骨架实现, 所有操作通过 tracing 记录。
-//! 后续在真机/模拟器上实现真实的 syscall 调用。
+//! The default executor still preserves the existing stub behavior for local
+//! desktop replay. When explicitly enabled through environment variables, it
+//! can also forward supported actions to the Android localhost bridge.
 
-use aios_spec::traits::ActionExecutor;
-use aios_spec::traits::ActionResult;
-use aios_spec::ActionType;
-use aios_spec::AuthorizedAction;
+use std::env;
+use std::io::Write;
+use std::net::TcpStream;
 use std::time::Instant;
 
-/// 默认动作执行器
-///
-/// 执行经 PolicyEngine 校验后的 AuthorizedAction。
-/// 当前为骨架实现: 记录操作日志, 返回占位结果。
-/// 后续将对接真实 syscall:
-/// - PreWarmProcess → fork zygote, 调整 cgroup
-/// - PrefetchFile → posix_fadvise(POSIX_FADV_WILLNEED)
-/// - KeepAlive → /proc/pid/oom_score_adj 调整
-/// - ReleaseMemory → /proc/pid/reclaim 或 process_madvise(MADV_COLD)
+use aios_spec::traits::{ActionExecutor, ActionResult};
+use aios_spec::{ActionType, AuthorizedAction};
+use serde_json::to_string;
+
+/// Default action executor used by replay and daemon pipelines.
 pub struct DefaultActionExecutor;
 
 impl ActionExecutor for DefaultActionExecutor {
@@ -28,13 +25,39 @@ impl ActionExecutor for DefaultActionExecutor {
         let action = &authorized.action;
         let action_name = format!("{:?}", action.action_type);
 
+        if let Some(config) = AndroidBridgeConfig::from_env() {
+            match try_forward_to_android_bridge(authorized, &config) {
+                Ok(ForwardOutcome::Forwarded) => {
+                    return ActionResult {
+                        action_type: action_name,
+                        target: action.target.clone(),
+                        success: true,
+                        error: None,
+                        latency_us: start.elapsed().as_micros() as u64,
+                    };
+                },
+                Ok(ForwardOutcome::Skipped(reason)) => {
+                    tracing::debug!(reason = %reason, "Android action bridge skipped");
+                },
+                Err(error) => {
+                    return ActionResult {
+                        action_type: action_name,
+                        target: action.target.clone(),
+                        success: false,
+                        error: Some(error),
+                        latency_us: start.elapsed().as_micros() as u64,
+                    };
+                },
+            }
+        }
+
         let (success, error) = match action.action_type {
             ActionType::PreWarmProcess => {
                 if let Some(ref target) = action.target {
                     tracing::info!(
                         target = %target,
                         urgency = ?action.urgency,
-                        "PreWarmProcess: stub (zygote fork not yet implemented)"
+                        "PreWarmProcess: stub (third-party prewarm is not implemented)"
                     );
                     (true, None)
                 } else {
@@ -45,7 +68,7 @@ impl ActionExecutor for DefaultActionExecutor {
                 tracing::info!(
                     target = ?action.target,
                     urgency = ?action.urgency,
-                    "PrefetchFile: stub (posix_fadvise not yet implemented)"
+                    "PrefetchFile: stub (local desktop fallback)"
                 );
                 (true, None)
             },
@@ -54,7 +77,7 @@ impl ActionExecutor for DefaultActionExecutor {
                     tracing::info!(
                         target = %target,
                         urgency = ?action.urgency,
-                        "KeepAlive: stub (oom_score_adj write not yet implemented)"
+                        "KeepAlive: stub (Android-safe keepalive not wired here)"
                     );
                     (true, None)
                 } else {
@@ -66,7 +89,7 @@ impl ActionExecutor for DefaultActionExecutor {
                 tracing::info!(
                     target = ?action.target,
                     urgency = ?action.urgency,
-                    "ReleaseMemory: stub (/proc/pid/reclaim not yet implemented)"
+                    "ReleaseMemory: stub (Android-safe release not wired here)"
                 );
                 (true, None)
             },
@@ -89,5 +112,157 @@ impl ActionExecutor for DefaultActionExecutor {
 impl Default for DefaultActionExecutor {
     fn default() -> Self {
         Self
+    }
+}
+
+#[derive(Debug, Clone)]
+struct AndroidBridgeConfig {
+    host: String,
+    port: u16,
+}
+
+impl AndroidBridgeConfig {
+    fn from_env() -> Option<Self> {
+        if !env_flag("DIPECS_ANDROID_ACTION_BRIDGE_ENABLED") {
+            return None;
+        }
+
+        let host = env::var("DIPECS_ANDROID_ACTION_BRIDGE_HOST")
+            .ok()
+            .filter(|value| !value.trim().is_empty())
+            .unwrap_or_else(|| "127.0.0.1".to_string());
+        let port = env::var("DIPECS_ANDROID_ACTION_BRIDGE_PORT")
+            .ok()
+            .and_then(|value| value.parse::<u16>().ok())
+            .unwrap_or(46321);
+        Some(Self { host, port })
+    }
+}
+
+#[derive(Debug, PartialEq, Eq)]
+enum ForwardOutcome {
+    Forwarded,
+    Skipped(&'static str),
+}
+
+fn try_forward_to_android_bridge(
+    authorized: &AuthorizedAction,
+    config: &AndroidBridgeConfig,
+) -> Result<ForwardOutcome, String> {
+    if !matches!(authorized.action.action_type, ActionType::PrefetchFile) {
+        return Ok(ForwardOutcome::Skipped(
+            "only PrefetchFile is currently supported by the Android bridge",
+        ));
+    }
+
+    let Some(target) = authorized.action.target.as_deref() else {
+        return Ok(ForwardOutcome::Skipped(
+            "PrefetchFile without target keeps local stub behavior",
+        ));
+    };
+
+    if !(target.starts_with("url:") || target.starts_with("uri:")) {
+        return Ok(ForwardOutcome::Skipped(
+            "PrefetchFile target is not an Android bridge target",
+        ));
+    }
+
+    let payload = to_string(authorized)
+        .map_err(|error| format!("serialize AuthorizedAction for Android bridge: {error}"))?;
+    let mut stream = TcpStream::connect((&*config.host, config.port)).map_err(|error| {
+        format!(
+            "connect Android action bridge {}:{}: {error}",
+            config.host, config.port
+        )
+    })?;
+    stream.write_all(payload.as_bytes()).map_err(|error| {
+        format!(
+            "write AuthorizedAction to Android bridge {}:{}: {error}",
+            config.host, config.port
+        )
+    })?;
+    stream.flush().map_err(|error| {
+        format!(
+            "flush AuthorizedAction to Android bridge {}:{}: {error}",
+            config.host, config.port
+        )
+    })?;
+
+    tracing::info!(
+        host = %config.host,
+        port = config.port,
+        target = %target,
+        "Forwarded AuthorizedAction to Android bridge"
+    );
+    Ok(ForwardOutcome::Forwarded)
+}
+
+fn env_flag(name: &str) -> bool {
+    matches!(
+        env::var(name).ok().as_deref(),
+        Some("1" | "true" | "TRUE" | "yes" | "YES" | "on" | "ON")
+    )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{env_flag, try_forward_to_android_bridge, AndroidBridgeConfig, ForwardOutcome};
+    use aios_spec::{ActionType, ActionUrgency, AuthorizedAction, SuggestedAction};
+
+    fn make_action(action_type: ActionType, target: Option<&str>) -> AuthorizedAction {
+        AuthorizedAction {
+            intent_id: "intent-test".into(),
+            action: SuggestedAction {
+                action_type,
+                target: target.map(|s| s.to_string()),
+                urgency: ActionUrgency::Immediate,
+            },
+            authorized_at_ms: 1000,
+        }
+    }
+
+    #[test]
+    fn bridge_skips_non_prefetch_actions() {
+        let config = AndroidBridgeConfig {
+            host: "127.0.0.1".into(),
+            port: 46321,
+        };
+        let action = make_action(ActionType::NoOp, None);
+        let result = try_forward_to_android_bridge(&action, &config).unwrap();
+        assert_eq!(
+            result,
+            ForwardOutcome::Skipped(
+                "only PrefetchFile is currently supported by the Android bridge"
+            )
+        );
+    }
+
+    #[test]
+    fn bridge_skips_non_android_targets() {
+        let config = AndroidBridgeConfig {
+            host: "127.0.0.1".into(),
+            port: 46321,
+        };
+        let action = make_action(ActionType::PrefetchFile, Some("/tmp/cache.db"));
+        let result = try_forward_to_android_bridge(&action, &config).unwrap();
+        assert_eq!(
+            result,
+            ForwardOutcome::Skipped("PrefetchFile target is not an Android bridge target")
+        );
+    }
+
+    #[test]
+    fn env_flag_accepts_true_values() {
+        assert!(env_flag_eval("true"));
+        assert!(env_flag_eval("1"));
+        assert!(env_flag_eval("ON"));
+        assert!(!env_flag_eval("false"));
+    }
+
+    fn env_flag_eval(value: &str) -> bool {
+        std::env::set_var("DIPECS_TEST_FLAG", value);
+        let enabled = env_flag("DIPECS_TEST_FLAG");
+        std::env::remove_var("DIPECS_TEST_FLAG");
+        enabled
     }
 }

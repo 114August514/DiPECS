@@ -12,6 +12,8 @@ import android.os.IBinder
 import android.os.Looper
 import com.dipecs.collector.MainActivity
 import com.dipecs.collector.R
+import com.dipecs.collector.actions.ActionExecutorBridge
+import com.dipecs.collector.actions.AuthorizedActionSocketServer
 import com.dipecs.collector.collectors.DeviceContextCollector
 import com.dipecs.collector.collectors.UsageCollector
 import com.dipecs.collector.model.AndroidRawEventMapper
@@ -24,6 +26,7 @@ import org.json.JSONObject
 class CollectorForegroundService : Service() {
     private val handler = Handler(Looper.getMainLooper())
     private lateinit var usageCollector: UsageCollector
+    private var actionSocketServer: AuthorizedActionSocketServer? = null
     private var running = false
 
     private val pollRunnable = object : Runnable {
@@ -76,6 +79,7 @@ class CollectorForegroundService : Service() {
         super.onCreate()
         usageCollector = UsageCollector(this)
         createNotificationChannel()
+        startActionSocketServer()
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -83,6 +87,8 @@ class CollectorForegroundService : Service() {
             ACTION_START -> startCollector()
             ACTION_STOP -> stopCollector()
             ACTION_UPLOAD_NOW -> CloudUploader.uploadRecent(this, reason = "manual")
+            ACTION_PREFETCH_NOW -> triggerPrefetch(intent ?: Intent())
+            ACTION_EXECUTE_AUTHORIZED_ACTION -> triggerAuthorizedAction(intent ?: Intent())
         }
         return START_STICKY
     }
@@ -90,6 +96,8 @@ class CollectorForegroundService : Service() {
     override fun onDestroy() {
         running = false
         handler.removeCallbacksAndMessages(null)
+        actionSocketServer?.stop()
+        actionSocketServer = null
         EventRepository.recordInternal(this, "collector_service_destroyed", "Collector foreground service destroyed")
         super.onDestroy()
     }
@@ -116,6 +124,74 @@ class CollectorForegroundService : Service() {
         EventRepository.recordInternal(this, "collector_service_stopped", "Collector foreground service stopped")
         stopForeground(STOP_FOREGROUND_REMOVE)
         stopSelf()
+    }
+
+    private fun triggerPrefetch(intent: Intent) {
+        val target = intent.getStringExtra(EXTRA_PREFETCH_TARGET)
+            ?: CollectorPreferences.prefetchTarget(this)
+        val shouldStopAfterDispatch = !running
+
+        if (target.isBlank()) {
+            EventRepository.recordInternal(
+                this,
+                "prefetch_skipped",
+                "No prefetch target configured",
+            )
+            if (shouldStopAfterDispatch) {
+                stopSelf()
+            }
+            return
+        }
+
+        ActionExecutorBridge.dispatch(
+            this,
+            ActionExecutorBridge.ACTION_TYPE_PREFETCH_FILE,
+            target,
+            reason = "service",
+        )
+        if (shouldStopAfterDispatch) {
+            stopSelf()
+        }
+    }
+
+    private fun triggerAuthorizedAction(intent: Intent) {
+        val payload = intent.getStringExtra(EXTRA_AUTHORIZED_ACTION_JSON)
+            ?.takeIf { it.isNotBlank() }
+            ?: CollectorPreferences.authorizedActionJson(this)
+        val shouldStopAfterDispatch = !running
+
+        if (payload.isBlank()) {
+            EventRepository.recordInternal(
+                this,
+                "authorized_action_skipped",
+                "No AuthorizedAction JSON configured",
+            )
+            if (shouldStopAfterDispatch) {
+                stopSelf()
+            }
+            return
+        }
+
+        runCatching { JSONObject(payload) }
+            .onSuccess { json ->
+                ActionExecutorBridge.dispatchAuthorizedActionJson(
+                    this,
+                    json,
+                    reason = "service_authorized_action",
+                )
+            }
+            .onFailure { error ->
+                EventRepository.recordInternal(
+                    this,
+                    "authorized_action_rejected",
+                    error.message ?: "Invalid AuthorizedAction JSON",
+                    JSONObject().put("payload", payload.take(2048)),
+                )
+            }
+
+        if (shouldStopAfterDispatch) {
+            stopSelf()
+        }
     }
 
     private fun foregroundNotification(content: String): Notification {
@@ -156,10 +232,22 @@ class CollectorForegroundService : Service() {
         getSystemService(NotificationManager::class.java)?.createNotificationChannel(channel)
     }
 
+    private fun startActionSocketServer() {
+        if (actionSocketServer != null) {
+            return
+        }
+        val port = CollectorPreferences.actionSocketPort(this)
+        actionSocketServer = AuthorizedActionSocketServer(applicationContext, port).also { it.start() }
+    }
+
     companion object {
         const val ACTION_START = "com.dipecs.collector.action.START"
         const val ACTION_STOP = "com.dipecs.collector.action.STOP"
         const val ACTION_UPLOAD_NOW = "com.dipecs.collector.action.UPLOAD_NOW"
+        const val ACTION_PREFETCH_NOW = "com.dipecs.collector.action.PREFETCH_NOW"
+        const val ACTION_EXECUTE_AUTHORIZED_ACTION = "com.dipecs.collector.action.EXECUTE_AUTHORIZED_ACTION"
+        const val EXTRA_PREFETCH_TARGET = "prefetch_target"
+        const val EXTRA_AUTHORIZED_ACTION_JSON = "authorized_action_json"
 
         private const val CHANNEL_ID = "dipecs_collector"
         private const val NOTIFICATION_ID = 1101

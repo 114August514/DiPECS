@@ -47,8 +47,8 @@ jobs:
         run: |
           # 核心屏障: aios-spec 零引用
           cargo tree -p aios-spec --prefix none | grep "aios-" | grep -v "aios-spec" && exit 1 || echo "Spec barrier passed."
-          # 层级流向: adapter 不能向上引用 agent/cli
-          cargo tree -p aios-adapter --prefix none | grep -E "aios-agent|aios-cli" && exit 1 || echo "Hierarchy flow passed."
+          # 层级流向: action/adapter 边界不能向上引用 agent/cli
+          cargo tree -p aios-action --prefix none | grep -E "aios-agent|aios-cli" && exit 1 || echo "Hierarchy flow passed."
 
   # 3. 隐私脱敏红线校验 (本地脱敏逻辑回归测试)
   privacy:

@@ -63,6 +63,12 @@ impl AndroidJsonlIngress {
     }
 }
 
+impl Default for AndroidJsonlIngress {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 /// Polls an append-only Android `actions.jsonl` file.
 ///
 /// The tailer keeps byte offset state between polls. If the file is truncated

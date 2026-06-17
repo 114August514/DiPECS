@@ -10,6 +10,8 @@ use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
 use tracing::info;
 
+const DEFAULT_ANDROID_ACTION_BRIDGE_PORT: u16 = 46321;
+
 #[derive(Parser, Debug)]
 #[command(name = "aios-cli", about = "DiPECS internal tooling", version)]
 struct Cli {
@@ -65,8 +67,12 @@ enum Command {
         host: String,
 
         /// Target port. Must match the Android collector socket port.
-        #[arg(long, default_value_t = 46321)]
+        #[arg(long, default_value_t = DEFAULT_ANDROID_ACTION_BRIDGE_PORT)]
         port: u16,
+
+        /// Shared auth token required by the Android action socket.
+        #[arg(long)]
+        auth_token: Option<String>,
     },
 }
 
@@ -151,11 +157,13 @@ fn main() -> Result<()> {
             prefetch_target,
             host,
             port,
+            auth_token,
         } => {
             let payload = android_bridge::load_payload(
                 json.as_deref(),
                 file.as_deref(),
                 prefetch_target.as_deref(),
+                auth_token.as_deref(),
             )?;
             android_bridge::send_authorized_action(&host, port, &payload)?;
             tracing::info!(host = %host, port, "authorized action sent");

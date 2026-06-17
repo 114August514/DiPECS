@@ -2,6 +2,10 @@ package com.dipecs.collector
 
 import android.Manifest
 import android.app.Activity
+import android.content.ClipData
+import android.content.ClipDescription
+import android.content.ClipboardManager
+import android.content.Context
 import android.content.Intent
 import android.content.Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION
 import android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION
@@ -10,6 +14,7 @@ import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.os.Build
 import android.os.Bundle
+import android.os.PersistableBundle
 import android.provider.Settings
 import android.view.View
 import android.widget.AdapterView
@@ -328,7 +333,7 @@ class MainActivity : Activity() {
         content.addView(sectionLabel("AuthorizedAction JSON"))
         content.addView(authorizedActionInput)
         actionSocketPortInput = EditText(this).apply {
-            hint = "46321"
+            hint = CollectorPreferences.DEFAULT_ACTION_SOCKET_PORT.toString()
             inputType = android.text.InputType.TYPE_CLASS_NUMBER
             setSingleLine(true)
             setText(CollectorPreferences.actionSocketPort(this@MainActivity).toString())
@@ -336,14 +341,19 @@ class MainActivity : Activity() {
         content.addView(sectionLabel("Action socket port"))
         content.addView(actionSocketPortInput)
         content.addView(TextView(this).apply {
-            text = "Use Rust AuthorizedAction JSON shape directly, or send it over the localhost socket from aios-cli. From a desktop host, usually run adb forward tcp:PORT tcp:PORT first."
+            text = "Socket payloads require auth_token. Provide the token out-of-band with aios-cli --auth-token. From a desktop host, usually run adb forward tcp:PORT tcp:PORT first."
             textSize = 12f
             setTextColor(Color.rgb(75, 85, 99))
             setPadding(0, 8, 0, 10)
         })
+        content.addView(rowButton("Copy Action Socket Token") {
+            copyActionSocketToken()
+        })
         content.addView(rowButton("Save AuthorizedAction JSON") {
             CollectorPreferences.setAuthorizedActionJson(this@MainActivity, authorizedActionInput.text.toString())
-            saveActionSocketPort()
+            if (!saveActionSocketPort()) {
+                return@rowButton
+            }
             EventRepository.recordInternal(
                 this@MainActivity,
                 "authorized_action_saved",
@@ -506,7 +516,9 @@ class MainActivity : Activity() {
         CollectorPreferences.setApiKey(this, apiKeyInput.text.toString())
         CollectorPreferences.setPrefetchTarget(this, prefetchTargetInput.text.toString())
         CollectorPreferences.setAuthorizedActionJson(this, authorizedActionInput.text.toString())
-        saveActionSocketPort()
+        if (!saveActionSocketPort()) {
+            return
+        }
         EventRepository.recordInternal(
             this,
             "upload_config_saved",
@@ -542,6 +554,7 @@ class MainActivity : Activity() {
             appendLine("Prefetch target: ${CollectorPreferences.prefetchTarget(this@MainActivity).ifBlank { "(not set)" }}")
             appendLine("AuthorizedAction JSON: ${if (CollectorPreferences.authorizedActionJson(this@MainActivity).isBlank()) "(not set)" else "configured"}")
             appendLine("Action socket: 127.0.0.1:${CollectorPreferences.actionSocketPort(this@MainActivity)}")
+            appendLine("Action socket token: ${redactSecret(CollectorPreferences.actionSocketToken(this@MainActivity))}")
             appendLine()
         }
         eventPreviewView.text = formatRecentEvents(store)
@@ -600,6 +613,13 @@ class MainActivity : Activity() {
 
     private fun toggleMark(enabled: Boolean): String = if (enabled) "enabled" else "disabled"
 
+    private fun redactSecret(secret: String): String =
+        if (secret.isBlank()) {
+            "(not set)"
+        } else {
+            "configured (...${secret.takeLast(6)})"
+        }
+
     private fun startCollectorService(
         action: String,
         prefetchTarget: String? = null,
@@ -631,11 +651,34 @@ class MainActivity : Activity() {
         }
     }
 
-    private fun saveActionSocketPort() {
-        val port = actionSocketPortInput.text.toString().trim().toIntOrNull()
-        if (port != null && port in 1024..65535) {
-            CollectorPreferences.setActionSocketPort(this, port)
+    private fun saveActionSocketPort(): Boolean {
+        val text = actionSocketPortInput.text.toString().trim()
+        val port = text.toIntOrNull()
+        if (port == null || port !in 1024..65535) {
+            toast("Action socket port must be between 1024 and 65535")
+            actionSocketPortInput.setText(CollectorPreferences.actionSocketPort(this).toString())
+            return false
         }
+        CollectorPreferences.setActionSocketPort(this, port)
+        return true
+    }
+
+    private fun copyActionSocketToken() {
+        val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
+        if (clipboard == null) {
+            toast("Clipboard service unavailable")
+            return
+        }
+        val token = CollectorPreferences.actionSocketToken(this)
+        val clip = ClipData.newPlainText("DiPECS action socket token", token)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            clip.description.extras = PersistableBundle().apply {
+                putBoolean(ClipDescription.EXTRA_IS_SENSITIVE, true)
+            }
+        }
+        clipboard.setPrimaryClip(clip)
+        toast("Action socket token copied")
+        refreshStatus()
     }
 
     private fun toast(message: String) {

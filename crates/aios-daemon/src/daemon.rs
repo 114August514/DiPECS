@@ -3,7 +3,7 @@
 //! This stays in `aios-daemon` because daemonization and signal wiring are
 //! executable runtime concerns, not collection, decision, or action logic.
 
-use std::process;
+use std::{io, process};
 
 /// Move the current process into daemon mode with `fork` + `setsid`.
 ///
@@ -30,22 +30,42 @@ pub fn daemonize() {
                 process::exit(1);
             }
 
-            let _ = libc::chdir(c"/".as_ptr());
+            if libc::chdir(c"/".as_ptr()) < 0 {
+                tracing::error!("chdir failed: {}", io::Error::last_os_error());
+                process::exit(1);
+            }
 
-            let _ = libc::close(0);
-            let _ = libc::close(1);
-            let _ = libc::close(2);
-
-            let fd = libc::open(c"/dev/null".as_ptr(), libc::O_RDWR);
-            assert_eq!(fd, 0);
-            let fd = libc::dup(0);
-            assert_eq!(fd, 1);
-            let fd = libc::dup(0);
-            assert_eq!(fd, 2);
+            if redirect_stdio_to_dev_null() < 0 {
+                tracing::error!("stdio redirect failed: {}", io::Error::last_os_error());
+                process::exit(1);
+            }
         }
     }
 
     tracing::info!("dipecsd daemon started (pid={})", process::id());
+}
+
+#[cfg(target_os = "linux")]
+unsafe fn redirect_stdio_to_dev_null() -> libc::c_int {
+    for fd in 0..=2 {
+        // SAFETY: close is called with the standard fd numbers only.
+        let _ = unsafe { libc::close(fd) };
+    }
+
+    // SAFETY: opening the constant /dev/null path is the POSIX stdio redirect primitive.
+    let null_fd = unsafe { libc::open(c"/dev/null".as_ptr(), libc::O_RDWR) };
+    if null_fd != 0 {
+        return -1;
+    }
+
+    for expected_fd in 1..=2 {
+        // SAFETY: fd 0 is the opened /dev/null descriptor, dup returns the next stdio fd.
+        let fd = unsafe { libc::dup(0) };
+        if fd != expected_fd {
+            return -1;
+        }
+    }
+    0
 }
 
 /// Install SIGINT/SIGTERM handlers and return a shutdown receiver.

@@ -115,7 +115,7 @@ cp .env.example .env
 向 Android localhost bridge 发送一个授权预取动作：
 
 ```bash
-cargo run -p aios-cli -- send-authorized-action --prefetch-target url:https://example.test/feed.json --host 127.0.0.1 --port 46321
+cargo run -p aios-cli -- send-authorized-action --prefetch-target url:https://example.test/feed.json --auth-token <token-copied-from-app> --host 127.0.0.1 --port 46321
 ```
 
 完整开发命令见 [开发指南](docs/src/team/dev.md)，Android collector 细节见 [apps/android-collector/README.md](apps/android-collector/README.md)。

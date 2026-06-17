@@ -61,6 +61,28 @@ Rows with `rawEvent: null` are skipped. Rows with a valid Rust `RawEvent`
 shape are wrapped as `CollectorEnvelope` with `SourceTier::PublicApi` and sent
 through the normal daemon pipeline.
 
+## Authorized Action Socket
+
+The localhost action socket requires an `auth_token` field in every payload.
+The Android app stores the token in encrypted app preferences. The status panel
+only shows a redacted token; use **Copy Action Socket Token** when you need to
+pass it to local tooling. Send actions with:
+
+```bash
+cargo run -p aios-cli -- send-authorized-action \
+  --prefetch-target url:https://example.test/feed.json \
+  --auth-token <token-copied-from-app> \
+  --host 127.0.0.1 \
+  --port 46321
+```
+
+When `aios-action` forwards approved actions directly, set:
+
+```bash
+DIPECS_ANDROID_ACTION_BRIDGE_ENABLED=true
+DIPECS_ANDROID_ACTION_BRIDGE_TOKEN=<token-copied-from-app>
+```
+
 ## Build
 
 Open `apps/android-collector` in Android Studio, or run this from that directory:

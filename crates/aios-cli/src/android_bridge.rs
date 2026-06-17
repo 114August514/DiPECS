@@ -10,8 +10,9 @@ pub fn load_payload(
     json_text: Option<&str>,
     payload_file: Option<&Path>,
     prefetch_target: Option<&str>,
+    auth_token: Option<&str>,
 ) -> Result<String> {
-    match (json_text, payload_file, prefetch_target) {
+    let payload = match (json_text, payload_file, prefetch_target) {
         (Some(_), Some(_), _) | (Some(_), _, Some(_)) | (_, Some(_), Some(_)) => {
             bail!("choose exactly one of --json, --file, or --prefetch-target")
         },
@@ -34,7 +35,8 @@ pub fn load_payload(
         (None, None, None) => {
             bail!("provide one of --json, --file, or --prefetch-target")
         },
-    }
+    }?;
+    inject_auth_token(&payload, auth_token)
 }
 
 pub fn send_authorized_action(host: &str, port: u16, payload: &str) -> Result<()> {
@@ -54,6 +56,18 @@ fn validate_and_compact(text: &str) -> Result<String> {
     Ok(value.to_string())
 }
 
+fn inject_auth_token(payload: &str, auth_token: Option<&str>) -> Result<String> {
+    let Some(token) = auth_token else {
+        return Ok(payload.to_string());
+    };
+    let mut value: Value = serde_json::from_str(payload).context("payload is not valid JSON")?;
+    let Some(object) = value.as_object_mut() else {
+        bail!("payload must be a JSON object")
+    };
+    object.insert("auth_token".to_string(), Value::String(token.to_string()));
+    Ok(value.to_string())
+}
+
 #[cfg(test)]
 mod tests {
     use super::load_payload;
@@ -61,7 +75,8 @@ mod tests {
 
     #[test]
     fn build_prefetch_payload_from_target() {
-        let payload = load_payload(None, None, Some("url:https://example.test/feed.json")).unwrap();
+        let payload =
+            load_payload(None, None, Some("url:https://example.test/feed.json"), None).unwrap();
         let value: Value = serde_json::from_str(&payload).unwrap();
 
         assert_eq!(value["action"]["action_type"], "PrefetchFile");
@@ -77,9 +92,39 @@ mod tests {
             Some("{\n  \"intent_id\": \"demo\",\n  \"action\": {\"action_type\": \"NoOp\", \"urgency\": \"IdleTime\"},\n  \"authorized_at_ms\": 0\n}"),
             None,
             None,
+            None,
         )
         .unwrap();
 
         assert!(!payload.contains('\n'));
+    }
+
+    #[test]
+    fn inject_auth_token_into_json_payload() {
+        let payload = load_payload(
+            Some(r#"{"intent_id":"demo","action":{"action_type":"NoOp","urgency":"IdleTime"},"authorized_at_ms":0}"#),
+            None,
+            None,
+            Some("secret-token"),
+        )
+        .unwrap();
+        let value: Value = serde_json::from_str(&payload).unwrap();
+
+        assert_eq!(value["auth_token"], "secret-token");
+    }
+
+    #[test]
+    fn prefetch_payload_includes_auth_token() {
+        let payload = load_payload(
+            None,
+            None,
+            Some("url:https://example.test/feed.json"),
+            Some("secret-token"),
+        )
+        .unwrap();
+        let value: Value = serde_json::from_str(&payload).unwrap();
+
+        assert_eq!(value["auth_token"], "secret-token");
+        assert_eq!(value["action"]["action_type"], "PrefetchFile");
     }
 }

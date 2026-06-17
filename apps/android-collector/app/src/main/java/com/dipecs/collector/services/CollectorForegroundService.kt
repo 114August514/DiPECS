@@ -237,7 +237,9 @@ class CollectorForegroundService : Service() {
             return
         }
         val port = CollectorPreferences.actionSocketPort(this)
-        actionSocketServer = AuthorizedActionSocketServer(applicationContext, port).also { it.start() }
+        val token = CollectorPreferences.actionSocketToken(this)
+        actionSocketServer = AuthorizedActionSocketServer(applicationContext, port, token)
+            .also { it.start() }
     }
 
     companion object {

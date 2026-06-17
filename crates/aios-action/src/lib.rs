@@ -14,7 +14,9 @@ use std::time::Instant;
 
 use aios_spec::traits::{ActionExecutor, ActionResult};
 use aios_spec::{ActionType, AuthorizedAction};
-use serde_json::to_string;
+use serde_json::{to_string, to_value, Value};
+
+const DEFAULT_ANDROID_ACTION_BRIDGE_PORT: u16 = 46321;
 
 /// Default action executor used by replay and daemon pipelines.
 pub struct DefaultActionExecutor;
@@ -119,6 +121,7 @@ impl Default for DefaultActionExecutor {
 struct AndroidBridgeConfig {
     host: String,
     port: u16,
+    auth_token: Option<String>,
 }
 
 impl AndroidBridgeConfig {
@@ -134,8 +137,15 @@ impl AndroidBridgeConfig {
         let port = env::var("DIPECS_ANDROID_ACTION_BRIDGE_PORT")
             .ok()
             .and_then(|value| value.parse::<u16>().ok())
-            .unwrap_or(46321);
-        Some(Self { host, port })
+            .unwrap_or(DEFAULT_ANDROID_ACTION_BRIDGE_PORT);
+        let auth_token = env::var("DIPECS_ANDROID_ACTION_BRIDGE_TOKEN")
+            .ok()
+            .filter(|value| !value.trim().is_empty());
+        Some(Self {
+            host,
+            port,
+            auth_token,
+        })
     }
 }
 
@@ -167,8 +177,14 @@ fn try_forward_to_android_bridge(
         ));
     }
 
-    let payload = to_string(authorized)
-        .map_err(|error| format!("serialize AuthorizedAction for Android bridge: {error}"))?;
+    let Some(auth_token) = config.auth_token.as_deref() else {
+        return Err(
+            "DIPECS_ANDROID_ACTION_BRIDGE_TOKEN is required when forwarding to Android bridge"
+                .into(),
+        );
+    };
+
+    let payload = authorized_action_payload(authorized, auth_token)?;
     let mut stream = TcpStream::connect((&*config.host, config.port)).map_err(|error| {
         format!(
             "connect Android action bridge {}:{}: {error}",
@@ -197,6 +213,23 @@ fn try_forward_to_android_bridge(
     Ok(ForwardOutcome::Forwarded)
 }
 
+fn authorized_action_payload(
+    authorized: &AuthorizedAction,
+    auth_token: &str,
+) -> Result<String, String> {
+    let mut value = to_value(authorized)
+        .map_err(|error| format!("serialize AuthorizedAction for Android bridge: {error}"))?;
+    let Some(object) = value.as_object_mut() else {
+        return Err("serialized AuthorizedAction was not a JSON object".into());
+    };
+    object.insert(
+        "auth_token".to_string(),
+        Value::String(auth_token.to_string()),
+    );
+    to_string(&value)
+        .map_err(|error| format!("serialize authenticated Android bridge payload: {error}"))
+}
+
 fn env_flag(name: &str) -> bool {
     matches!(
         env::var(name).ok().as_deref(),
@@ -206,8 +239,12 @@ fn env_flag(name: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::{env_flag, try_forward_to_android_bridge, AndroidBridgeConfig, ForwardOutcome};
+    use super::{
+        authorized_action_payload, env_flag, try_forward_to_android_bridge, AndroidBridgeConfig,
+        ForwardOutcome, DEFAULT_ANDROID_ACTION_BRIDGE_PORT,
+    };
     use aios_spec::{ActionType, ActionUrgency, AuthorizedAction, SuggestedAction};
+    use serde_json::Value;
 
     fn make_action(action_type: ActionType, target: Option<&str>) -> AuthorizedAction {
         AuthorizedAction {
@@ -225,7 +262,8 @@ mod tests {
     fn bridge_skips_non_prefetch_actions() {
         let config = AndroidBridgeConfig {
             host: "127.0.0.1".into(),
-            port: 46321,
+            port: DEFAULT_ANDROID_ACTION_BRIDGE_PORT,
+            auth_token: Some("secret-token".into()),
         };
         let action = make_action(ActionType::NoOp, None);
         let result = try_forward_to_android_bridge(&action, &config).unwrap();
@@ -241,7 +279,8 @@ mod tests {
     fn bridge_skips_non_android_targets() {
         let config = AndroidBridgeConfig {
             host: "127.0.0.1".into(),
-            port: 46321,
+            port: DEFAULT_ANDROID_ACTION_BRIDGE_PORT,
+            auth_token: Some("secret-token".into()),
         };
         let action = make_action(ActionType::PrefetchFile, Some("/tmp/cache.db"));
         let result = try_forward_to_android_bridge(&action, &config).unwrap();
@@ -257,6 +296,19 @@ mod tests {
         assert!(env_flag_eval("1"));
         assert!(env_flag_eval("ON"));
         assert!(!env_flag_eval("false"));
+    }
+
+    #[test]
+    fn bridge_payload_includes_auth_token() {
+        let action = make_action(
+            ActionType::PrefetchFile,
+            Some("url:https://example.test/feed.json"),
+        );
+        let payload = authorized_action_payload(&action, "secret-token").unwrap();
+        let value: Value = serde_json::from_str(&payload).unwrap();
+
+        assert_eq!(value["auth_token"], "secret-token");
+        assert_eq!(value["action"]["action_type"], "PrefetchFile");
     }
 
     fn env_flag_eval(value: &str) -> bool {

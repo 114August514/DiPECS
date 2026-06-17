@@ -40,12 +40,7 @@ impl CloudLlmBackend {
             .map_err(|error| format!("request failed: {error}"))?;
         let status = response.status();
         if !status.is_success() {
-            let body = response.text().unwrap_or_default();
-            return Err(format!(
-                "HTTP {}: {}",
-                status.as_u16(),
-                truncate(&body, 512)
-            ));
+            return Err(format!("HTTP {} from cloud LLM endpoint", status.as_u16()));
         }
 
         let payload: ChatCompletionResponse = response
@@ -127,10 +122,6 @@ impl DecisionBackend for CloudLlmBackend {
             },
         }
     }
-}
-
-fn truncate(text: &str, limit: usize) -> String {
-    text.chars().take(limit).collect()
 }
 
 #[derive(Debug, Serialize)]

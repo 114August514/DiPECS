@@ -103,7 +103,7 @@ class MainActivity : Activity() {
             setTextColor(Color.rgb(17, 24, 39))
         })
         root.addView(TextView(this).apply {
-            text = "Phase 1 collector dashboard: enable sources, grant interfaces, inspect trace samples."
+            text = "Android public-API bridge: production rawEvent sources plus optional interface screening."
             textSize = 14f
             setTextColor(Color.rgb(75, 85, 99))
             setPadding(0, 6, 0, 18)

@@ -102,16 +102,16 @@
 
 **A:**
 
-1. **角色互补**: android-collector 是 **Phase-1 探针**，用于验证"某个 Android 接口能观测到什么信号"。daemon (`aios-collector`) 是**生产级采集**，运行在系统层。探针筛选通过的接口，才提升到 daemon 中。
+1. **角色互补**: android-collector 现在有两种角色。`UsageStatsManager`、`NotificationListenerService` 和 `DeviceContext` 已经作为 Android public-API production ingress，通过 `rawEvent` JSONL 进入 Rust daemon/core；`AccessibilityService` 等未建模来源仍作为筛选探针保留。
 
 2. **技术分工**:
    - `apps/android-collector` (Kotlin): 走 Android SDK API — `NotificationListenerService`、`AccessibilityService`、`UsageStatsManager`。这些接口无需 root，仅需用户授权，可以直接在普通设备上验证。
    - `aios-collector` (Rust): 走 Linux 内核接口 — `/proc`、`/sys/class`、eBPF tracepoint。需要系统权限，但可获取更底层的信号（Binder IPC、进程状态）。
 
 3. **工作流**:
-   - Phase 1: 在 android-collector 中逐一开启数据源 → 做可重复动作 → 检查 JSONL trace → 决定是否值得提升。
-   - Phase 2: 通过筛选的数据源 → 在 `aios-spec` 中定义对应的 `RawEvent` 变体 → Rust daemon 中实现高效采集。
-   - 当前状态: `AppTransition` (来自 UsageStatsManager) 已完成 Phase 1 筛选并加入 `aios-spec`。
+   - Promoted path: Android collector 写入非空 `rawEvent` → `dipecsd --android-trace-jsonl` 包装为 `CollectorEnvelope` → `PrivacyAirGap` → `StructuredContext`。
+   - Screening path: 未有 Rust schema 的来源仍可在 app preview 中观察，但 `rawEvent: null` 不会进入生产推理路径。
+   - 当前状态: `AppTransition`、`NotificationPosted` / `NotificationInteraction` 和 `SystemState` 已进入生产入口。
 
 4. **为什么不全部用 Rust**: Android SDK 的 `NotificationListenerService` 等必须通过 Android Context / Binder 框架注册，在 Kotlin/Java 层实现远比为 daemon 写 JNI 桥接更简单。未来需要持续采集时，会通过 JNI 将 Kotlin 采集的数据注入 Rust 管道。
 

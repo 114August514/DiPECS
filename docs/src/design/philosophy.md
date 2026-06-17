@@ -33,7 +33,7 @@ AIOS 与底层 Android/Linux 的动作执行边界。它只接收 `PolicyEngine`
 - **ReleaseMemory**：释放非关键内存
 - **NoOp**：安全兜底
 
-当前实现仍是 tracing stub；真实 syscall 只在授权动作层接入。
+当前实现保留本地 replay fallback，并已经把 Android 可执行的 `PrefetchFile(url:/uri:)` 通过 authenticated localhost bridge 接到 Android collector。更高权限的 syscall 路线不作为当前 Android public-API 主线。
 
 ### 3. `aios-core` — 脊梁层
 

@@ -1,5 +1,28 @@
 # Android 接口最小可运行边界
 
+## Current Production Decision
+
+`apps/android-collector` is no longer treated only as a Phase-1 screening app.
+It remains the Android-side collector for public API signals, while Rust owns
+the production interpretation boundary.
+
+Promoted production sources:
+
+- `UsageStatsManager` -> `RawEvent::AppTransition`
+- `NotificationListenerService` -> `RawEvent::NotificationPosted` /
+  `RawEvent::NotificationInteraction`
+- `DeviceContext` -> `RawEvent::SystemState`
+
+These sources write append-only JSONL rows with a non-null `rawEvent`.
+`dipecsd --android-trace-jsonl <actions.jsonl>` tails that file, wraps each row
+as `CollectorEnvelope { source_tier: PublicApi, ... }`, and sends it through
+`PrivacyAirGap -> WindowAggregator -> DecisionRouter -> PolicyEngine`.
+
+Sources without an accepted Rust schema, currently including
+`AccessibilityService`, stay in screening mode. Their rows may remain useful in
+the app preview, but `rawEvent: null` rows are skipped by production Rust
+ingress.
+
 > 日期: 2026-05-05  
 > 范围: 梳理 `apps/android-collector` 这类 Android 采集能力如何接入 `aios-collector`, 再进入现有 Rust 管道。
 

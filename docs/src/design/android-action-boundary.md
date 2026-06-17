@@ -1,4 +1,4 @@
-# Android 动作能力边界与 ActionExecutor 改造建议
+# Android 动作能力边界与 ActionExecutor 当前实现
 
 > 日期: 2026-06-06  
 > 范围: 基于 DiPECS 当前文档约束，整理 Android 公开 API 条件下可落地的“真实动作”，并给出 `aios-action` 的改造方向。
@@ -17,7 +17,16 @@
 - 项目要求“仅使用 Android 官方公开 API（API >= 33）”。见 [需求分析](../research/deliverables/requirements.md)。
 - 本地端只执行低风险、可审计、可关闭的优化动作。见 [可行性分析](../research/deliverables/feasibility.md)。
 - 当前 `aios-spec` 中动作类型包括 `PreWarmProcess`、`PrefetchFile`、`KeepAlive`、`ReleaseMemory` 和 `NoOp`。见 [`crates/aios-spec/src/intent.rs`](../../../crates/aios-spec/src/intent.rs)。
-- 当前 `aios-action` 仍是 tracing stub，但注释里预留的是 `/proc`、`oom_score_adj`、`process_madvise` 等更偏系统态的实现。见 [`crates/aios-action/src/lib.rs`](../../../crates/aios-action/src/lib.rs)。
+- 当前 `aios-action` 保留本地 replay fallback，同时已经能把 `PrefetchFile(url:/uri:)` 转发到 Android localhost bridge。Android 侧通过 `auth_token` 鉴权、payload 大小限制、读超时和失败退避保护 action socket。见 [`crates/aios-action/src/lib.rs`](../../../crates/aios-action/src/lib.rs) 和 [`apps/android-collector`](../../../apps/android-collector/README.md)。
+
+## 当前已落地状态
+
+- Rust 侧 `PolicyEngine` 只输出经过授权的 `AuthorizedAction`。
+- Rust 侧 `aios-action` 默认保留 replay fallback；当启用 `DIPECS_ANDROID_ACTION_BRIDGE_ENABLED=true` 且提供 `DIPECS_ANDROID_ACTION_BRIDGE_TOKEN` 时，会把 Android 可执行的 `PrefetchFile(url:/uri:)` 转发到 Android collector。
+- Android 侧 `AuthorizedActionSocketServer` 只监听 `127.0.0.1`，但每个 payload 必须包含 `auth_token`。
+- token 由 Android collector 生成，存储在 `EncryptedSharedPreferences`；UI 只脱敏显示，可通过 Copy Action Socket Token 主动复制。
+- socket 读取限制为 64KB，并设置读超时；空 payload、无效 JSON、超大 payload、鉴权失败都会进入失败退避。
+- Android 侧当前可执行动作集中在 `PrefetchFile`，目标限制为 `url:http(s)://...` 或 app 有权访问的 `uri:content://...`。
 
 ## 结论先行
 

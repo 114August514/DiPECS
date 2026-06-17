@@ -1,4 +1,4 @@
----
+﻿---
 theme: seriph
 title: DiPECS — 云-端协同的分布式意图操作系统
 info: |
@@ -253,20 +253,24 @@ pub enum SanitizedEventType {
 - `aios-action` 动作层 · 动作执行骨架
 - `aios-agent` 决策层 · DecisionRouter / MockCloudProxy
 - `aios-daemon` 编排层 · dipecsd 主循环
-- `apps/android-collector` · Kotlin Phase-1 采集探针 (4 数据源 + JSONL + 云端上传)
+- `apps/android-collector` · Kotlin Android public-API bridge (production JSONL ingress + optional screening)
 - 62 个测试 · 全部通过
 
 </div>
 
 <div>
 
-后续待完成:
+当前已推进:
 
-- Cloud LLM HTTPS 真实通信
-- 真实 syscall 动作执行
+- Cloud LLM HTTPS 真实通信 (DeepSeek / Qwen / OpenAI-compatible)
+- Android public-API JSONL 生产入口
+- RuntimeTraceRecorder 与 CI replay/audit artifact
+- Android action bridge token 鉴权与 `PrefetchFile(url:/uri:)` 转发
+
+仍需完成:
+
+- 更多 Android-safe 真实动作
 - Fanotify 文件监控
-- Android 端采集器 → daemon 信号管道
-- Golden Trace 录制接入主循环
 - Android 真机端到端验证
 
 </div>
@@ -275,7 +279,7 @@ pub enum SanitizedEventType {
 
 ---
 
-# What · Android Phase-1 采集探针 — `apps/android-collector`
+# What · Android public-API bridge — `apps/android-collector`
 
 **Kotlin Android 应用** — 在设备上直接采集行为信号，支持逐个数据源的接口筛选
 
@@ -290,11 +294,11 @@ pub enum SanitizedEventType {
 
 ---
 
-# What · Android Phase-1 采集探针 — 关键特性
+# What · Android public-API bridge — 关键特性
 
 ### 关键特性
 
-- **Source Toggle**: 主界面逐一开关每个数据源，Phase-1 屏筛工作流
+- **Source Toggle**: 主界面逐一开关每个数据源，production ingress / screening 工作流
 - **JSONL 存储**: 事件写入 `<files>/traces/actions.jsonl`
 - **云端上传**: mock / llm 双模式，周期性上传最近 100 条事件
 - **RawEvent 对齐**: 每条 JSONL 事件的 `rawEvent` 字段使用和 `aios-spec::RawEvent` 一致的 JSON 格式
@@ -302,13 +306,13 @@ pub enum SanitizedEventType {
 
 <div v-click class="mt-4 p-3 border border-primary/20 rounded text-sm">
 
-**与 Rust daemon 的关系**: android-collector 是 **Phase-1 探针**，用于 Android 接口可行性验证。各数据源筛选通过后，对应的采集逻辑将提升到 `aios-collector` 的 Rust daemon 中（如 NotificationListenerService → Kotlin↔Rust JNI 桥接）。当前二者为 **互补关系**：daemon 走系统层 (/proc, eBPF)，collector 走系统服务层 (NotificationListener, Accessibility)。
+**与 Rust daemon 的关系**: android-collector 是 Android public-API bridge：UsageStats、NotificationListener 和 DeviceContext 已通过 `rawEvent` JSONL 进入 Rust daemon/core；Accessibility 等未建模来源继续作为筛选增强。daemon 仍负责 Rust 侧 envelope、脱敏、聚合、决策和策略审查。
 
 </div>
 
 ---
 
-# What · Android Phase-1 采集探针 — `apps/android-collector`
+# What · Android public-API bridge — `apps/android-collector`
 
 **Kotlin Android 应用** — 在设备上直接采集行为信号，支持逐个数据源的接口筛选
 
@@ -327,11 +331,11 @@ pub enum SanitizedEventType {
 
 ---
 
-# What · Android Phase-1 采集探针 — 关键特性
+# What · Android public-API bridge — 关键特性
 
 ### 关键特性
 
-- **Source Toggle**: 主界面逐一开关每个数据源，Phase-1 屏筛工作流
+- **Source Toggle**: 主界面逐一开关每个数据源，production ingress / screening 工作流
 - **JSONL 存储**: 事件写入 `<files>/traces/actions.jsonl`
 - **云端上传**: mock / llm 双模式，周期性上传最近 100 条事件
 - **RawEvent 对齐**: 每条 JSONL 事件的 `rawEvent` 字段使用和 `aios-spec::RawEvent` 一致的 JSON 格式
@@ -339,7 +343,7 @@ pub enum SanitizedEventType {
 
 <div v-click class="mt-4 p-3 border border-primary/20 rounded text-sm">
 
-**与 Rust daemon 的关系**: android-collector 是 **Phase-1 探针**，用于 Android 接口可行性验证。各数据源筛选通过后，对应的采集逻辑将提升到 `aios-collector` 的 Rust daemon 中（如 NotificationListenerService → Kotlin↔Rust JNI 桥接）。当前二者为 **互补关系**：daemon 走系统层 (/proc, eBPF)，collector 走系统服务层 (NotificationListener, Accessibility)。
+**与 Rust daemon 的关系**: android-collector 是 Android public-API bridge：UsageStats、NotificationListener 和 DeviceContext 已通过 `rawEvent` JSONL 进入 Rust daemon/core；Accessibility 等未建模来源继续作为筛选增强。daemon 仍负责 Rust 侧 envelope、脱敏、聚合、决策和策略审查。
 
 </div>
 
@@ -871,7 +875,7 @@ graph TD
 
 <div>
 
-### Android Phase-1 外部探针
+### Android public-API bridge
 
 | 数据源 | 通道 |
 | :--- | :--- |
@@ -1000,11 +1004,11 @@ graph LR
 
 ### 近期计划 (v0.4+)
 
-- **Cloud LLM**: MockCloudProxy → 真实 HTTPS
-- **Action Executor**: 骨架 → `posix_fadvise` / `process_madvise` / `/proc/pid/oom_score_adj`
+- **Cloud LLM**: 已接入 DeepSeek / Qwen / OpenAI-compatible，后续补真实 provider 回归样本
+- **Action Executor**: 已接 Android `PrefetchFile(url:/uri:)` bridge，后续扩展 Android-safe 自有资源动作
 - **文件监控**: FanotifyMonitor 实现
-- **采集器集成**: android-collector → daemon 信号管道 (Kotlin↔Rust 桥接)
-- **Trace 集成**: GoldenTrace 录制接入主循环
+- **采集器集成**: Android `rawEvent` JSONL 已进入 daemon；JNI/socket 可作为后续低延迟替换路线
+- **Trace 集成**: RuntimeTraceRecorder 与 replay/audit 已接入，后续补报告 artifact 汇总
 - **真机验证**: Android 模拟器 / 真机端到端演示
 
 </div>

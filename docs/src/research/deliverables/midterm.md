@@ -40,11 +40,11 @@
 
 ## 待解决问题
 
-- MockCloudProxy → 真实 HTTPS 通信（reqwest + rustls）
-- Kotlin → Rust JNI bridge（NotificationListenerService 事件传入 daemon）
-- GoldenTrace 录制与回放接入主循环
+- Cloud LLM HTTPS 通信：已由 `CloudLlmBackend` 接入 DeepSeek/Qwen/OpenAI-compatible endpoint。
+- Android → Rust 生产入口：已通过 append-only JSONL 与 `dipecsd --android-trace-jsonl` 接入；JNI 可作为后续替换路线。
+- GoldenTrace / runtime trace：replay、audit hash 与 `RuntimeTraceRecorder --trace-output` 已接入。
 - 真机 / 模拟器部署验证
 
 ## 中期评审结论
 
-<!-- TODO: 填入评审意见 -->
+中期基线之后，项目已经从最小可执行原型推进到可回放、可审计、可接 Android public-API 数据源的生产 ingress 原型。仍需补充真机验证、更多 Android-safe 动作和最终实验数据。

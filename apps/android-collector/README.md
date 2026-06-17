@@ -1,6 +1,10 @@
 # DiPECS Android Collector
 
-This is the Kotlin-based Android phase-1 collector for DiPECS. It is a graphical interface-screening probe: enable one Android data source at a time, grant the matching interface permission, collect events, and inspect the JSONL trace samples before promoting a source into `aios-spec` / `aios-core`.
+This is the Kotlin-based Android collector for DiPECS. It has two roles:
+
+- Production bridge for Android public-API signals that already have
+  `aios-spec::RawEvent` schemas.
+- Interface-screening probe for optional sources that are still being evaluated.
 
 ## What It Collects
 
@@ -16,7 +20,10 @@ The main screen includes source toggles for:
 - `AccessibilityService`
 - `DeviceContext`
 
-These toggles are meant for interface screening. Turn sources on/off, perform a target action on the device, then use the trace preview to decide whether that source is useful enough for the daemon/spec pipeline.
+`UsageStatsManager`, `NotificationListenerService`, and `DeviceContext` are
+production ingress sources when their events contain a non-null `rawEvent`.
+`AccessibilityService` remains an optional screening/enhancement source until a
+Rust-side schema is accepted for it.
 
 Events are stored as JSONL at:
 
@@ -28,14 +35,13 @@ Each JSONL row keeps the human-readable collector fields and, when a Rust-side s
 
 ```json
 {"rawEvent":{"AppTransition":{"timestamp_ms":0,"package_name":"com.android.chrome","activity_class":"MainActivity","transition":"Foreground"}}}
-{"rawEvent":{"NotificationPosted":{"timestamp_ms":0,"package_name":"com.ss.android.lark","category":"msg","channel_id":"lark_im_message","raw_title":"张三","raw_text":"发来一个文件","is_ongoing":false,"group_key":"group","has_picture":false}}}
+{"rawEvent":{"NotificationPosted":{"timestamp_ms":0,"package_name":"com.chat.app","category":"msg","channel_id":"messages","raw_title":"Alice","raw_text":"sent a file","is_ongoing":false,"group_key":"group","has_picture":false}}}
 {"rawEvent":{"SystemState":{"timestamp_ms":0,"battery_pct":88,"is_charging":true,"network":"Wifi","ringer_mode":"Normal","location_type":"Unknown","headphone_connected":false,"bluetooth_connected":false}}}
 ```
 
-The `rawEvent` field is the Android-to-Rust production ingress format. The
-Android app does not produce the final production context; Rust owns envelope
-validation, privacy sanitization, window aggregation, and `StructuredContext`
-output.
+The `rawEvent` field is the Android-to-Rust production ingress format. The app
+does not produce the final production context; Rust owns envelope validation,
+privacy sanitization, window aggregation, and `StructuredContext` output.
 
 The app can export the trace to its external files directory from the main screen.
 
@@ -132,7 +138,29 @@ The uploader sends the most recent 100 JSONL events as:
 
 In `llm` mode, the configured API key is sent as a bearer token. Upload failures are recorded as internal events and do not stop local collection.
 
-## Phase-1 Screening Workflow
+## Source Promotion Policy
+
+Sources are considered promoted into the production chain only when all of the
+following are true:
+
+- The Android collector writes a Rust-compatible `rawEvent`.
+- `aios-collector` parses it into `CollectorEnvelope` with `SourceTier::PublicApi`.
+- `aios-core` sanitizes it without leaking raw text across `PrivacyAirGap`.
+- Replay or daemon tests show the event participates in `StructuredContext`.
+
+Currently promoted sources:
+
+- `UsageStatsManager` -> `RawEvent::AppTransition`
+- `NotificationListenerService` -> `RawEvent::NotificationPosted` /
+  `RawEvent::NotificationInteraction`
+- `DeviceContext` -> `RawEvent::SystemState`
+
+Still screening:
+
+- `AccessibilityService` events are recorded for investigation, but rows with
+  `rawEvent: null` are skipped by the Rust production ingress.
+
+## Screening Workflow
 
 1. Enable only one source, for example `UsageStatsManager`.
 2. Start the collector and perform a small reproducible action.
@@ -140,4 +168,5 @@ In `llm` mode, the configured API key is sent as a bearer token. Upload failures
 4. Export JSONL if the interface looks useful.
 5. Clear the trace and repeat with the next source.
 
-This keeps phase 1 focused on "what can this Android interface actually observe?" before the data model is hardened in Rust.
+Use this workflow only for sources that are not yet promoted. Promoted sources
+should be validated through `aios-cli replay` or `dipecsd --android-trace-jsonl`.

@@ -164,12 +164,14 @@ fn event_timestamp_ms(raw_event: &RawEvent) -> Option<i64> {
 #[cfg(test)]
 mod tests {
     use super::{AndroidJsonlIngress, AndroidJsonlTailer};
-    use aios_spec::{AppTransition, RawEvent, SourceTier};
+    use aios_spec::{AppTransition, NetworkType, RawEvent, SourceTier};
     use std::fs::OpenOptions;
     use std::io::Write;
     use std::time::{SystemTime, UNIX_EPOCH};
 
     const APP_TRANSITION_LINE: &str = r#"{"eventId":"evt-1","timestampMs":1000,"source":"UsageCollector","eventType":"app_transition","rawEvent":{"AppTransition":{"timestamp_ms":1000,"package_name":"com.android.chrome","activity_class":"MainActivity","transition":"Foreground"}},"rawPayload":{}}"#;
+    const NOTIFICATION_POSTED_LINE: &str = r#"{"eventId":"evt-2","timestampMs":2000,"source":"NotificationCollectorService","eventType":"notification_posted","rawEvent":{"NotificationPosted":{"timestamp_ms":2000,"package_name":"com.chat","category":"msg","channel_id":"messages","raw_title":"Alice","raw_text":"sent a file","is_ongoing":false,"group_key":"conversation","has_picture":false}},"rawPayload":{}}"#;
+    const SYSTEM_STATE_LINE: &str = r#"{"eventId":"evt-3","timestampMs":3000,"source":"CollectorForegroundService","eventType":"system_state","rawEvent":{"SystemState":{"timestamp_ms":3000,"battery_pct":88,"is_charging":true,"network":"Wifi","ringer_mode":"Normal","location_type":"Unknown","headphone_connected":false,"bluetooth_connected":false}},"rawPayload":{}}"#;
 
     #[test]
     fn parse_line_wraps_raw_event_in_collector_envelope() {
@@ -197,6 +199,42 @@ mod tests {
         let line = r#"{"eventId":"evt-2","timestampMs":1000,"source":"AccessibilityCollectorService","rawEvent":null}"#;
         let parsed = AndroidJsonlIngress::new().parse_line(line).unwrap();
         assert!(parsed.is_none());
+    }
+
+    #[test]
+    fn promoted_android_sources_parse_as_public_api_ingress() {
+        let ingress = AndroidJsonlIngress::new();
+        let rows = [
+            (APP_TRANSITION_LINE, "UsageCollector"),
+            (NOTIFICATION_POSTED_LINE, "NotificationCollectorService"),
+            (SYSTEM_STATE_LINE, "CollectorForegroundService"),
+        ];
+
+        let envelopes = rows
+            .into_iter()
+            .map(|(line, source)| {
+                let envelope = ingress.parse_line(line).unwrap().unwrap();
+                assert_eq!(envelope.source, source);
+                assert_eq!(envelope.source_tier, SourceTier::PublicApi);
+                envelope
+            })
+            .collect::<Vec<_>>();
+
+        assert!(matches!(envelopes[0].raw_event, RawEvent::AppTransition(_)));
+        match &envelopes[1].raw_event {
+            RawEvent::NotificationPosted(event) => {
+                assert_eq!(event.package_name, "com.chat");
+                assert_eq!(event.raw_text, "sent a file");
+            },
+            other => panic!("unexpected raw event: {other:?}"),
+        }
+        match &envelopes[2].raw_event {
+            RawEvent::SystemState(event) => {
+                assert_eq!(event.battery_pct, Some(88));
+                assert_eq!(event.network, NetworkType::Wifi);
+            },
+            other => panic!("unexpected raw event: {other:?}"),
+        }
     }
 
     #[test]

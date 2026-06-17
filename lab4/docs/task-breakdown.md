@@ -18,20 +18,20 @@ Lab4 要回答的核心问题是：如何在普通主机和小规模多机环境
 
 | 工作项 | 状态 | 证据 |
 | :--- | :--- | :--- |
-| 5 个以上性能指标与合理性 | 已完成 | `docs/param-optimization-report.md` |
-| Qwen3.5-2B GGUF 本地部署 | 已完成 | `reports/smoke.md`、`docs/llama-cpp-setup.md` |
+| 5 个以上性能指标与合理性 | 已完成 | `reports/param-optimization-report.md` |
+| Qwen3.5-2B GGUF 本地部署 | 已完成 | `assets/01-local-inference.png`、`docs/llama-cpp-setup.md` |
 | 至少 3 个指标的实际测量 | 已完成 | Prompt/Generation 吞吐、启动耗时、端到端延迟 |
 | 参数优化 | 已完成并重跑 | 线程、batch、输入长度、mmap |
-| 5 类 Prompt 质量评估 | 已完成 | `data/prompts/quality-prompts.jsonl`、质量报告 |
+| 5 类 Prompt 质量评估 | 已完成 | `data/prompts/quality-prompts.jsonl`、`reports/quality-evaluation-report.md` |
 | 双机 RPC | 已完成 | 本地主机 + USTC Vlab LXC |
-| 单机与 RPC 对比 | 已完成 | `docs/rpc-experiment-report.md` |
+| 单机与 RPC 对比 | 已完成 | `reports/rpc-experiment-report.md` |
 | Ray 部署与 Task 调度 | 已完成 | 单机 head + 两类自定义资源 |
 | 20 条批量 Prompt | 已完成 | 4 种模式，80 条请求记录 |
 | Ray 性能对比与分析 | 已完成 | wall time、延迟、吞吐、节点统计 |
 | Ray 负载均衡加分 | 已完成 | 30 条 Prompt、2 种真实 Ray 策略 |
 | Ray 故障重试加分 | 已完成 | kill s2，失败 Task 重试到 s1，最终 100% |
 | 并发压力测试 | 已完成 | 并发度 1、2、4 |
-| 最终截图 | 待人工整理 | 本地推理、RPC、Ray status/日志 |
+| 最终截图 | 已完成 | `assets/01` 至 `assets/05` |
 
 ## 分项一：llama.cpp 主线
 

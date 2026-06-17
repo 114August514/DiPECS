@@ -91,6 +91,7 @@ def nearest_rank_percentile(values: list[float], percentile: float) -> float:
 def call_server(server_url: str, prompt: str, max_tokens: int) -> dict[str, Any]:
     """调用 llama-server 的 /completion API。"""
     start = time.perf_counter()
+    start_unix_ms = int(time.time() * 1000)
     try:
         resp = requests.post(
             f"{server_url}/completion",
@@ -105,6 +106,7 @@ def call_server(server_url: str, prompt: str, max_tokens: int) -> dict[str, Any]
         )
         resp.raise_for_status()
         data = resp.json()
+        end_unix_ms = int(time.time() * 1000)
         elapsed_ms = (time.perf_counter() - start) * 1000
         timings = data.get("timings", {})
         return {
@@ -115,14 +117,19 @@ def call_server(server_url: str, prompt: str, max_tokens: int) -> dict[str, Any]
             "predicted_per_second": timings.get("predicted_per_second", 0.0),
             "predicted_ms": timings.get("predicted_ms", 0.0),
             "prompt_ms": timings.get("prompt_ms", 0.0),
+            "start_time_unix_ms": start_unix_ms,
+            "end_time_unix_ms": end_unix_ms,
             "total_ms": elapsed_ms,
         }
     except Exception as exc:
+        end_unix_ms = int(time.time() * 1000)
         elapsed_ms = (time.perf_counter() - start) * 1000
         return {
             "success": False,
             "server_url": server_url,
             "error": str(exc),
+            "start_time_unix_ms": start_unix_ms,
+            "end_time_unix_ms": end_unix_ms,
             "total_ms": elapsed_ms,
         }
 

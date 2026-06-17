@@ -89,9 +89,9 @@ ray status
 
 ## 关键结论
 
-1. **并行减少总耗时但增加单请求延迟**：串行延迟最低（3240 ms），但并行总耗时更低（round_robin 比 serial 低 ~7%），因为两个请求重叠了计算时间。
-2. **round_robin 是短批次的最优策略**：20 条 prompt 下，round_robin 总耗时 62.39 s，吞吐最高（0.321 prompts/s）。latency_based 因 warm-up 探测成本未能在短批次中回收收益。
-3. **线程数差异验证成功**：s1（8 threads）平均延迟比 s2（4 threads）低 20-25%，验证了计算资源对推理速度的影响。
+1. **并行减少总耗时但增加单请求延迟**：串行延迟最低（3204 ms），但 fixed_partition 和 round_robin 的总耗时分别为 57.61 s 和 57.82 s，均比 serial 的 64.08 s 低约 10%。
+2. **两种简单并行策略表现接近**：fixed_partition 吞吐为 0.347 prompts/s，round_robin 为 0.346 prompts/s。latency_based 因 warm-up 探测成本未能在短批次中回收收益。
+3. **线程数差异验证成功**：s1（8 threads）平均延迟比 s2（4 threads）低约 15-20%，验证了计算资源对推理速度的影响。
 4. **故障重试 100% 成功**：kill s2 后，失败 Task 自动重试到 s1，最终 20/20 成功。
 5. **并发压力揭示竞争效应**：并发度 4 时，两个 llama-server 共享同一物理 CPU，P95 延迟显著上升。
 

@@ -78,9 +78,9 @@ cargo run --manifest-path lab4/Cargo.toml -p lab4-tools --bin lab4-bench -- \
 ## 分项四：RPC 分布式部署
 
 完整部署步骤见
-[`lab4/docs/rpc-two-machine-setup.md`](../docs/rpc-two-machine-setup.md)。正式实验后
+[`lab4/docs/rpc-two-machine-setup.md`](../../docs/rpc-two-machine-setup.md)。正式实验后
 实际实验结果、脱敏后的网络信息和启动日志见
-[`lab4/reports/rpc-experiment-report.md`](../reports/rpc-experiment-report.md)。
+[`lab4/reports/rpc-experiment-report.md`](../rpc-experiment-report.md)。
 
 从机最小命令：
 
@@ -116,4 +116,4 @@ lab4/third_party/llama.cpp/build/bin/llama-cli \
 - Ray head 注册 `server_s1`、`server_s2` 自定义资源。
 - Ray Task 绑定资源标签并调用对应后端。
 
-启动与结果见 [`lab4/reports/ray-experiment-report.md`](../reports/ray-experiment-report.md)。
+启动与结果见 [`lab4/reports/ray-experiment-report.md`](../ray-experiment-report.md)。

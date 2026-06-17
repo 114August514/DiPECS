@@ -172,4 +172,4 @@ GPU offload 未测试。机器虽然有 NVIDIA RTX 4060 Laptop GPU，但本次 `
 
 RPC 明显慢于单机，主要原因是从机只有 2 vCPU，同时引入了张量传输、TCP/VPN、
 远端排队和同步等待。完整命令与分析见
-[`lab4/reports/rpc-experiment-report.md`](../reports/rpc-experiment-report.md)。
+[`lab4/reports/rpc-experiment-report.md`](../rpc-experiment-report.md)。

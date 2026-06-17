@@ -25,7 +25,51 @@
 s2 使用单 slot 和较小上下文，以便在 16 GiB 主机上同时容纳两个模型服务与 Ray。
 本实验 Prompt 很短且最多生成 96 token，不会触及 512 token 上下文上限。
 
-### 1.3 实验结果
+### 1.3 运行命令
+
+**启动两个 llama-server：**
+
+```bash
+cd lab4/third_party/llama.cpp
+
+# Server s1（模拟较快节点）
+./build/bin/llama-server \
+  -m ../../data/models/qwen3.5-2b-q4_k_m.gguf \
+  --port 8080 -c 1024 --threads 8 -n 96 --cache-ram 0
+
+# Server s2（内存受限节点）
+./build/bin/llama-server \
+  -m ../../data/models/qwen3.5-2b-q4_k_m.gguf \
+  --port 8081 -c 512 --threads 4 --parallel 1 -n 96 --cache-ram 0
+```
+
+**启动 Ray：**
+
+```bash
+cd lab4
+
+.venv/bin/ray start --head \
+  --port=6379 \
+  --num-cpus=2 \
+  --resources='{"server_s1": 1, "server_s2": 1}' \
+  --object-store-memory=134217728 \
+  --include-dashboard=false \
+  --disable-usage-stats
+```
+
+**运行负载均衡调度实验：**
+
+```bash
+cd lab4
+
+# 仅测试 round_robin 和 latency_based 两种策略，取 30 个 prompt
+.venv/bin/python scripts/ray_batch_inference.py \
+  --prompt-count 30 \
+  --strategies round_robin latency_based \
+  --output data/results/ray-loadbalance-30/ray-loadbalance-30.jsonl
+```
+
+### 1.4 实验结果
 
 | 策略 | 总耗时 (s) | 吞吐 (p/s) | 平均延迟 (ms) | s1 请求数 | s2 请求数 |
 | :--- | ---: | ---: | ---: | ---: | ---: |
@@ -41,7 +85,7 @@ s2 使用单 slot 和较小上下文，以便在 16 GiB 主机上同时容纳两
 | latency_based | s1 (threads=8) | 16 | 4989.2 | 5179.1 |
 | latency_based | s2 (threads=4) | 14 | 6506.8 | 7775.7 |
 
-### 1.4 结果分析
+### 1.5 结果分析
 
 1. **轮询调度**的总耗时优于延迟调度（93.77s vs 98.56s）。延迟策略的 wall time
    包含两个后端各一次 warm-up，短批次中探测成本未能被后续调度收益抵消。
@@ -69,7 +113,49 @@ pkill -f "llama-server.*port 8081"
 
 在 prompt 提交后立即执行，使得已分配给 s2 的并发请求在连接时遭遇 `Connection refused` 或超时。
 
-### 2.3 实验结果
+### 2.3 运行命令
+
+**启动两个 llama-server（与负载均衡实验相同）：**
+
+```bash
+cd lab4/third_party/llama.cpp
+
+# Server s1
+./build/bin/llama-server \
+  -m ../../data/models/qwen3.5-2b-q4_k_m.gguf \
+  --port 8080 -c 1024 --threads 8 -n 96 --cache-ram 0
+
+# Server s2
+./build/bin/llama-server \
+  -m ../../data/models/qwen3.5-2b-q4_k_m.gguf \
+  --port 8081 -c 512 --threads 4 --parallel 1 -n 96 --cache-ram 0
+```
+
+**启动 Ray（已在运行时可跳过）：**
+
+```bash
+cd lab4
+
+.venv/bin/ray start --head \
+  --port=6379 \
+  --num-cpus=2 \
+  --resources='{"server_s1": 1, "server_s2": 1}' \
+  --object-store-memory=134217728 \
+  --include-dashboard=false \
+  --disable-usage-stats
+```
+
+**运行失败重试实验：**
+
+```bash
+cd lab4
+
+.venv/bin/python scripts/ray_failover_test.py
+```
+
+脚本内部会在提交请求后自动执行 `pkill` 注入故障，无需手动干预。
+
+### 2.4 实验结果
 
 | 阶段 | 成功 | 失败 | 说明 |
 | :--- | ---: | ---: | :--- |
@@ -77,7 +163,7 @@ pkill -f "llama-server.*port 8081"
 | Phase 2（重试到 s1） | 10 | 0 | 全部 10 个失败请求重试到 s1 后成功 |
 | **最终** | **20** | **0** | **成功率 100%** |
 
-### 2.4 重试日志示例
+### 2.5 重试日志示例
 
 ```text
 [Phase 1] Success: 10/20, Failed: 10
@@ -91,7 +177,7 @@ pkill -f "llama-server.*port 8081"
   ... (共 10 个)
 ```
 
-### 2.5 结论
+### 2.6 结论
 
 > 故障注入实验验证了推理服务的容错能力。在 server s2 被强制终止后，10 个原本分配给 s2 的请求全部失败（表现为 HTTP 连接超时或拒绝连接）。通过将失败请求重试到健康的 s1 节点，最终成功率达到 **100%**。这说明在生产环境中，配合健康检查和自动重试机制，可以有效应对单节点故障，保障推理服务的高可用性。
 

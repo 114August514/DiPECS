@@ -10,11 +10,13 @@
 
 #![deny(unsafe_op_in_unsafe_fn)]
 
+pub mod android_jsonl;
 pub mod binder_probe;
 pub mod collection_stats;
 pub mod proc_reader;
 pub mod system_collector;
 
+pub use android_jsonl::{AndroidJsonlError, AndroidJsonlIngress, AndroidJsonlTailer};
 pub use binder_probe::BinderProbe;
 pub use proc_reader::ProcReader;
 pub use system_collector::SystemStateCollector;

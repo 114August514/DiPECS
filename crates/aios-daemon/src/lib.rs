@@ -30,6 +30,7 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use aios_action::DefaultActionExecutor;
 use aios_agent::DecisionRouter;
 use aios_collector::{
+    android_jsonl::AndroidJsonlTailer,
     binder_probe::BinderProbe,
     collection_stats::RawEventStats,
     proc_reader::{self, ProcReader},
@@ -46,14 +47,18 @@ use aios_spec::RawEvent;
 mod daemon;
 pub mod pipeline;
 
-use pipeline::{should_stop_processing, ProcessingEvent};
+use pipeline::{should_stop_processing, ProcessingEvent, RuntimeTraceRecorder};
 
 /// 系统状态采集间隔 (秒)
 const SYS_POLL_INTERVAL_SECS: u64 = 30;
 /// Binder 事件轮询间隔 (毫秒)
 const BINDER_POLL_INTERVAL_MS: u64 = 100;
+/// Android JSONL 文件轮询间隔 (毫秒)
+const ANDROID_JSONL_POLL_INTERVAL_MS: u64 = 500;
 /// 上下文窗口时长 (秒)
 const WINDOW_DURATION_SECS: u64 = 10;
+const ANDROID_TRACE_JSONL_ENV: &str = "DIPECS_ANDROID_TRACE_JSONL";
+const RUNTIME_TRACE_OUTPUT_ENV: &str = "DIPECS_RUNTIME_TRACE_OUTPUT";
 
 pub async fn run() -> anyhow::Result<()> {
     // 1. 初始化日志
@@ -66,11 +71,22 @@ pub async fn run() -> anyhow::Result<()> {
     // 2. 解析命令行参数
     let args: Vec<String> = std::env::args().collect();
     let no_daemon = args.iter().any(|a| a == "--no-daemon");
+    let android_trace_jsonl = android_trace_jsonl_path(&args);
+    let runtime_trace_output = runtime_trace_output_path(&args);
 
     if !no_daemon {
         daemon::daemonize();
     }
     tracing::info!("dipecsd starting (no-daemon={})", no_daemon);
+    if let Some(path) = &android_trace_jsonl {
+        tracing::info!(
+            path = %path.display(),
+            "Android collector JSONL ingress enabled"
+        );
+    }
+    if let Some(path) = &runtime_trace_output {
+        tracing::info!(path = %path.display(), "daemon runtime trace enabled");
+    }
 
     // 3. 初始化 ActionBus 和关闭信号
     let mut bus = ActionBus::new(4096);
@@ -83,6 +99,9 @@ pub async fn run() -> anyhow::Result<()> {
         tracing::info!("collection task started");
 
         let ingress = RustCollectorIngress;
+        let mut android_tailer = android_trace_jsonl.map(AndroidJsonlTailer::new);
+        let mut last_android_jsonl_poll =
+            SystemTime::now() - Duration::from_millis(ANDROID_JSONL_POLL_INTERVAL_MS);
         let mut binder_probe = BinderProbe::new();
         match binder_probe.try_init() {
             Ok(true) => tracing::info!("Binder probe initialized with eBPF"),
@@ -155,6 +174,45 @@ pub async fn run() -> anyhow::Result<()> {
                 }
             }
 
+            // Android collector JSONL ingress. This is the production bridge
+            // for the phase-1 app: the app owns public Android API collection,
+            // Rust owns schema validation and the downstream privacy pipeline.
+            if let Some(tailer) = android_tailer.as_mut() {
+                let elapsed = SystemTime::now()
+                    .duration_since(last_android_jsonl_poll)
+                    .unwrap_or_default();
+                if elapsed >= Duration::from_millis(ANDROID_JSONL_POLL_INTERVAL_MS) {
+                    match tailer.poll() {
+                        Ok(envelopes) => {
+                            for envelope in envelopes {
+                                match ingress.accept(envelope) {
+                                    Ok(event) => {
+                                        if collect_raw_tx.send(event).await.is_err() {
+                                            tracing::debug!("collection: raw channel closed");
+                                            return;
+                                        }
+                                    },
+                                    Err(error) => {
+                                        tracing::warn!(
+                                            error = %error,
+                                            "Android JSONL envelope rejected"
+                                        );
+                                    },
+                                }
+                            }
+                        },
+                        Err(error) => {
+                            tracing::warn!(
+                                path = %tailer.path().display(),
+                                error = %error,
+                                "Android JSONL poll failed"
+                            );
+                        },
+                    }
+                    last_android_jsonl_poll = SystemTime::now();
+                }
+            }
+
             // 检查退出信号 (non-blocking)
             if collect_shutdown.try_recv().is_ok() {
                 tracing::info!("collection task shutting down");
@@ -172,6 +230,15 @@ pub async fn run() -> anyhow::Result<()> {
     let router = DecisionRouter::default();
     let policy = PolicyEngine::default();
     let executor = DefaultActionExecutor;
+    let mut trace_recorder = match runtime_trace_output {
+        Some(path) => Some(RuntimeTraceRecorder::new(&path).map_err(|error| {
+            anyhow::anyhow!(
+                "opening daemon runtime trace output {} failed: {error}",
+                path.display()
+            )
+        })?),
+        None => None,
+    };
     let window_dur = Duration::from_secs(WINDOW_DURATION_SECS);
     let mut window = WindowAggregator::new(WINDOW_DURATION_SECS, timestamp_ms());
     let mut raw_stats = RawEventStats::default();
@@ -204,7 +271,14 @@ pub async fn run() -> anyhow::Result<()> {
             tracing::info!("raw event channel closed, flushing remaining events");
             let window_stats = std::mem::take(&mut raw_stats);
             if let Some(ctx) = window.close(timestamp_ms()) {
-                pipeline::process_window(&ctx, &router, &policy, &executor, &window_stats);
+                pipeline::process_window(
+                    &ctx,
+                    &router,
+                    &policy,
+                    &executor,
+                    &window_stats,
+                    trace_recorder.as_mut(),
+                );
             }
             break;
         }
@@ -226,7 +300,14 @@ pub async fn run() -> anyhow::Result<()> {
         if window_expired || Instant::now() >= window_deadline {
             let window_stats = std::mem::take(&mut raw_stats);
             if let Some(ctx) = window.close(timestamp_ms()) {
-                pipeline::process_window(&ctx, &router, &policy, &executor, &window_stats);
+                pipeline::process_window(
+                    &ctx,
+                    &router,
+                    &policy,
+                    &executor,
+                    &window_stats,
+                    trace_recorder.as_mut(),
+                );
             }
             window_deadline = Instant::now() + window_dur;
         }
@@ -244,4 +325,30 @@ fn timestamp_ms() -> i64 {
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default()
         .as_millis() as i64
+}
+
+fn android_trace_jsonl_path(args: &[String]) -> Option<std::path::PathBuf> {
+    let from_arg = args
+        .windows(2)
+        .find(|pair| pair[0] == "--android-trace-jsonl")
+        .map(|pair| std::path::PathBuf::from(&pair[1]));
+    from_arg.or_else(|| {
+        std::env::var(ANDROID_TRACE_JSONL_ENV)
+            .ok()
+            .filter(|value| !value.trim().is_empty())
+            .map(std::path::PathBuf::from)
+    })
+}
+
+fn runtime_trace_output_path(args: &[String]) -> Option<std::path::PathBuf> {
+    let from_arg = args
+        .windows(2)
+        .find(|pair| pair[0] == "--trace-output")
+        .map(|pair| std::path::PathBuf::from(&pair[1]));
+    from_arg.or_else(|| {
+        std::env::var(RUNTIME_TRACE_OUTPUT_ENV)
+            .ok()
+            .filter(|value| !value.trim().is_empty())
+            .map(std::path::PathBuf::from)
+    })
 }

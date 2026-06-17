@@ -13,4 +13,5 @@ aios-spec = { workspace = true }
 tracing = { workspace = true }
 # tracing-subscriber = { workspace = true }
 # anyhow = { workspace = true }
+serde_json = { workspace = true }
 thiserror = { workspace = true }

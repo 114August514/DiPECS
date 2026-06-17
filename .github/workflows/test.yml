@@ -90,10 +90,17 @@ jobs:
       - name: Execute Replay Tests
         run: |
           mkdir -p ${{ env.REPLAY_REPORT_DIR }}
-          # 模拟回放过程，结果存入指定路径
-          echo "Executing golden trace replay..."
-          # ./target/release/aios-cli replay --trace-dir data/traces/ --output-dir ${{ env.REPLAY_REPORT_DIR }}
-          echo "Done." > ${{ env.REPLAY_REPORT_DIR }}/summary.txt
+          ./target/release/aios-cli replay \
+            data/traces/sample_replay.jsonl \
+            --stages policy \
+            --output ${{ env.REPLAY_REPORT_DIR }}/sample_replay.ndjson \
+            --audit ${{ env.REPLAY_REPORT_DIR }}/sample_replay.audit.ndjson
+          ./target/release/aios-cli replay \
+            data/traces/denial.jsonl \
+            --stages policy \
+            --output ${{ env.REPLAY_REPORT_DIR }}/denial.ndjson \
+            --audit ${{ env.REPLAY_REPORT_DIR }}/denial.audit.ndjson
+          tail -n 1 ${{ env.REPLAY_REPORT_DIR }}/sample_replay.ndjson > ${{ env.REPLAY_REPORT_DIR }}/summary.txt
 
       - name: Upload Test Artifacts
         if: always()

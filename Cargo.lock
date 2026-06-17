@@ -55,6 +55,7 @@ name = "aios-collector"
 version = "0.1.0"
 dependencies = [
  "aios-spec",
+ "serde_json",
  "thiserror 1.0.69",
  "tracing",
 ]
@@ -82,6 +83,7 @@ dependencies = [
  "aios-spec",
  "anyhow",
  "libc",
+ "serde_json",
  "tokio",
  "tracing",
  "tracing-subscriber",

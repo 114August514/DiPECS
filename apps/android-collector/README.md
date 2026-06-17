@@ -32,9 +32,34 @@ Each JSONL row keeps the human-readable collector fields and, when a Rust-side s
 {"rawEvent":{"SystemState":{"timestamp_ms":0,"battery_pct":88,"is_charging":true,"network":"Wifi","ringer_mode":"Normal","location_type":"Unknown","headphone_connected":false,"bluetooth_connected":false}}}
 ```
 
-The `rawEvent` field is a phase-1 screening and Rust ingress sample format. The Android app does not produce the final production context; Rust owns normalization, privacy sanitization, window aggregation, and `StructuredContext` output.
+The `rawEvent` field is the Android-to-Rust production ingress format. The
+Android app does not produce the final production context; Rust owns envelope
+validation, privacy sanitization, window aggregation, and `StructuredContext`
+output.
 
 The app can export the trace to its external files directory from the main screen.
+
+## Rust Daemon Ingress
+
+`dipecsd` can continuously consume an append-only Android trace file:
+
+```bash
+RUST_LOG=info cargo run -p aios-daemon --bin dipecsd -- --no-daemon --android-trace-jsonl path/to/actions.jsonl
+```
+
+Add `--trace-output path/to/runtime.ndjson` to persist one daemon window record
+per line for audit/debug artifacts.
+
+The same path can also be provided with:
+
+```bash
+DIPECS_ANDROID_TRACE_JSONL=path/to/actions.jsonl
+DIPECS_RUNTIME_TRACE_OUTPUT=path/to/runtime.ndjson
+```
+
+Rows with `rawEvent: null` are skipped. Rows with a valid Rust `RawEvent`
+shape are wrapped as `CollectorEnvelope` with `SourceTier::PublicApi` and sent
+through the normal daemon pipeline.
 
 ## Build
 

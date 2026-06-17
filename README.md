@@ -15,16 +15,18 @@ DiPECS (Digital Intelligence Platform for Efficient Computing Systems) 是一个
 
 - `aios-spec` 定义 `RawEvent`、`CollectorEnvelope`、`SanitizedEvent`、`StructuredContext`、`IntentBatch`、`CapabilityLevel` 和 `AuthorizedAction`。
 - `apps/android-collector` 验证 Android 用户态采集能力，并导出 JSONL trace 样本。
-- `aios-collector` 作为 Rust 采集层入口，统一产出 `CollectorEnvelope` / `RawEvent`。
-- `aios-core` 完成隐私脱敏、窗口聚合和策略审查。
-- `aios-agent` 提供 `DecisionRouter`、`RuleBasedBackend` 和 `FallbackNoOpBackend`。
-- `aios-daemon` 提供 `dipecsd` 长驻运行时。
+- `aios-collector` 作为 Rust 采集层入口，统一产出 `CollectorEnvelope` / `RawEvent`，并支持 Android collector append-only JSONL 接入。
+- `aios-core` 完成隐私脱敏、窗口聚合、策略审查和 Golden Trace 语义校验。
+- `aios-agent` 提供 `DecisionRouter`、`RuleBasedBackend`、`CloudLlmBackend` 和 `FallbackNoOpBackend`。
+- `aios-action` 保留本地 replay stub，并可将 `PrefetchFile(url:/uri:)` 授权动作转发到 Android localhost bridge。
+- `aios-cli` 提供 JSONL replay、稳定 audit hash 和 Android `AuthorizedAction` socket 调试工具。
+- `aios-daemon` 提供 `dipecsd` 长驻运行时，串联采集、脱敏、聚合、决策、策略和动作执行。
 
 仍在推进：
 
-- app 到 `aios-collector` 的生产接入通道。
-- 本地小模型和云端 LLM 后端。
-- 真机动作执行和完整 Golden Trace 回归。
+- 本地小模型 / LocalEvaluator 后端。
+- 更多 Android-safe 真机动作（目前优先落地的是可访问内容预取）。
+- Golden Trace 录制接入 daemon 主循环与 CI replay 报告。
 
 ## Architecture
 
@@ -40,17 +42,20 @@ flowchart TD
     Intent["IntentBatch"]
     Policy["PolicyEngine + CapabilityLevel"]
     Action["aios-action<br/>AuthorizedAction only"]
+    AndroidBridge["Android action bridge<br/>localhost socket"]
     Trace["ActionResult / Trace"]
 
     App -- "JSONL / JNI / socket" --> Collector
     System -- "/proc / Binder / status" --> Collector
     Collector --> Raw --> Core --> Context --> Agent --> Intent
     Intent --> Policy --> Action --> Trace
+    Action -- "PrefetchFile url:/uri:" --> AndroidBridge --> App
 ```
 
 核心边界：
 
 - apps 提供采集能力，`aios-collector` 负责接入与 `RawEvent` 规范化。
+- Android collector 的生产接入通道是 append-only JSONL：`dipecsd --android-trace-jsonl <actions.jsonl>` 会持续消费新增 `rawEvent` 行。
 - `RawEvent` 不越过 `PrivacyAirGap`；推理层只接收 `StructuredContext`。
 - 推理后端只能输出 `IntentBatch`；动作层只执行 `AuthorizedAction`。
 
@@ -68,6 +73,18 @@ cargo test --workspace
 RUST_LOG=info cargo run -p aios-daemon --bin dipecsd -- --no-daemon
 ```
 
+以前台模式运行 daemon，并接入 Android collector 导出的 JSONL：
+
+```bash
+RUST_LOG=info cargo run -p aios-daemon --bin dipecsd -- --no-daemon --android-trace-jsonl apps/android-collector/actions.jsonl
+```
+
+记录 daemon 运行时窗口 trace：
+
+```bash
+RUST_LOG=info cargo run -p aios-daemon --bin dipecsd -- --no-daemon --android-trace-jsonl apps/android-collector/actions.jsonl --trace-output data/evaluation/runtime.ndjson
+```
+
 配置 Android 交叉编译：
 
 ```bash
@@ -82,6 +99,25 @@ cd apps/android-collector
 ./gradlew :app:assembleDebug
 ```
 
+回放 Android JSONL trace：
+
+```bash
+cargo run -p aios-cli -- replay data/traces/sample_replay.jsonl --stages policy --audit data/evaluation/audit.ndjson
+```
+
+启用云端 LLM 后端：
+
+```bash
+cp .env.example .env
+# 编辑 .env 后加载环境变量，例如 DIPECS_CLOUD_LLM_ENABLED=true 和 API key
+```
+
+向 Android localhost bridge 发送一个授权预取动作：
+
+```bash
+cargo run -p aios-cli -- send-authorized-action --prefetch-target url:https://example.test/feed.json --host 127.0.0.1 --port 46321
+```
+
 完整开发命令见 [开发指南](docs/src/team/dev.md)，Android collector 细节见 [apps/android-collector/README.md](apps/android-collector/README.md)。
 
 ## Repository Map
@@ -94,9 +130,10 @@ cd apps/android-collector
 | `crates/aios-agent` | 决策路由和模型后端。 |
 | `crates/aios-action` | 授权动作执行。 |
 | `crates/aios-daemon` | `dipecsd` 运行时装配。 |
+| `crates/aios-cli` | replay、audit hash 和 Android action bridge 调试工具。 |
 | `apps/android-collector` | Android 采集能力验证工具。 |
 | `docs/src` | MkDocs Material 工程文档。 |
-| `docs/academic-src` | 未来正式学术报告的 LaTeX 源码空壳。 |
+| `docs/academic-src` | 学术报告的 LaTeX 源码。 |
 
 ## Documentation
 

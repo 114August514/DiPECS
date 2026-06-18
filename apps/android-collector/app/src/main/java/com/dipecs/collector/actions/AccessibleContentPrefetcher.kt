@@ -208,10 +208,10 @@ object AccessibleContentPrefetcher {
 
                 return when (kind) {
                     "url" -> {
-                        val normalizedValue = if (value.startsWith("http://") || value.startsWith("https://")) {
+                        val normalizedValue = if (value.startsWith("https://")) {
                             value
                         } else {
-                            error("Only http:// or https:// URL prefetch targets are supported")
+                            error("Only https:// URL prefetch targets are supported")
                         }
                         PrefetchTarget(trimmed, kind, normalizedValue)
                     }

@@ -47,7 +47,7 @@ object CloudUploader {
                     JSONObject()
                         .put("mode", mode)
                         .put("httpCode", response.code)
-                        .put("responseBody", response.body.take(4096)),
+                        .put("responseBytes", response.body.toByteArray(Charsets.UTF_8).size),
                 )
             }.onFailure { error ->
                 EventRepository.recordInternal(
@@ -68,7 +68,10 @@ object CloudUploader {
     }
 
     private fun postJson(endpoint: String, payload: JSONObject, bearerToken: String?): HttpResponse {
-        val connection = (URL(endpoint).openConnection() as HttpURLConnection).apply {
+        val url = URL(endpoint)
+        require(url.protocol == "https") { "Upload endpoint must use HTTPS" }
+
+        val connection = (url.openConnection() as HttpURLConnection).apply {
             requestMethod = "POST"
             connectTimeout = 10_000
             readTimeout = 20_000
@@ -91,7 +94,7 @@ object CloudUploader {
         connection.disconnect()
 
         if (code !in 200..299) {
-            error("Upload failed with HTTP $code: ${body.take(512)}")
+            error("Upload failed with HTTP $code")
         }
         return HttpResponse(code, body)
     }

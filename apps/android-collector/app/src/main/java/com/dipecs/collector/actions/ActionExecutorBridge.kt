@@ -59,7 +59,7 @@ object ActionExecutorBridge {
                 "AuthorizedAction JSON missing action object",
                 JSONObject()
                     .put("reason", reason)
-                    .put("payload", payload.toString().take(2048)),
+                    .put("payloadBytes", payload.toString().toByteArray(Charsets.UTF_8).size),
             )
             return false
         }
@@ -73,7 +73,7 @@ object ActionExecutorBridge {
                 "AuthorizedAction JSON missing action_type",
                 JSONObject()
                     .put("reason", reason)
-                    .put("payload", payload.toString().take(2048)),
+                    .put("payloadBytes", payload.toString().toByteArray(Charsets.UTF_8).size),
             )
             return false
         }

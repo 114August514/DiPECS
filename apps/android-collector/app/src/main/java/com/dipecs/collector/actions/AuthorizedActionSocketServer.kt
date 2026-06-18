@@ -10,7 +10,10 @@ import java.net.Socket
 import java.net.SocketException
 import java.net.SocketTimeoutException
 import java.security.MessageDigest
+import java.util.concurrent.ArrayBlockingQueue
 import java.util.concurrent.Executors
+import java.util.concurrent.RejectedExecutionException
+import java.util.concurrent.ThreadPoolExecutor
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
@@ -26,7 +29,13 @@ class AuthorizedActionSocketServer(
     private val failedAuthCount = AtomicInteger(0)
     private val rejectUntilMs = AtomicLong(0)
     private val acceptExecutor = Executors.newSingleThreadExecutor()
-    private val clientExecutor = Executors.newCachedThreadPool()
+    private val clientExecutor = ThreadPoolExecutor(
+        MAX_CLIENT_THREADS,
+        MAX_CLIENT_THREADS,
+        30L,
+        TimeUnit.SECONDS,
+        ArrayBlockingQueue(MAX_PENDING_CLIENTS),
+    )
     @Volatile
     private var serverSocket: ServerSocket? = null
 
@@ -58,8 +67,18 @@ class AuthorizedActionSocketServer(
                         }
                         throw error
                     }
-                    clientExecutor.execute {
-                        client.use { handleClient(it) }
+                    try {
+                        clientExecutor.execute {
+                            client.use { handleClient(it) }
+                        }
+                    } catch (_: RejectedExecutionException) {
+                        client.close()
+                        EventRepository.recordInternal(
+                            context,
+                            "authorized_action_socket_busy",
+                            "AuthorizedAction socket client queue is full",
+                            JSONObject().put("port", port),
+                        )
                     }
                 }
             } catch (error: Throwable) {
@@ -186,7 +205,7 @@ class AuthorizedActionSocketServer(
                     "authorized_action_socket_invalid_json",
                     error.message ?: "Invalid AuthorizedAction JSON",
                     JSONObject()
-                        .put("payload", payload.take(2048))
+                        .put("payloadBytes", payload.toByteArray(Charsets.UTF_8).size)
                         .put("port", port),
                 )
             }
@@ -238,6 +257,8 @@ class AuthorizedActionSocketServer(
         const val AUTH_TOKEN_FIELD = "auth_token"
         private const val MAX_PAYLOAD_CHARS = 64 * 1024
         private const val READ_BUFFER_CHARS = 4096
+        private const val MAX_CLIENT_THREADS = 4
+        private const val MAX_PENDING_CLIENTS = 16
         private const val MAX_AUTH_FAILURES_BEFORE_BACKOFF = 5
         private val SOCKET_READ_TIMEOUT_MS = TimeUnit.SECONDS.toMillis(5)
         private val AUTH_BACKOFF_MS = TimeUnit.SECONDS.toMillis(30)

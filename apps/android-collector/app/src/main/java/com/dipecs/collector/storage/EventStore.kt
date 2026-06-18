@@ -2,6 +2,7 @@ package com.dipecs.collector.storage
 
 import android.content.Context
 import com.dipecs.collector.model.CollectorEvent
+import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
 
@@ -19,7 +20,7 @@ class EventStore(context: Context) {
 
     fun append(event: CollectorEvent) {
         synchronized(LOCK) {
-            traceFile.appendText(event.toJson().toString() + "\n")
+            traceFile.appendText(sanitizeForTrace(event.toJson()).toString() + "\n")
         }
     }
 
@@ -32,7 +33,7 @@ class EventStore(context: Context) {
             .asSequence()
             .filter { it.isNotBlank() }
             .takeLastCompat(limit)
-            .mapNotNull { line -> runCatching { JSONObject(line) }.getOrNull() }
+            .mapNotNull { line -> runCatching { sanitizeForTrace(JSONObject(line)) }.getOrNull() }
             .toList()
     }
 
@@ -45,6 +46,10 @@ class EventStore(context: Context) {
             .asSequence()
             .filter { it.isNotBlank() }
             .takeLastCompat(limit)
+            .map { line ->
+                runCatching { sanitizeForTrace(JSONObject(line)).toString() }
+                    .getOrElse { line }
+            }
     }
 
     fun clear() {
@@ -64,7 +69,16 @@ class EventStore(context: Context) {
         }
         val target = File(targetDir, "actions.jsonl")
         if (source.exists()) {
-            source.copyTo(target, overwrite = true)
+            val sanitized = source.readLines()
+                .asSequence()
+                .filter { it.isNotBlank() }
+                .map { line ->
+                    runCatching { sanitizeForTrace(JSONObject(line)).toString() }
+                        .getOrElse { "" }
+                }
+                .filter { it.isNotBlank() }
+                .joinToString(separator = "\n", postfix = "\n")
+            target.writeText(sanitized)
         } else {
             target.writeText("")
         }
@@ -95,5 +109,58 @@ class EventStore(context: Context) {
 
     companion object {
         private val LOCK = Any()
+
+        private val SENSITIVE_NULL_KEYS = setOf(
+            "group_key",
+            "key",
+            "tag",
+            "payload",
+            "responseBody",
+            "sourceText",
+            "sourceContentDescription",
+            "textItems",
+            "windowTitle",
+            "text",
+            "target",
+            "cachePath",
+        )
+
+        private val SENSITIVE_STRING_KEYS = setOf(
+            "raw_title",
+            "raw_text",
+            "notification_key",
+        )
+
+        fun sanitizeForTrace(value: JSONObject): JSONObject =
+            sanitizeObject(value)
+
+        private fun sanitizeObject(value: JSONObject): JSONObject {
+            val sanitized = JSONObject()
+            val keys = value.keys()
+            while (keys.hasNext()) {
+                val key = keys.next()
+                val original = value.opt(key)
+                when {
+                    key in SENSITIVE_NULL_KEYS -> sanitized.put(key, JSONObject.NULL)
+                    key in SENSITIVE_STRING_KEYS -> sanitized.put(key, "")
+                    original is JSONObject -> sanitized.put(key, sanitizeObject(original))
+                    original is JSONArray -> sanitized.put(key, sanitizeArray(original))
+                    else -> sanitized.put(key, original ?: JSONObject.NULL)
+                }
+            }
+            return sanitized
+        }
+
+        private fun sanitizeArray(value: JSONArray): JSONArray {
+            val sanitized = JSONArray()
+            for (index in 0 until value.length()) {
+                when (val item = value.opt(index)) {
+                    is JSONObject -> sanitized.put(sanitizeObject(item))
+                    is JSONArray -> sanitized.put(sanitizeArray(item))
+                    else -> sanitized.put(item ?: JSONObject.NULL)
+                }
+            }
+            return sanitized
+        }
     }
 }

@@ -15,6 +15,11 @@ class AccessibleContentPrefetcherTest {
     }
 
     @Test(expected = IllegalStateException::class)
+    fun parseUrlTargetRejectsHttpUrl() {
+        AccessibleContentPrefetcher.PrefetchTarget.parse("url:http://example.test/feed.json")
+    }
+
+    @Test(expected = IllegalStateException::class)
     fun parseUrlTargetRejectsUnsupportedKind() {
         AccessibleContentPrefetcher.PrefetchTarget.parse("pkg:com.example.app")
     }

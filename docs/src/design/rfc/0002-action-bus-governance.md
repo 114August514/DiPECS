@@ -217,17 +217,21 @@ pub struct AuditRecord {
     pub effect: EffectClass,
     pub transitions: Vec<ActionState>,  // 完整迁移序列
     pub terminal: ActionState,          // 终态 (冗余但便于查询/golden)
+    pub outcome: Option<ActionOutcomeSummary>, // 成功时写入 adapter outcome 的确定性摘要，进 hash（见下）
     pub denial_reason: Option<DenialReason>,  // 复用现有枚举
     pub error: Option<String>,
 }
 ```
 
+- **`outcome` 字段**（reviewer 第 6 轮第 1 点）：`ActionAdapter::execute` 返回 `ActionOutcome`，但若审计只记 `(coord, terminal, transitions)`，两次都 `Succeeded` 但模拟结果不同时审计与 hash 完全看不出来，违反 issue #8 的「执行结果可写入 audit log」「replay outcome 稳定」。故成功路径把 adapter outcome 投影为**确定性** `ActionOutcomeSummary`（不含 wall-clock/随机）写入 `outcome`，并**纳入 `audit_hash`**；失败路径 `outcome=None`、信息走 `error`。
+
 强制不变量（用单测 + 终态覆盖测试钉死）：
 
 1. 每个 `ActionProposal`（即每个 `coord`）产出**恰好一条** `AuditRecord`，且 `terminal` 必为终态之一。
-2. 成功路径记录完整迁移序列 `[Proposed, …, Succeeded]`。
+2. 成功路径记录完整迁移序列 `[Proposed, …, Succeeded]`，且 `outcome` 为 `Some(确定性摘要)`。
 3. 四类终态（schema / capability / policy / failed）各有对应记录，互不混淆（privacy 终态延后，见 §2.1）。
 4. 全程**不 panic**：所有错误走结构化 `LifecycleError` / `DenialReason` / `AdapterError`。
+5. **outcome 确定性**：重复 replay 同一 trace，`outcome` 逐字段相等；outcome 内容漂移必然改变 `audit_hash`（新增回归测试钉死）。
 
 #### 2.4 稳定动作标识：确定性 `ActionCoord` vs 运行时 `intent_id`
 
@@ -256,9 +260,9 @@ pub struct OfflineAdapter { /* Arc<Mutex<SimulatedState>> */ }
 // DefaultActionExecutor 改为 impl 同一个 trait，复用现有 Android bridge 转发逻辑。
 ```
 
-- 支持动作（映射到现有 5 类 + 模拟语义）：`NoOp`、`PreWarmProcess`→SimulatePrewarm、`PrefetchFile`→SimulateCache、`KeepAlive`、`ReleaseMemory`。
+- 支持动作（映射到现有 5 类 + 模拟语义）：`NoOp`、`PreWarmProcess`→SimulatePrewarm、`PrefetchFile`→SimulateCache、`KeepAlive`、`ReleaseMemory`。`ActionType` 是封闭 5-variant 枚举，OfflineAdapter **完整覆盖全部 variant**。
 - **不**访问真实系统 / 网络 / Android；输出 deterministic `ActionOutcome`（不含 wall-clock、不含随机 latency——latency 由上层注入或固定 0）。
-- unsupported 动作返回结构化 `AdapterError::Unsupported`，**绝不 panic**，也不破坏状态机。
+- **非法/未知动作归 schema 阶段，不设 `AdapterError::Unsupported`**（reviewer 第 6 轮第 2 点）：`ActionType` 封闭且 adapter 全覆盖，安全 Rust 中「adapter 收到不认识的 variant」**不可达**，留 `Unsupported` 是测不到的死路径。未知 `action_type`（如反序列化到不存在的字符串）在更早的 **schema/反序列化阶段**就失败，归 `RejectedInvalidSchema`（已有可达终态）。`AdapterError` 仍保留，但只表达**真实执行失败**（模拟资源不可用等）→ 状态机落 `Failed`。
 - adapter 失败 → 状态机落 `Failed` 终态，窗口继续处理后续动作。
 
 ### 范围与 issue 验收对齐（回应 reviewer 第 5 点）
@@ -267,14 +271,14 @@ pub struct OfflineAdapter { /* Arc<Mutex<SimulatedState>> */ }
 
 - **issue #4**：全部验收项本 RFC 覆盖（类型分离、adapter 只收 `AuthorizedAction`、schema 拒绝、serde roundtrip、非法 action 测试）。其中「`ResourceBudget`、带副作用 action 的 budget」**降级为字段占位不校验**——需在 issue #4 补注说明。**可关闭**（带范围注记）。
 - **issue #5**：覆盖 schema/capability/policy/failed 四类终态 + 「恰好一条终态审计」+ 不 panic。**不覆盖**：（a）「隐私违规有对应终态」——当前无可实现的 privacy predicate（`target` 是裸 `String`，无来源/脱敏证明），`RejectedPrivacyViolation` 延后到 typed `ResourceTarget` 引入后的后续 RFC；（b）「预算拒绝有对应终态」（`ActionState` 不引入 `DeniedByBudget`）与 `Scheduled`/`BudgetReserved`/`Expired`/`Cancelled`（均无机制支撑）。→ 在 issue #5 勾掉已完成项，对未做项注明承接的后续 RFC，**该 issue 不由本 PR 完全关闭**。
-- **issue #8**：全部验收项覆盖。**可关闭**。
+- **issue #8**：验收项覆盖，但**「unsupported action 有明确错误类型」一项改判**（reviewer 第 6 轮第 2 点）：`ActionType` 封闭、adapter 全覆盖，adapter 级 `Unsupported` 不可达。该验收**重释为「非法/未知 `action_type` 在 schema/反序列化阶段被拒，归 `RejectedInvalidSchema`」**——语义等价（非法动作不会被执行），且可测。需在 issue #8 补注此重释。「执行结果可写入 audit log / replay outcome 稳定」由新增 `AuditRecord.outcome` + 纳入 hash 满足。**可关闭**（带此重释注记）。
 
 > 准则：裁实现可以，裁验收必须留痕。任何被本 RFC 推迟的验收项，都会在对应 issue 上注明，并指向承接它的未来工作，避免「RFC 宣称覆盖、issue 却没人关」的悬空。
 
 ### 4. 集成点
 
 - **daemon `pipeline.rs`**：`process_window` 不再「先 PolicyEngine 再 executor」两段式。改为构造一个 `ActionLifecycle`（注入 `PolicyEngine` + 选定的 `ActionAdapter`），对每个窗口调用 `lifecycle.run(window_ordinal, batch, capability, ctx)` 一次（`window_ordinal` 由处理循环单调赋号），拿回 `Vec<AuditRecord>` 写入 runtime trace JSON（新增 `"audit"` 字段）。策略检查与 dispatch 都在 lifecycle 内部，只发生一次。跨进程重启 `window_ordinal` 从 0 重置——这是 canonical replay 坐标的预期语义，跨重启唯一性若需要由 volatile `session_id` 承担（§2.2）。
-- **cli `replay`**：注入 `OfflineAdapter` 作为 `ActionAdapter`，同样按 replay 窗口序列调 `lifecycle.run(window_ordinal, ...)` 收集 `AuditRecord`；summary 新增 `Audit records` 计数；`audit_hash` 输入扩展为包含按 `coord` 排序的 `(coord, terminal, transitions)`（确定性来源：state machine 纯函数 + OfflineAdapter；`intent_id` 经 `VOLATILE_KEYS` 剥离不进 hash）。
+- **cli `replay`**：注入 `OfflineAdapter` 作为 `ActionAdapter`，同样按 replay 窗口序列调 `lifecycle.run(window_ordinal, ...)` 收集 `AuditRecord`；summary 新增 `Audit records` 计数；`audit_hash` 输入扩展为包含按 `coord` 排序的 `(coord, terminal, transitions, outcome)`（确定性来源：state machine 纯函数 + OfflineAdapter 的确定性 outcome；`intent_id` 经 `VOLATILE_KEYS` 剥离不进 hash）。
 - **取代而非并存**：旧的「`PolicyEngine.evaluate_*` → `DefaultActionExecutor::execute`」直连调用在 daemon/cli 中被 `ActionLifecycle` 取代。`DefaultActionExecutor` 不删，但改为 `impl ActionAdapter` 后由 lifecycle 统一驱动，避免两条路径重复执行同一动作。
 - **收束 seal 旁路（务实信任边界）**（reviewer 第 3–5 轮）：起点是 CLI `SendAuthorizedAction` 和 Android socket/UI 能把任意带 `auth_token` 的 JSON 直接交给 `dispatchAuthorizedActionJson` 执行（`AuthorizedActionSocketServer.kt:145-172`、`MainActivity.kt:365-399`）。**信任模型（P0）**：`auth_token` 认证「调用方可信」；持有本机 socket token 的本地操作者**纳入 P0 信任边界**——不追求跨进程「payload 经 lifecycle seal」的强防伪（HMAC/签名/nonce 对原型是过度防御，已与 reviewer 达成一致）。在此前提下收束而非全封：
   - **常规管线唯一经 lifecycle**：daemon/CLI 的正常动作路径只经 `ActionLifecycle` → `DefaultActionExecutor`（`impl ActionAdapter`，内部把 `AuthorizedAction` 序列化经 socket 转发）。**release 保留 socket 的 `dispatchAuthorizedActionJson` 接收入口**——它正是合法 bridge 的落点，不能 gate 掉（这是上一轮自相矛盾处：gate 掉它会同时切断生产 bridge）。
@@ -295,7 +299,7 @@ pub struct OfflineAdapter { /* Arc<Mutex<SimulatedState>> */ }
 
 ## 影响面 (Impact)
 
-- **涉及的模块**：`aios-spec`（新增 `ActionProposal`/`EffectClass`/`ActionState`/`AuditRecord`/`ActionOutcome`/`AdapterError`；**移出** `AuthorizedAction`）、`aios-core`（接收 `AuthorizedAction` + `ActionAdapter` trait，新增 `governance` 与 `action_lifecycle.rs`）、`aios-action`（新增 `OfflineAdapter`，`DefaultActionExecutor` 改 `impl ActionAdapter`，**新增对 `aios-core` 的依赖**）、`aios-daemon`/`aios-cli`（改用 `ActionLifecycle` 单管线，接审计流）。
+- **涉及的模块**：`aios-spec`（新增 `ActionProposal`/`EffectClass`/`ActionState`/`AuditRecord`（含 `outcome`）/`ActionOutcome`/`ActionOutcomeSummary`/`AdapterError`；**移出** `AuthorizedAction`）、`aios-core`（接收 `AuthorizedAction` + `ActionAdapter` trait，新增 `governance` 与 `action_lifecycle.rs`）、`aios-action`（新增 `OfflineAdapter`，`DefaultActionExecutor` 改 `impl ActionAdapter`，**新增对 `aios-core` 的依赖**）、`aios-daemon`/`aios-cli`（改用 `ActionLifecycle` 单管线，接审计流）。
 - **接口变更**：`AuthorizedAction` 移到 core、字段私有、加 `effect`/`coord`、唯一构造器 `pub(crate) seal`——会触及所有现有构造点（policy_engine 返回值、测试、Android bridge payload）。`ActionExecutor` trait（spec）被 `ActionAdapter` 取代为 dispatch 抽象。
 - **依赖图变更**：新增 `aios-action → aios-core` 边。已确认 `aios-core` 不依赖 `aios-action`，无环；`spec → core → action` 仍单向。
 - **向后兼容性**：现有 golden trace 的脱敏/策略/执行三层语义不变；`audit_hash` 输入扩展属于**有意的确定性升级**，需同步刷新 golden 基线（一次性）。
@@ -327,10 +331,10 @@ pub struct OfflineAdapter { /* Arc<Mutex<SimulatedState>> */ }
 
 ## 迁移计划 (Migration Plan)
 
-1. `aios-spec`：加 `ActionProposal`/`EffectClass`/`ActionState`/`AuditRecord`/`ActionOutcome`/`AdapterError`；**移出** `AuthorizedAction`。跑通 serde roundtrip 与非法 action 测试。
+1. `aios-spec`：加 `ActionProposal`/`EffectClass`/`ActionState`/`AuditRecord`（含 `outcome`）/`ActionOutcome`/`ActionOutcomeSummary`/`AdapterError`；**移出** `AuthorizedAction`。跑通 serde roundtrip 与非法 `action_type` 反序列化拒绝测试（归 schema 阶段）。
 2. `aios-core`：新建 `governance`（落 `AuthorizedAction` 私有字段 + `seal` + `ActionAdapter` trait）+ `action_lifecycle.rs` 状态机；改 `PolicyEngine` 调用方拿新类型。`PolicyActionDecision` 只带 batch 内 `(intent_ordinal, action_ordinal)`，`window_ordinal` 由 lifecycle 在窗口边界补齐组装成完整 `ActionCoord`。状态机单测 + 终态覆盖 + 「每 `coord` 恰好一条终态审计」测试（含**两个窗口、重复 ordinal** 场景，证明全局主键不碰撞）。
-3. `aios-action`：加 `aios-core` 依赖；`OfflineAdapter` + `DefaultActionExecutor` 都 `impl ActionAdapter`；每动作单测 + unsupported 测试。
-4. `aios-daemon`/`aios-cli`：换成 `ActionLifecycle` 单管线（`run` 显式传 `window_ordinal`），接审计流，刷新 golden 基线；**收束 seal 旁路**——CLI `SendAuthorizedAction` 改为不执行动作的 ping/health-check（见 §4），Android UI 手动执行按钮移到 debug source set；**release 保留 socket `dispatchAuthorizedActionJson` 供 `DefaultActionExecutor` 转发**。加测试：常规 CLI/daemon 路径无「绕过 lifecycle 构造 AuthorizedAction」的公开 API。`replay` 的 `audit_hash` 加「三次回放 hash 一致」+「两窗口重复 ordinal 无碰撞」回归。
+3. `aios-action`：加 `aios-core` 依赖；`OfflineAdapter` + `DefaultActionExecutor` 都 `impl ActionAdapter`；每动作单测 + 成功 `outcome` 摘要确定性测试 + adapter 真实失败→`Failed` 测试（不再有 unsupported-variant 测试，理由见 §3）。
+4. `aios-daemon`/`aios-cli`：换成 `ActionLifecycle` 单管线（`run` 显式传 `window_ordinal`），接审计流，刷新 golden 基线；**收束 seal 旁路**——CLI `SendAuthorizedAction` 改为不执行动作的 ping/health-check（见 §4），Android UI 手动执行按钮移到 debug source set；**release 保留 socket `dispatchAuthorizedActionJson` 供 `DefaultActionExecutor` 转发**。加测试：常规 CLI/daemon 路径无「绕过 lifecycle 构造 AuthorizedAction」的公开 API。`replay` 的 `audit_hash` 加「三次回放 hash 一致」+「两窗口重复 ordinal 无碰撞」+「outcome 漂移改变 hash」回归。
 5. 全量 `cargo test --workspace` + `cargo clippy -- -D warnings` 通过。
 6. 在 issue #4/#5/#8 按「范围与 issue 验收对齐」勾选/留痕；#5 注明延后项。
 

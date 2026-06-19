@@ -72,7 +72,7 @@ pub struct ActionProposal {
     pub proposed_at_ms: i64,
 }
 
-// 确定性动作坐标：不含 UUID/wall-clock，纯位置量，replay 间稳定且全局唯一。
+// 确定性动作坐标：不含 UUID/wall-clock，纯位置量，单次 run 内唯一且 replay 间稳定。
 pub struct ActionCoord {
     pub window_ordinal: u32,       // 窗口在 replay 序列中的确定性序号（跨窗口去碰撞）
     pub intent_ordinal: u32,       // intent 在 batch.intents 中的下标
@@ -117,7 +117,7 @@ impl AuthorizedAction {
 
 ### 2. 生命周期状态机与终态审计（issue #5，`aios-spec` + `aios-core`）
 
-#### 2.1 状态枚举（精简版，~10 态）
+#### 2.1 状态枚举（精简版，9 态）
 
 按 DiPECS 真实管线裁剪文档的 18 态。**只保留当前可达的状态**，不引入任何不可达的死 variant（budget/调度类终态延后到机制存在时的后续 RFC；privacy 终态延后到 typed target 存在时，见下）：
 
@@ -276,11 +276,11 @@ pub struct OfflineAdapter { /* Arc<Mutex<SimulatedState>> */ }
 - **daemon `pipeline.rs`**：`process_window` 不再「先 PolicyEngine 再 executor」两段式。改为构造一个 `ActionLifecycle`（注入 `PolicyEngine` + 选定的 `ActionAdapter`），对每个窗口调用 `lifecycle.run(window_ordinal, batch, capability, ctx)` 一次（`window_ordinal` 由处理循环单调赋号），拿回 `Vec<AuditRecord>` 写入 runtime trace JSON（新增 `"audit"` 字段）。策略检查与 dispatch 都在 lifecycle 内部，只发生一次。跨进程重启 `window_ordinal` 从 0 重置——这是 canonical replay 坐标的预期语义，跨重启唯一性若需要由 volatile `session_id` 承担（§2.2）。
 - **cli `replay`**：注入 `OfflineAdapter` 作为 `ActionAdapter`，同样按 replay 窗口序列调 `lifecycle.run(window_ordinal, ...)` 收集 `AuditRecord`；summary 新增 `Audit records` 计数；`audit_hash` 输入扩展为包含按 `coord` 排序的 `(coord, terminal, transitions)`（确定性来源：state machine 纯函数 + OfflineAdapter；`intent_id` 经 `VOLATILE_KEYS` 剥离不进 hash）。
 - **取代而非并存**：旧的「`PolicyEngine.evaluate_*` → `DefaultActionExecutor::execute`」直连调用在 daemon/cli 中被 `ActionLifecycle` 取代。`DefaultActionExecutor` 不删，但改为 `impl ActionAdapter` 后由 lifecycle 统一驱动，避免两条路径重复执行同一动作。
-- **封堵 seal 旁路——含 Android 执行端**（reviewer 第 3 / 4 轮）：仅把 CLI 命令改名**不能**真正封堵。Android socket 在校验 `auth_token` 后会把收到的任意 JSON 直接交给 `dispatchAuthorizedActionJson` 执行（`AuthorizedActionSocketServer.kt:145-172`），UI 还保留「Run AuthorizedAction Now / Via Service」直接执行任意 JSON（`MainActivity.kt:365-399`）。`auth_token` 只认证「连接来源可信」，不证明「内容过了 seal」——所以只要注入合法 token 发原来的 PrefetchFile JSON，副作用完全不变。真正封堵：
-  - **CLI 诊断路径不再执行动作**：`SendAuthorizedAction` 改为 ping / health-check 协议——只探活连通性与 token 有效性，socket 端对该协议**不 dispatch 任何动作**。`android_bridge.rs::load_payload` 的 `manual-prefetch` 构造删除。
-  - **Android 执行入口 gated 到非生产 build**：socket 的 `dispatchAuthorizedActionJson` 路径与 `MainActivity` 的「Run AuthorizedAction Now / Via Service」按钮，统一收束到 `BuildConfig.DEBUG`（或独立 `debug` build feature）后；release build 中这些手动 / raw 执行入口**不编译进包**。
-  - **唯一生产路径**：动作发往 Android 只经 `ActionLifecycle` → `DefaultActionExecutor`（`impl ActionAdapter`，内部走 bridge 转发），即唯一 seal + 唯一 dispatch。
-  - **threat model 显式声明**：release build 中不存在「绕过 seal 发往执行端」的公开路径；debug build 保留的手动执行入口是**已知的、仅供开发的例外**，不计入生产治理边界。迁移计划第 4 步加测试：release 配置下断言无 raw-dispatch 入口可达。
+- **收束 seal 旁路（务实信任边界）**（reviewer 第 3–5 轮）：起点是 CLI `SendAuthorizedAction` 和 Android socket/UI 能把任意带 `auth_token` 的 JSON 直接交给 `dispatchAuthorizedActionJson` 执行（`AuthorizedActionSocketServer.kt:145-172`、`MainActivity.kt:365-399`）。**信任模型（P0）**：`auth_token` 认证「调用方可信」；持有本机 socket token 的本地操作者**纳入 P0 信任边界**——不追求跨进程「payload 经 lifecycle seal」的强防伪（HMAC/签名/nonce 对原型是过度防御，已与 reviewer 达成一致）。在此前提下收束而非全封：
+  - **常规管线唯一经 lifecycle**：daemon/CLI 的正常动作路径只经 `ActionLifecycle` → `DefaultActionExecutor`（`impl ActionAdapter`，内部把 `AuthorizedAction` 序列化经 socket 转发）。**release 保留 socket 的 `dispatchAuthorizedActionJson` 接收入口**——它正是合法 bridge 的落点，不能 gate 掉（这是上一轮自相矛盾处：gate 掉它会同时切断生产 bridge）。
+  - **CLI raw-send 改诊断**：`SendAuthorizedAction` 改为 ping/health-check（独立消息类型，socket 端**不 dispatch 动作**），`android_bridge.rs::load_payload` 的 `manual-prefetch` 构造删除。通用 CLI 不再提供「手搓 AuthorizedAction 发执行端」的口子。
+  - **只 gate Android UI 手动按钮**：`MainActivity` 的「Run AuthorizedAction Now / Via Service」属开发期手动触发，gate 到 debug build（debug source set/flavor 移除代码，而非仅运行时 `BuildConfig.DEBUG` 分支）。socket dispatch 入口本身不动。
+  - **threat model 表述**：**「常规 daemon/CLI 管线必须经过 lifecycle；持 token 的本地诊断操作者属于显式可信例外」**——不写「release 无任何绕过路径」（在务实信任模型下既不必要也不准确）。迁移计划第 4 步加测试：常规 CLI/daemon 路径无「绕过 lifecycle 构造 AuthorizedAction」的公开 API；UI 手动执行入口在 release source set 不存在。
 
 ### 5. 已定决策：审计轨迹纳入 `audit_hash`
 
@@ -330,7 +330,7 @@ pub struct OfflineAdapter { /* Arc<Mutex<SimulatedState>> */ }
 1. `aios-spec`：加 `ActionProposal`/`EffectClass`/`ActionState`/`AuditRecord`/`ActionOutcome`/`AdapterError`；**移出** `AuthorizedAction`。跑通 serde roundtrip 与非法 action 测试。
 2. `aios-core`：新建 `governance`（落 `AuthorizedAction` 私有字段 + `seal` + `ActionAdapter` trait）+ `action_lifecycle.rs` 状态机；改 `PolicyEngine` 调用方拿新类型。`PolicyActionDecision` 只带 batch 内 `(intent_ordinal, action_ordinal)`，`window_ordinal` 由 lifecycle 在窗口边界补齐组装成完整 `ActionCoord`。状态机单测 + 终态覆盖 + 「每 `coord` 恰好一条终态审计」测试（含**两个窗口、重复 ordinal** 场景，证明全局主键不碰撞）。
 3. `aios-action`：加 `aios-core` 依赖；`OfflineAdapter` + `DefaultActionExecutor` 都 `impl ActionAdapter`；每动作单测 + unsupported 测试。
-4. `aios-daemon`/`aios-cli`：换成 `ActionLifecycle` 单管线（`run` 显式传 `window_ordinal`），接审计流，刷新 golden 基线；**封堵 seal 旁路**——CLI `SendAuthorizedAction` 改为不执行动作的 ping/health-check（见 §4），Android socket `dispatchAuthorizedActionJson` 与 `MainActivity` 手动执行按钮 gated 到 `BuildConfig.DEBUG`；加测试：release 配置下断言无 raw-dispatch 入口可达。`replay` 的 `audit_hash` 加「三次回放 hash 一致」+「两窗口重复 ordinal 无碰撞」回归。
+4. `aios-daemon`/`aios-cli`：换成 `ActionLifecycle` 单管线（`run` 显式传 `window_ordinal`），接审计流，刷新 golden 基线；**收束 seal 旁路**——CLI `SendAuthorizedAction` 改为不执行动作的 ping/health-check（见 §4），Android UI 手动执行按钮移到 debug source set；**release 保留 socket `dispatchAuthorizedActionJson` 供 `DefaultActionExecutor` 转发**。加测试：常规 CLI/daemon 路径无「绕过 lifecycle 构造 AuthorizedAction」的公开 API。`replay` 的 `audit_hash` 加「三次回放 hash 一致」+「两窗口重复 ordinal 无碰撞」回归。
 5. 全量 `cargo test --workspace` + `cargo clippy -- -D warnings` 通过。
 6. 在 issue #4/#5/#8 按「范围与 issue 验收对齐」勾选/留痕；#5 注明延后项。
 

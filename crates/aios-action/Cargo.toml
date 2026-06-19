@@ -13,5 +13,4 @@ serde_json = { workspace = true }
 tracing = { workspace = true }
 
 [dev-dependencies]
-aios-core = { workspace = true, features = ["test-helpers"] }
 # libc = { workspace = true }

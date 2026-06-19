@@ -105,13 +105,13 @@ impl ActionState {
 
 /// 动作执行结果（adapter 返回）。
 ///
-/// 可能包含运行时 volatile 字段（如实际 latency），因此不能直接进 hash；
-/// 需先投影为 `ActionOutcomeSummary`。
+/// `Ok(ActionOutcome)` 即表示执行成功；失败通过 `Result::Err(AdapterError)`
+/// 表达。本结构体可能包含运行时 volatile 字段（如实际 latency），因此不能
+/// 直接进 hash；需先投影为 `ActionOutcomeSummary`。
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ActionOutcome {
     pub action_type: String,
     pub target: Option<String>,
-    pub success: bool,
     pub summary: String,
     pub latency_us: u64,
 }

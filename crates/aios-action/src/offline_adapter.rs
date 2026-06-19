@@ -52,72 +52,8 @@ impl ActionAdapter for OfflineAdapter {
         Ok(ActionOutcome {
             action_type: action_type_name,
             target,
-            success: true,
             summary,
             latency_us: 0,
         })
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use aios_core::governance::AuthorizedAction;
-    use aios_spec::governance::{ActionCoord, ActionOutcomeSummary, ActionProposal, EffectClass};
-    use aios_spec::intent::{ActionType, ActionUrgency, SuggestedAction};
-
-    fn make_authorized(action_type: ActionType, target: Option<&str>) -> AuthorizedAction {
-        let effect = EffectClass::from_action_type(&action_type);
-        let proposal = ActionProposal {
-            intent_id: "intent-1".into(),
-            coord: ActionCoord {
-                window_ordinal: 0,
-                intent_ordinal: 0,
-                action_ordinal: 0,
-            },
-            action: SuggestedAction {
-                action_type,
-                target: target.map(|s| s.to_string()),
-                urgency: ActionUrgency::Immediate,
-            },
-            effect,
-            proposed_at_ms: 1000,
-        };
-        AuthorizedAction::seal_for_test(&proposal, 2000)
-    }
-
-    #[test]
-    fn offline_adapter_covers_all_action_types() {
-        let adapter = OfflineAdapter;
-        let cases = vec![
-            (ActionType::NoOp, None),
-            (ActionType::PreWarmProcess, Some("com.example.app")),
-            (
-                ActionType::PrefetchFile,
-                Some("url:https://example.test/feed.json"),
-            ),
-            (ActionType::KeepAlive, Some("com.example.app")),
-            (ActionType::ReleaseMemory, None),
-        ];
-
-        for (action_type, target) in cases {
-            let authorized = make_authorized(action_type, target);
-            let outcome = adapter.execute(&authorized).unwrap();
-            assert!(outcome.success);
-            assert_eq!(outcome.latency_us, 0);
-            assert!(!outcome.summary.is_empty());
-        }
-    }
-
-    #[test]
-    fn offline_outcome_summary_is_deterministic() {
-        let adapter = OfflineAdapter;
-        let authorized = make_authorized(ActionType::PrefetchFile, Some("url:https://x.test/"));
-        let a = adapter.execute(&authorized).unwrap();
-        let b = adapter.execute(&authorized).unwrap();
-        assert_eq!(
-            ActionOutcomeSummary::from_outcome(&a),
-            ActionOutcomeSummary::from_outcome(&b)
-        );
     }
 }

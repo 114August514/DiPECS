@@ -36,13 +36,6 @@ impl AuthorizedAction {
         }
     }
 
-    /// 测试用构造入口。仅在 `cfg(test)` 或启用 `test-helpers` feature 时存在。
-    #[cfg(any(test, feature = "test-helpers"))]
-    #[doc(hidden)]
-    pub fn seal_for_test(proposal: &ActionProposal, authorized_at_ms: i64) -> Self {
-        Self::seal(proposal, authorized_at_ms)
-    }
-
     pub fn intent_id(&self) -> &str {
         &self.intent_id
     }

@@ -4,6 +4,7 @@ import android.content.Context
 import com.dipecs.collector.storage.EventRepository
 import java.io.IOException
 import java.io.InputStreamReader
+import java.io.OutputStreamWriter
 import java.net.InetAddress
 import java.net.ServerSocket
 import java.net.Socket
@@ -165,6 +166,16 @@ class AuthorizedActionSocketServer(
                 }
                 failedAuthCount.set(0)
                 rejectUntilMs.set(0)
+                if (json.optString("message_type") == "ping") {
+                    sendPong(client)
+                    EventRepository.recordInternal(
+                        context,
+                        "authorized_action_socket_ping",
+                        "Ping received, pong sent",
+                        JSONObject().put("port", port),
+                    )
+                    return@onSuccess
+                }
                 val dispatched = ActionExecutorBridge.dispatchAuthorizedActionJson(
                     context,
                     json,
@@ -190,6 +201,21 @@ class AuthorizedActionSocketServer(
                         .put("port", port),
                 )
             }
+    }
+
+    private fun sendPong(client: Socket) {
+        runCatching {
+            val writer = OutputStreamWriter(client.getOutputStream(), Charsets.UTF_8)
+            writer.write("""{"status":"ok","message":"pong"}""")
+            writer.flush()
+        }.onFailure { error ->
+            EventRepository.recordInternal(
+                context,
+                "authorized_action_socket_pong_failed",
+                error.message ?: "Failed to send pong",
+                JSONObject().put("port", port),
+            )
+        }
     }
 
     private fun readPayload(client: Socket): String {

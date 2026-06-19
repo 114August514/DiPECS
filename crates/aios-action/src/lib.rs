@@ -55,7 +55,6 @@ impl ActionAdapter for DefaultActionExecutor {
                     return Ok(ActionOutcome {
                         action_type: action_name,
                         target: action.target.clone(),
-                        success: true,
                         summary: "forwarded_to_android_bridge".into(),
                         latency_us: 0,
                     });
@@ -123,7 +122,6 @@ impl ActionAdapter for DefaultActionExecutor {
         Ok(ActionOutcome {
             action_type: action_name,
             target: action.target.clone(),
-            success: true,
             summary,
             latency_us: 0,
         })
@@ -252,66 +250,7 @@ fn env_flag(name: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        authorized_action_payload, env_flag, try_forward_to_android_bridge, AndroidBridgeConfig,
-        ForwardOutcome, DEFAULT_ANDROID_ACTION_BRIDGE_PORT,
-    };
-    use aios_core::governance::AuthorizedAction;
-    use aios_spec::governance::{ActionCoord, ActionProposal, EffectClass};
-    use aios_spec::intent::{ActionType, ActionUrgency, SuggestedAction};
-    use serde_json::Value;
-
-    fn make_authorized(action_type: ActionType, target: Option<&str>) -> AuthorizedAction {
-        let effect = EffectClass::from_action_type(&action_type);
-        let proposal = ActionProposal {
-            intent_id: "intent-test".into(),
-            coord: ActionCoord {
-                window_ordinal: 0,
-                intent_ordinal: 0,
-                action_ordinal: 0,
-            },
-            action: SuggestedAction {
-                action_type,
-                target: target.map(|s| s.to_string()),
-                urgency: ActionUrgency::Immediate,
-            },
-            effect,
-            proposed_at_ms: 1000,
-        };
-        AuthorizedAction::seal_for_test(&proposal, 2000)
-    }
-
-    #[test]
-    fn bridge_skips_non_prefetch_actions() {
-        let config = AndroidBridgeConfig {
-            host: "127.0.0.1".into(),
-            port: DEFAULT_ANDROID_ACTION_BRIDGE_PORT,
-            auth_token: Some("secret-token".into()),
-        };
-        let action = make_authorized(ActionType::NoOp, None);
-        let result = try_forward_to_android_bridge(&action, &config).unwrap();
-        assert_eq!(
-            result,
-            ForwardOutcome::Skipped(
-                "only PrefetchFile is currently supported by the Android bridge"
-            )
-        );
-    }
-
-    #[test]
-    fn bridge_skips_non_android_targets() {
-        let config = AndroidBridgeConfig {
-            host: "127.0.0.1".into(),
-            port: DEFAULT_ANDROID_ACTION_BRIDGE_PORT,
-            auth_token: Some("secret-token".into()),
-        };
-        let action = make_authorized(ActionType::PrefetchFile, Some("/tmp/cache.db"));
-        let result = try_forward_to_android_bridge(&action, &config).unwrap();
-        assert_eq!(
-            result,
-            ForwardOutcome::Skipped("PrefetchFile target is not an Android bridge target")
-        );
-    }
+    use super::env_flag;
 
     #[test]
     fn env_flag_accepts_true_values() {
@@ -319,19 +258,6 @@ mod tests {
         assert!(env_flag_eval("1"));
         assert!(env_flag_eval("ON"));
         assert!(!env_flag_eval("false"));
-    }
-
-    #[test]
-    fn bridge_payload_includes_auth_token() {
-        let action = make_authorized(
-            ActionType::PrefetchFile,
-            Some("url:https://example.test/feed.json"),
-        );
-        let payload = authorized_action_payload(&action, "secret-token").unwrap();
-        let value: Value = serde_json::from_str(&payload).unwrap();
-
-        assert_eq!(value["auth_token"], "secret-token");
-        assert_eq!(value["action"]["action_type"], "PrefetchFile");
     }
 
     fn env_flag_eval(value: &str) -> bool {

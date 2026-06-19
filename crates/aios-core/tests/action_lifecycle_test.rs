@@ -23,7 +23,6 @@ impl ActionAdapter for OkAdapter {
         Ok(ActionOutcome {
             action_type: format!("{:?}", authorized.action().action_type),
             target: authorized.action().target.clone(),
-            success: true,
             summary: "ok".into(),
             latency_us: 0,
         })
@@ -255,7 +254,6 @@ fn outcome_drift_changes_audit_hash() {
             Ok(ActionOutcome {
                 action_type: format!("{:?}", authorized.action().action_type),
                 target: authorized.action().target.clone(),
-                success: true,
                 summary: "outcome-a".into(),
                 latency_us: 0,
             })
@@ -271,7 +269,6 @@ fn outcome_drift_changes_audit_hash() {
             Ok(ActionOutcome {
                 action_type: format!("{:?}", authorized.action().action_type),
                 target: authorized.action().target.clone(),
-                success: true,
                 summary: "outcome-b".into(),
                 latency_us: 0,
             })

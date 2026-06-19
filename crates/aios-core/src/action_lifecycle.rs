@@ -121,6 +121,7 @@ impl<'a> ActionLifecycle<'a> {
                             }
                         },
                         PolicyVerdict::Denied(reason) => {
+                            record.transition(ActionState::PolicyChecked);
                             let terminal = denial_to_terminal(reason);
                             record.transition(terminal);
                             record.denial_reason = Some(reason);

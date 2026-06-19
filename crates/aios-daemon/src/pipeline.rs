@@ -1,17 +1,16 @@
 //! 上下文窗口处理管线。
 //!
-//! 单个窗口的处理流程: DecisionRouter → PolicyEngine → ActionExecutor。
+//! 单个窗口的处理流程: DecisionRouter → ActionLifecycle → AuditRecords。
 
 use std::fs::{File, OpenOptions};
 use std::io::Write;
 use std::path::Path;
 
-use aios_action::DefaultActionExecutor;
 use aios_agent::DecisionRouter;
 use aios_collector::collection_stats::RawEventStats;
-use aios_core::policy_engine::PolicyEngine;
-use aios_spec::traits::ActionExecutor;
-use aios_spec::{CapabilityLevel, IngestedRawEvent};
+use aios_core::action_lifecycle::ActionLifecycle;
+use aios_spec::CapabilityLevel;
+use aios_spec::IngestedRawEvent;
 use serde_json::json;
 
 /// Append-only NDJSON recorder for daemon window processing.
@@ -38,12 +37,12 @@ impl RuntimeTraceRecorder {
     }
 }
 
-/// 处理一个上下文窗口: decision router → validate → execute
+/// 处理一个上下文窗口: decision router → action lifecycle → audit records
 pub(crate) fn process_window(
+    window_ordinal: u32,
     ctx: &aios_spec::StructuredContext,
     router: &DecisionRouter,
-    policy: &PolicyEngine,
-    executor: &DefaultActionExecutor,
+    lifecycle: &ActionLifecycle,
     raw_stats: &RawEventStats,
     trace_recorder: Option<&mut RuntimeTraceRecorder>,
 ) {
@@ -66,58 +65,70 @@ pub(crate) fn process_window(
     );
 
     let capability = CapabilityLevel::for_route(decision_result.route);
-    let decisions =
-        policy.evaluate_batch_with_context(&decision_result.intent_batch, &capability, ctx);
+    let audit_records = lifecycle.run(
+        window_ordinal,
+        &decision_result.intent_batch,
+        &capability,
+        ctx,
+    );
 
-    let mut executed = 0u32;
-    let mut execution_records = Vec::new();
-    for decision in &decisions {
-        if decision.approved {
-            let results = executor.execute_batch(&decision.approved_actions);
-            executed += results.len() as u32;
-            for result in &results {
-                if !result.success {
-                    tracing::warn!(
-                        action = %result.action_type,
-                        error = ?result.error,
-                        "action execution failed"
-                    );
-                }
-                execution_records.push(json!({
-                    "intent_id": decision.intent_id,
-                    "action_type": result.action_type,
-                    "target": result.target,
-                    "success": result.success,
-                    "error": result.error,
-                    "latency_us": result.latency_us,
-                }));
-            }
-        } else {
-            tracing::debug!(
-                intent_id = %decision.intent_id,
-                reason = ?decision.rejection_reason,
-                "intent rejected by policy"
-            );
-        }
-        for denial in &decision.action_denials {
-            tracing::warn!(
-                intent_id = %decision.intent_id,
-                reason = ?denial,
-                "action denied by policy"
-            );
+    let executed = audit_records
+        .iter()
+        .filter(|r| matches!(r.terminal, aios_spec::governance::ActionState::Succeeded))
+        .count() as u32;
+    let denied = audit_records
+        .iter()
+        .filter(|r| {
+            matches!(
+                r.terminal,
+                aios_spec::governance::ActionState::RejectedInvalidSchema
+                    | aios_spec::governance::ActionState::DeniedByCapability
+                    | aios_spec::governance::ActionState::DeniedByPolicy
+            )
+        })
+        .count() as u32;
+    let failed = audit_records
+        .iter()
+        .filter(|r| matches!(r.terminal, aios_spec::governance::ActionState::Failed))
+        .count() as u32;
+
+    for record in &audit_records {
+        match record.terminal {
+            aios_spec::governance::ActionState::Failed => {
+                tracing::warn!(
+                    coord = ?record.coord,
+                    action = ?record.action_type,
+                    error = ?record.error,
+                    "action execution failed"
+                );
+            },
+            aios_spec::governance::ActionState::DeniedByCapability
+            | aios_spec::governance::ActionState::DeniedByPolicy
+            | aios_spec::governance::ActionState::RejectedInvalidSchema => {
+                tracing::warn!(
+                    coord = ?record.coord,
+                    action = ?record.action_type,
+                    reason = ?record.denial_reason,
+                    "action denied"
+                );
+            },
+            _ => {},
         }
     }
 
     tracing::info!(
         window_id = %ctx.window_id,
-        intents_total = decisions.len(),
+        intents_total = decision_result.intent_batch.intents.len(),
         actions_executed = executed,
+        actions_denied = denied,
+        actions_failed = failed,
         "window processed"
     );
 
     if let Some(recorder) = trace_recorder {
         let record = json!({
             "stage": "daemon_window",
+            "window_ordinal": window_ordinal,
             "window_id": ctx.window_id,
             "window_start_ms": ctx.window_start_ms,
             "window_end_ms": ctx.window_end_ms,
@@ -134,16 +145,7 @@ pub(crate) fn process_window(
                 "latency_us": decision_result.latency_us,
                 "error": decision_result.error,
             },
-            "policy": decisions.iter().map(|decision| {
-                json!({
-                    "intent_id": decision.intent_id,
-                    "approved": decision.approved,
-                    "rejection_reason": decision.rejection_reason,
-                    "action_denials": decision.action_denials,
-                    "approved_actions": decision.approved_actions,
-                })
-            }).collect::<Vec<_>>(),
-            "execution": execution_records,
+            "audit": audit_records,
         });
         if let Err(error) = recorder.record_window(&record) {
             tracing::warn!(error = %error, "failed to write daemon runtime trace");

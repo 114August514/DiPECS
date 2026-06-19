@@ -6,8 +6,10 @@
 #![deny(unsafe_op_in_unsafe_fn)]
 
 pub mod action_bus;
+pub mod action_lifecycle;
 pub mod collector_ingress;
 pub mod context_builder;
+pub mod governance;
 pub mod policy_engine;
 pub mod privacy_airgap;
 pub mod text_analysis;

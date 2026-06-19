@@ -8,6 +8,10 @@ repository.workspace = true
 
 [dependencies]
 aios-spec = { workspace = true }
+aios-core = { workspace = true }
 serde_json = { workspace = true }
 tracing = { workspace = true }
+
+[dev-dependencies]
+aios-core = { workspace = true, features = ["test-helpers"] }
 # libc = { workspace = true }

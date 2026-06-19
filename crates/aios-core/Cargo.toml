@@ -6,8 +6,13 @@ authors.workspace = true
 license.workspace = true
 repository.workspace = true
 
+[features]
+default = []
+test-helpers = []
+
 [dependencies]
 aios-spec = { workspace = true }
+serde = { workspace = true }
 tokio = { workspace = true, features = ["sync", "macros"] }
 thiserror = { workspace = true }
 tracing = { workspace = true }

@@ -27,11 +27,12 @@ use std::path::PathBuf;
 
 use aios_action::DefaultActionExecutor;
 use aios_agent::DecisionRouter;
+use aios_core::action_lifecycle::ActionLifecycle;
 use aios_core::context_builder::WindowAggregator;
 use aios_core::policy_engine::PolicyEngine;
 use aios_core::privacy_airgap::DefaultPrivacyAirGap;
 use aios_core::trace_engine::DefaultTraceEngine;
-use aios_spec::traits::{ActionExecutor, PrivacySanitizer, TraceValidator};
+use aios_spec::traits::{PrivacySanitizer, TraceValidator};
 use aios_spec::{
     AppTransition, AppTransitionRawEvent, CapabilityLevel, ExecutedAction, FsAccessEvent,
     FsAccessType, GoldenTrace, IntentBatch, LocationType, NetworkType, RawEvent, RingerMode,
@@ -100,24 +101,29 @@ fn drive_pipeline() -> (Vec<SanitizedEvent>, IntentBatch, Vec<ExecutedAction>) {
     let capability = CapabilityLevel::for_route(decision.route);
 
     let policy = PolicyEngine::default();
-    let policy_decisions =
-        policy.evaluate_batch_with_context(&decision.intent_batch, &capability, &ctx);
+    let executor = DefaultActionExecutor::new();
+    let lifecycle = ActionLifecycle::new(&policy, &executor);
+    let audit_records = lifecycle.run(0, &decision.intent_batch, &capability, &ctx);
 
-    let executor = DefaultActionExecutor;
     let mut executed: Vec<ExecutedAction> = Vec::new();
-    for d in &policy_decisions {
-        if !d.approved {
+    for record in &audit_records {
+        if !matches!(record.terminal, aios_spec::governance::ActionState::Succeeded) {
             continue;
         }
-        for r in executor.execute_batch(&d.approved_actions) {
-            executed.push(ExecutedAction {
-                action_type: r.action_type,
-                target: r.target,
-                executed_at_ms: ctx.window_end_ms,
-                success: r.success,
-                error_reason: r.error,
-            });
-        }
+        let summary = record
+            .outcome
+            .as_ref()
+            .map(|o| o.summary.clone())
+            .unwrap_or_else(|| "ok".into());
+        executed.push(ExecutedAction {
+            action_type: format!("{:?}", record.action_type),
+            target: record.target.clone(),
+            executed_at_ms: ctx.window_end_ms,
+            success: true,
+            error_reason: None,
+        });
+        // Keep `summary` reachable for future extensions without a warning.
+        let _ = summary;
     }
 
     (sanitized, decision.intent_batch, executed)

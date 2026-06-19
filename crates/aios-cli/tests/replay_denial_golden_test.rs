@@ -35,7 +35,7 @@ use aios_spec::DenialReason;
 /// Pinned audit hash for `data/traces/denial.jsonl` replayed through
 /// `Stage::Policy` with the default 10s window. See module docs.
 const DENIAL_AUDIT_HASH: &str =
-    "sha256:3fd30718ffd3f8953c14f4b5030b8d6ac52fd3e598ac3c9ab050554c89c3ae14";
+    "sha256:2861d4cc2d5d58ccf1f9c80b518069d1637b1386dc687abdcd001b3fe9784f2b";
 
 fn denial_trace_path() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../data/traces/denial.jsonl")
@@ -63,8 +63,8 @@ fn denial_trace_pins_action_capability_denials() {
 
     // Supporting counters anchor what the denial_counts map is summarising.
     assert_eq!(summary.intents_total, 3);
-    assert_eq!(summary.intents_approved, 3);
-    assert_eq!(summary.intents_rejected, 0);
+    assert_eq!(summary.intents_approved, 2);
+    assert_eq!(summary.intents_rejected, 1);
     assert_eq!(summary.actions_authorized, 2);
     assert_eq!(summary.actions_denied, 2);
     assert_eq!(summary.events_ingested, 3);

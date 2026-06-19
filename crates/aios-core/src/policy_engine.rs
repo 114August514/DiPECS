@@ -4,31 +4,16 @@
 //! 1. 检查风险等级是否允许自动执行 (引擎配置 + 后端能力双重)
 //! 2. 检查推荐的 action 是否在白名单内
 //! 3. 检查目标 app 是否可操作（必须在本窗口的上下文中出现过）
-//! 4. 输出经过滤的可执行动作列表
+//! 4. 输出逐 action 的裁决 (`PolicyActionDecision`)，不再构造 `AuthorizedAction`
 
 use std::collections::BTreeSet;
 
-use aios_spec::{
-    ActionType, ActionUrgency, AuthorizedAction, CapabilityLevel, DenialReason, Intent,
-    IntentBatch, RiskLevel, SanitizedEventType, StructuredContext,
+use aios_spec::governance::{PolicyActionDecision, PolicyVerdict};
+use aios_spec::intent::{
+    ActionType, ActionUrgency, CapabilityLevel, DenialReason, Intent, IntentBatch, RiskLevel,
 };
+use aios_spec::{SanitizedEventType, StructuredContext};
 use tracing::debug;
-
-/// 策略校验结果
-#[derive(Debug, Clone)]
-pub struct PolicyDecision {
-    /// 原始意图 ID
-    pub intent_id: String,
-    /// 原始意图是否通过校验
-    pub approved: bool,
-    /// 被拒绝的原因 (如有)
-    pub rejection_reason: Option<DenialReason>,
-    /// 在意图层通过但被动作层规则拦截的具体原因序列
-    /// (同一意图内可有多条；顺序对应被丢弃的 SuggestedAction 顺序)
-    pub action_denials: Vec<DenialReason>,
-    /// 通过校验的动作列表 (可能少于原始列表)
-    pub approved_actions: Vec<AuthorizedAction>,
-}
 
 /// 策略引擎配置
 #[derive(Debug, Clone)]
@@ -64,16 +49,26 @@ impl PolicyEngine {
         Self { config }
     }
 
-    /// 校验整个 IntentBatch, 返回每个意图的决策。
+    /// 校验整个 IntentBatch, 返回每个建议动作的策略裁决。
     ///
     /// 不检查后端能力等级，也不进行 target-not-in-context 检查——
     /// 用于未指定后端 / 未携带窗口上下文的场景或向后兼容。
-    pub fn evaluate_batch(&self, batch: &IntentBatch) -> Vec<PolicyDecision> {
-        batch
-            .intents
-            .iter()
-            .map(|intent| self.evaluate_intent(intent, batch.generated_at_ms, None, None))
-            .collect()
+    pub fn evaluate_batch(
+        &self,
+        batch: &IntentBatch,
+    ) -> Vec<PolicyActionDecision> {
+        let capability = CapabilityLevel::for_route(aios_spec::DecisionRoute::Mock);
+        let mut decisions = Vec::new();
+        for (intent_ordinal, intent) in batch.intents.iter().enumerate() {
+            let intent_ordinal = intent_ordinal as u32;
+            decisions.extend(self.evaluate_intent(
+                intent,
+                intent_ordinal,
+                &capability,
+                None,
+            ));
+        }
+        decisions
     }
 
     /// 校验整个 IntentBatch，同时执行后端能力等级检查。
@@ -81,14 +76,18 @@ impl PolicyEngine {
         &self,
         batch: &IntentBatch,
         capability: &CapabilityLevel,
-    ) -> Vec<PolicyDecision> {
-        batch
-            .intents
-            .iter()
-            .map(|intent| {
-                self.evaluate_intent(intent, batch.generated_at_ms, Some(capability), None)
-            })
-            .collect()
+    ) -> Vec<PolicyActionDecision> {
+        let mut decisions = Vec::new();
+        for (intent_ordinal, intent) in batch.intents.iter().enumerate() {
+            let intent_ordinal = intent_ordinal as u32;
+            decisions.extend(self.evaluate_intent(
+                intent,
+                intent_ordinal,
+                capability,
+                None,
+            ));
+        }
+        decisions
     }
 
     /// 完整的校验入口：风险 + 能力 + 上下文。
@@ -100,44 +99,43 @@ impl PolicyEngine {
         batch: &IntentBatch,
         capability: &CapabilityLevel,
         ctx: &StructuredContext,
-    ) -> Vec<PolicyDecision> {
-        let known = KnownTargets::from_context(ctx);
-        batch
-            .intents
-            .iter()
-            .map(|intent| {
-                self.evaluate_intent(
-                    intent,
-                    batch.generated_at_ms,
-                    Some(capability),
-                    Some(&known),
-                )
-            })
-            .collect()
+    ) -> Vec<PolicyActionDecision> {
+        let known = Some(KnownTargets::from_context(ctx));
+        let mut decisions = Vec::new();
+        for (intent_ordinal, intent) in batch.intents.iter().enumerate() {
+            let intent_ordinal = intent_ordinal as u32;
+            decisions.extend(self.evaluate_intent(
+                intent,
+                intent_ordinal,
+                capability,
+                known.as_ref(),
+            ));
+        }
+        decisions
     }
 
     fn evaluate_intent(
         &self,
         intent: &Intent,
-        authorized_at_ms: i64,
-        capability: Option<&CapabilityLevel>,
+        intent_ordinal: u32,
+        capability: &CapabilityLevel,
         known: Option<&KnownTargets>,
-    ) -> PolicyDecision {
+    ) -> Vec<PolicyActionDecision> {
         // 1. 后端能力等级检查 — 先于通用策略
-        if let Some(cap) = capability {
-            if !cap.allows_risk(intent.risk_level) {
-                return rejected(
-                    intent,
-                    DenialReason::RiskExceedsCapability,
-                    "risk exceeds backend capability",
-                );
-            }
+        if !capability.allows_risk(intent.risk_level) {
+            return self.denied_all(
+                intent,
+                intent_ordinal,
+                DenialReason::RiskExceedsCapability,
+                "risk exceeds backend capability",
+            );
         }
 
         // 2. 通用风险等级检查
         if intent.risk_level as u8 > self.config.max_auto_risk as u8 {
-            return rejected(
+            return self.denied_all(
                 intent,
+                intent_ordinal,
                 DenialReason::RiskExceedsConfig,
                 "risk exceeds engine config",
             );
@@ -145,25 +143,32 @@ impl PolicyEngine {
 
         // 3. 置信度下限
         if intent.confidence < self.config.min_confidence {
-            return rejected(
+            return self.denied_all(
                 intent,
+                intent_ordinal,
                 DenialReason::ConfidenceTooLow,
                 "confidence below floor",
             );
         }
 
-        // 4. 过滤动作
-        let mut approved_actions: Vec<AuthorizedAction> = Vec::new();
-        let mut action_denials: Vec<DenialReason> = Vec::new();
+        // 4. 过滤动作，逐 action 产出裁决
+        let mut decisions = Vec::new();
+        let mut approved_count = 0usize;
 
-        for action in &intent.suggested_actions {
-            if approved_actions.len() >= self.config.max_actions_per_batch {
+        for (action_ordinal, action) in intent.suggested_actions.iter().enumerate() {
+            let action_ordinal = action_ordinal as u32;
+
+            if approved_count >= self.config.max_actions_per_batch {
                 debug!(
                     intent_id = %intent.intent_id,
                     reason = ?DenialReason::BatchActionCapExceeded,
                     "policy denial"
                 );
-                action_denials.push(DenialReason::BatchActionCapExceeded);
+                decisions.push(PolicyActionDecision {
+                    intent_ordinal,
+                    action_ordinal,
+                    verdict: PolicyVerdict::Denied(DenialReason::BatchActionCapExceeded),
+                });
                 continue;
             }
 
@@ -180,7 +185,11 @@ impl PolicyEngine {
                     action = %action_name,
                     "policy denial"
                 );
-                action_denials.push(DenialReason::ActionTypeBlocked);
+                decisions.push(PolicyActionDecision {
+                    intent_ordinal,
+                    action_ordinal,
+                    verdict: PolicyVerdict::Denied(DenialReason::ActionTypeBlocked),
+                });
                 continue;
             }
 
@@ -190,72 +199,85 @@ impl PolicyEngine {
                     reason = ?DenialReason::ActionUrgencyDeferred,
                     "policy denial"
                 );
-                action_denials.push(DenialReason::ActionUrgencyDeferred);
+                decisions.push(PolicyActionDecision {
+                    intent_ordinal,
+                    action_ordinal,
+                    verdict: PolicyVerdict::Denied(DenialReason::ActionUrgencyDeferred),
+                });
                 continue;
             }
 
-            if let Some(cap) = capability {
-                if !cap.allows_action(&action.action_type) {
-                    debug!(
-                        intent_id = %intent.intent_id,
-                        reason = ?DenialReason::ActionCapabilityDenied,
-                        action = %action_name,
-                        "policy denial"
-                    );
-                    action_denials.push(DenialReason::ActionCapabilityDenied);
-                    continue;
-                }
+            if !capability.allows_action(&action.action_type) {
+                debug!(
+                    intent_id = %intent.intent_id,
+                    reason = ?DenialReason::ActionCapabilityDenied,
+                    action = %action_name,
+                    "policy denial"
+                );
+                decisions.push(PolicyActionDecision {
+                    intent_ordinal,
+                    action_ordinal,
+                    verdict: PolicyVerdict::Denied(DenialReason::ActionCapabilityDenied),
+                });
+                continue;
             }
 
             if let Some(k) = known {
-                if let Some(reason) = check_target(&action.action_type, action.target.as_deref(), k)
-                {
+                if let Some(reason) = check_target(&action.action_type,
+                    action.target.as_deref(),
+                    k,
+                ) {
                     debug!(
                         intent_id = %intent.intent_id,
                         reason = ?reason,
                         target = ?action.target,
                         "policy denial"
                     );
-                    action_denials.push(reason);
+                    decisions.push(PolicyActionDecision {
+                        intent_ordinal,
+                        action_ordinal,
+                        verdict: PolicyVerdict::Denied(reason),
+                    });
                     continue;
                 }
             }
 
-            approved_actions.push(AuthorizedAction {
-                intent_id: intent.intent_id.clone(),
-                action: action.clone(),
-                authorized_at_ms,
+            approved_count += 1;
+            decisions.push(PolicyActionDecision {
+                intent_ordinal,
+                action_ordinal,
+                verdict: PolicyVerdict::Approved,
             });
         }
 
-        PolicyDecision {
-            intent_id: intent.intent_id.clone(),
-            approved: true,
-            rejection_reason: None,
-            action_denials,
-            approved_actions,
-        }
+        decisions
+    }
+
+    fn denied_all(
+        &self,
+        intent: &Intent,
+        intent_ordinal: u32,
+        reason: DenialReason,
+        log_msg: &'static str,
+    ) -> Vec<PolicyActionDecision> {
+        debug!(
+            intent_id = %intent.intent_id,
+            reason = ?reason,
+            "policy denial: {log_msg}"
+        );
+        (0..intent.suggested_actions.len())
+            .map(|action_ordinal| PolicyActionDecision {
+                intent_ordinal,
+                action_ordinal: action_ordinal as u32,
+                verdict: PolicyVerdict::Denied(reason),
+            })
+            .collect()
     }
 }
 
 impl Default for PolicyEngine {
     fn default() -> Self {
         Self::new(PolicyConfig::default())
-    }
-}
-
-fn rejected(intent: &Intent, reason: DenialReason, log_msg: &'static str) -> PolicyDecision {
-    debug!(
-        intent_id = %intent.intent_id,
-        reason = ?reason,
-        "policy denial: {log_msg}"
-    );
-    PolicyDecision {
-        intent_id: intent.intent_id.clone(),
-        approved: false,
-        rejection_reason: Some(reason),
-        action_denials: vec![],
-        approved_actions: vec![],
     }
 }
 

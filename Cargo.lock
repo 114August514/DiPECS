@@ -15,6 +15,7 @@ dependencies = [
 name = "aios-action"
 version = "0.1.0"
 dependencies = [
+ "aios-core",
  "aios-spec",
  "serde_json",
  "tracing",
@@ -65,6 +66,7 @@ name = "aios-core"
 version = "0.1.0"
 dependencies = [
  "aios-spec",
+ "serde",
  "serde_json",
  "thiserror 1.0.69",
  "tokio",
@@ -94,6 +96,8 @@ name = "aios-spec"
 version = "0.1.0"
 dependencies = [
  "serde",
+ "serde_json",
+ "thiserror 1.0.69",
 ]
 
 [[package]]

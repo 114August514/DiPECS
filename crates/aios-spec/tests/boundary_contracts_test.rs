@@ -21,20 +21,34 @@ fn collector_envelope_wraps_raw_event_with_source_metadata() {
 }
 
 #[test]
-fn authorized_action_preserves_intent_and_suggested_action() {
-    let action = AuthorizedAction {
+fn action_proposal_wraps_suggested_action_with_coord_and_effect() {
+    let proposal = ActionProposal {
         intent_id: "intent-1".into(),
+        coord: ActionCoord {
+            window_ordinal: 0,
+            intent_ordinal: 0,
+            action_ordinal: 0,
+        },
         action: SuggestedAction {
             action_type: ActionType::NoOp,
             target: None,
             urgency: ActionUrgency::IdleTime,
         },
-        authorized_at_ms: 2000,
+        effect: EffectClass::PureRead,
+        proposed_at_ms: 2000,
     };
 
-    assert_eq!(action.intent_id, "intent-1");
-    assert_eq!(action.authorized_at_ms, 2000);
-    assert!(matches!(action.action.action_type, ActionType::NoOp));
+    assert_eq!(proposal.intent_id, "intent-1");
+    assert_eq!(proposal.proposed_at_ms, 2000);
+    assert!(matches!(proposal.action.action_type, ActionType::NoOp));
+    assert!(matches!(proposal.effect, EffectClass::PureRead));
+}
+
+#[test]
+fn action_state_terminal_detection() {
+    assert!(ActionState::Succeeded.is_terminal());
+    assert!(ActionState::RejectedInvalidSchema.is_terminal());
+    assert!(!ActionState::Proposed.is_terminal());
 }
 
 #[test]

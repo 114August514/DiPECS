@@ -5,7 +5,9 @@
 //! 在编译期保证：任何外部 crate（包括 `aios-action`）无法伪造或反序列化出一个
 //! 可执行动作。
 
-use aios_spec::governance::{ActionCoord, ActionOutcome, ActionProposal, AdapterError, EffectClass};
+use aios_spec::governance::{
+    ActionCoord, ActionOutcome, ActionProposal, AdapterError, EffectClass,
+};
 use aios_spec::intent::SuggestedAction;
 
 /// 经 `ActionLifecycle` 审查通过、允许交给 adapter 执行的动作凭证。

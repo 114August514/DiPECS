@@ -231,7 +231,10 @@ mod tests {
 
     #[test]
     fn effect_class_derived_from_action_type() {
-        assert_eq!(EffectClass::from_action_type(&ActionType::NoOp), EffectClass::PureRead);
+        assert_eq!(
+            EffectClass::from_action_type(&ActionType::NoOp),
+            EffectClass::PureRead
+        );
         assert_eq!(
             EffectClass::from_action_type(&ActionType::PrefetchFile),
             EffectClass::LocalCacheWrite

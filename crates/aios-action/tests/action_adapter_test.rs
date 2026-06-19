@@ -5,7 +5,10 @@ use aios_core::governance::ActionAdapter;
 use aios_spec::governance::{ActionCoord, ActionOutcomeSummary, ActionProposal, EffectClass};
 use aios_spec::intent::{ActionType, ActionUrgency, SuggestedAction};
 
-fn make_authorized(action_type: ActionType, target: Option<&str>) -> aios_core::governance::AuthorizedAction {
+fn make_authorized(
+    action_type: ActionType,
+    target: Option<&str>,
+) -> aios_core::governance::AuthorizedAction {
     let effect = EffectClass::from_action_type(&action_type);
     let proposal = ActionProposal {
         intent_id: "intent-test".into(),
@@ -86,7 +89,10 @@ fn offline_adapter_covers_all_action_types() {
     let cases = vec![
         (ActionType::NoOp, None),
         (ActionType::PreWarmProcess, Some("com.example.app")),
-        (ActionType::PrefetchFile, Some("url:https://example.test/feed.json")),
+        (
+            ActionType::PrefetchFile,
+            Some("url:https://example.test/feed.json"),
+        ),
         (ActionType::KeepAlive, Some("com.example.app")),
         (ActionType::ReleaseMemory, None),
     ];

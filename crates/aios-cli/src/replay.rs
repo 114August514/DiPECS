@@ -329,12 +329,7 @@ fn process_window(
 
     if stage.includes(Stage::Execute) {
         // Full lifecycle: schema -> policy -> seal -> adapter -> terminal audit.
-        let audit_records = lifecycle.run(
-            window_ordinal,
-            &decision.intent_batch,
-            &capability,
-            ctx,
-        );
+        let audit_records = lifecycle.run(window_ordinal, &decision.intent_batch, &capability, ctx);
 
         // Aggregate per-intent signals for the human-facing summary.
         let mut approved_intents = 0u64;
@@ -403,21 +398,25 @@ fn process_window(
     }
 
     // Policy-only stage: evaluate without executing, preserving old summary semantics.
-    let policy_decisions = lifecycle.policy().evaluate_batch_with_context(
-        &decision.intent_batch,
-        &capability,
-        ctx,
-    );
+    let policy_decisions =
+        lifecycle
+            .policy()
+            .evaluate_batch_with_context(&decision.intent_batch, &capability, ctx);
 
-    let mut by_intent: std::collections::BTreeMap<u32, Vec<&aios_spec::governance::PolicyActionDecision>> =
-        std::collections::BTreeMap::new();
+    let mut by_intent: std::collections::BTreeMap<
+        u32,
+        Vec<&aios_spec::governance::PolicyActionDecision>,
+    > = std::collections::BTreeMap::new();
     for d in &policy_decisions {
         by_intent.entry(d.intent_ordinal).or_default().push(d);
     }
 
     for (intent_idx, intent) in decision.intent_batch.intents.iter().enumerate() {
         let intent_ordinal = intent_idx as u32;
-        let intent_decisions = by_intent.get(&intent_ordinal).map(|v| v.as_slice()).unwrap_or(&[]);
+        let intent_decisions = by_intent
+            .get(&intent_ordinal)
+            .map(|v| v.as_slice())
+            .unwrap_or(&[]);
         let approved_count = intent_decisions
             .iter()
             .filter(|d| matches!(d.verdict, aios_spec::governance::PolicyVerdict::Approved))
@@ -448,16 +447,15 @@ fn process_window(
             }
         }
 
-        emitter.emit(
-            &json!({
-                "stage": "policy",
-                "window_id": ctx.window_id,
-                "window_ordinal": window_ordinal,
-                "intent_id": intent.intent_id,
-                "approved": approved_count > 0,
-                "action_denials": action_denials,
-                "approved_actions": approved_actions,
-            }))?;
+        emitter.emit(&json!({
+            "stage": "policy",
+            "window_id": ctx.window_id,
+            "window_ordinal": window_ordinal,
+            "intent_id": intent.intent_id,
+            "approved": approved_count > 0,
+            "action_denials": action_denials,
+            "approved_actions": approved_actions,
+        }))?;
     }
 
     Ok(())

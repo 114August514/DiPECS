@@ -183,8 +183,10 @@ fn test_confidence_at_boundary_approved() {
     let batch = make_batch(vec![intent]);
     let decisions = engine.evaluate_batch(&batch);
 
-    assert!(is_approved(&decisions[0]),
-        "confidence 0.3 should be approved");
+    assert!(
+        is_approved(&decisions[0]),
+        "confidence 0.3 should be approved"
+    );
 }
 
 // ===== 动作过滤 =====
@@ -210,12 +212,15 @@ fn test_deferred_urgency_filtered() {
     let decisions = engine.evaluate_batch(&batch);
 
     assert_eq!(decisions.len(), 2);
-    assert!(is_denied(&decisions[0],
+    assert!(is_denied(
+        &decisions[0],
         DenialReason::ActionUrgencyDeferred
     ));
     assert!(is_approved(&decisions[1]));
     assert!(matches!(
-        first_approved_action(&decisions, &batch).unwrap().action_type,
+        first_approved_action(&decisions, &batch)
+            .unwrap()
+            .action_type,
         ActionType::NoOp
     ));
 }
@@ -241,12 +246,12 @@ fn test_blocked_action_filtered() {
     let decisions = engine.evaluate_batch(&batch);
 
     assert_eq!(decisions.len(), 2);
-    assert!(is_denied(&decisions[0],
-        DenialReason::ActionTypeBlocked
-    ));
+    assert!(is_denied(&decisions[0], DenialReason::ActionTypeBlocked));
     assert!(is_approved(&decisions[1]));
     assert!(matches!(
-        first_approved_action(&decisions, &batch).unwrap().action_type,
+        first_approved_action(&decisions, &batch)
+            .unwrap()
+            .action_type,
         ActionType::NoOp
     ));
 }
@@ -285,11 +290,7 @@ fn test_max_actions_per_batch_enforced() {
     let decisions = engine.evaluate_batch(&batch);
 
     assert_eq!(decisions.len(), 3);
-    assert_eq!(
-        count_approved(&decisions),
-        2,
-        "should be capped at 2"
-    );
+    assert_eq!(count_approved(&decisions), 2, "should be capped at 2");
     assert!(is_denied(
         &decisions[2],
         DenialReason::BatchActionCapExceeded
@@ -344,10 +345,8 @@ fn test_evaluate_batch_mixed_results() {
         is_approved(&decisions[0]),
         "low risk + high confidence → approved"
     );
-    assert!(!is_approved(&decisions[1]),
-        "high risk → rejected");
-    assert!(!is_approved(&decisions[2]),
-        "low confidence → rejected");
+    assert!(!is_approved(&decisions[1]), "high risk → rejected");
+    assert!(!is_approved(&decisions[2]), "low confidence → rejected");
 }
 
 #[test]
@@ -378,7 +377,9 @@ fn test_approved_intent_preserves_actions() {
     assert!(is_approved(&decisions[0]));
     assert!(is_approved(&decisions[1]));
     assert_eq!(
-        first_approved_action(&decisions, &batch).unwrap().action_type,
+        first_approved_action(&decisions, &batch)
+            .unwrap()
+            .action_type,
         ActionType::PreWarmProcess
     );
 }
@@ -442,7 +443,9 @@ fn test_fallback_noop_blocks_prewarm() {
     ));
     assert!(is_approved(&decisions[1]));
     assert!(matches!(
-        first_approved_action(&decisions, &batch).unwrap().action_type,
+        first_approved_action(&decisions, &batch)
+            .unwrap()
+            .action_type,
         ActionType::NoOp
     ));
 }
@@ -567,10 +570,7 @@ fn test_target_not_in_context_denied() {
     let decisions = engine.evaluate_batch_with_context(&batch, &capability, &ctx);
 
     assert_eq!(decisions.len(), 1);
-    assert!(is_denied(
-        &decisions[0],
-        DenialReason::TargetNotInContext
-    ));
+    assert!(is_denied(&decisions[0], DenialReason::TargetNotInContext));
 }
 
 #[test]
@@ -619,8 +619,5 @@ fn test_prewarm_without_target_denied() {
     let decisions = engine.evaluate_batch_with_context(&batch, &capability, &ctx);
 
     assert_eq!(decisions.len(), 1);
-    assert!(is_denied(
-        &decisions[0],
-        DenialReason::TargetNotInContext
-    ));
+    assert!(is_denied(&decisions[0], DenialReason::TargetNotInContext));
 }

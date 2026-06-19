@@ -478,14 +478,17 @@ fn test_fallback_noop_passes_policy_engine() {
     assert_eq!(decisions.len(), 1);
     let decision = &decisions[0];
     assert!(
-        matches!(decision.verdict, aios_spec::governance::PolicyVerdict::Approved),
+        matches!(
+            decision.verdict,
+            aios_spec::governance::PolicyVerdict::Approved
+        ),
         "fallback NoOp must clear policy gate; got verdict {:?}",
         decision.verdict,
     );
     assert_eq!(decision.action_ordinal, 0);
     assert!(matches!(
-        result.intent_batch.intents[decision.intent_ordinal as usize]
-            .suggested_actions[decision.action_ordinal as usize]
+        result.intent_batch.intents[decision.intent_ordinal as usize].suggested_actions
+            [decision.action_ordinal as usize]
             .action_type,
         ActionType::NoOp
     ));

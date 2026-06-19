@@ -22,9 +22,7 @@ impl ActionAdapter for OfflineAdapter {
         "offline"
     }
 
-    fn execute(&self,
-        authorized: &AuthorizedAction,
-    ) -> Result<ActionOutcome, AdapterError> {
+    fn execute(&self, authorized: &AuthorizedAction) -> Result<ActionOutcome, AdapterError> {
         let action = authorized.action();
         let action_type_name = format!("{:?}", action.action_type);
         let target = action.target.clone();
@@ -32,13 +30,19 @@ impl ActionAdapter for OfflineAdapter {
         let summary = match action.action_type {
             ActionType::NoOp => "noop".to_string(),
             ActionType::PreWarmProcess => {
-                format!("simulate_prewarm:{}", target.as_deref().unwrap_or("unknown"))
+                format!(
+                    "simulate_prewarm:{}",
+                    target.as_deref().unwrap_or("unknown")
+                )
             },
             ActionType::PrefetchFile => {
                 format!("simulate_cache:{}", target.as_deref().unwrap_or("unknown"))
             },
             ActionType::KeepAlive => {
-                format!("simulate_keepalive:{}", target.as_deref().unwrap_or("system"))
+                format!(
+                    "simulate_keepalive:{}",
+                    target.as_deref().unwrap_or("system")
+                )
             },
             ActionType::ReleaseMemory => {
                 format!("simulate_release:{}", target.as_deref().unwrap_or("system"))
@@ -88,7 +92,10 @@ mod tests {
         let cases = vec![
             (ActionType::NoOp, None),
             (ActionType::PreWarmProcess, Some("com.example.app")),
-            (ActionType::PrefetchFile, Some("url:https://example.test/feed.json")),
+            (
+                ActionType::PrefetchFile,
+                Some("url:https://example.test/feed.json"),
+            ),
             (ActionType::KeepAlive, Some("com.example.app")),
             (ActionType::ReleaseMemory, None),
         ];

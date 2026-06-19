@@ -57,7 +57,9 @@ impl<'a> ActionLifecycle<'a> {
         capability: &CapabilityLevel,
         ctx: &StructuredContext,
     ) -> Vec<AuditRecord> {
-        let policy_decisions = self.policy.evaluate_batch_with_context(batch, capability, ctx);
+        let policy_decisions = self
+            .policy
+            .evaluate_batch_with_context(batch, capability, ctx);
         let decisions_by_coord: HashMap<(u32, u32), &PolicyActionDecision> = policy_decisions
             .iter()
             .map(|d| ((d.intent_ordinal, d.action_ordinal), d))
@@ -86,7 +88,7 @@ impl<'a> ActionLifecycle<'a> {
                 let mut record = AuditRecord::new(&proposal);
 
                 // Schema validation
-                if let Some(err) = validate_schema(&proposal,&intent.risk_level) {
+                if let Some(err) = validate_schema(&proposal, &intent.risk_level) {
                     record.transition(ActionState::RejectedInvalidSchema);
                     record.error = Some(err.to_string());
                     records.push(record);
@@ -109,9 +111,8 @@ impl<'a> ActionLifecycle<'a> {
                             match self.adapter.execute(&authorized) {
                                 Ok(outcome) => {
                                     record.transition(ActionState::Succeeded);
-                                    record.outcome = Some(ActionOutcomeSummary::from_outcome(
-                                        &outcome,
-                                    ));
+                                    record.outcome =
+                                        Some(ActionOutcomeSummary::from_outcome(&outcome));
                                 },
                                 Err(err) => {
                                     record.transition(ActionState::Failed);
@@ -141,10 +142,7 @@ impl<'a> ActionLifecycle<'a> {
 }
 
 /// Schema 校验：缺失必需 target、非法 risk/effect 组合等。
-fn validate_schema(
-    proposal: &ActionProposal,
-    intent_risk: &RiskLevel,
-) -> Option<LifecycleError> {
+fn validate_schema(proposal: &ActionProposal, intent_risk: &RiskLevel) -> Option<LifecycleError> {
     if proposal.action.action_type == ActionType::PreWarmProcess {
         match proposal.action.target.as_deref() {
             Some(t) if !t.is_empty() => {},
@@ -179,4 +177,3 @@ fn denial_to_terminal(reason: DenialReason) -> ActionState {
         _ => ActionState::DeniedByPolicy,
     }
 }
-

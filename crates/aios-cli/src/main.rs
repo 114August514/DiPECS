@@ -144,10 +144,7 @@ fn main() -> Result<()> {
             port,
             auth_token,
         } => {
-            android_bridge::send_ping(&host,
-                port,
-                auth_token.as_deref().unwrap_or(""),
-            )?;
+            android_bridge::send_ping(&host, port, auth_token.as_deref().unwrap_or(""))?;
             tracing::info!(host = %host, port, "ping sent to Android action bridge");
             Ok(())
         },

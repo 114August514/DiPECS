@@ -53,20 +53,12 @@ impl PolicyEngine {
     ///
     /// 不检查后端能力等级，也不进行 target-not-in-context 检查——
     /// 用于未指定后端 / 未携带窗口上下文的场景或向后兼容。
-    pub fn evaluate_batch(
-        &self,
-        batch: &IntentBatch,
-    ) -> Vec<PolicyActionDecision> {
+    pub fn evaluate_batch(&self, batch: &IntentBatch) -> Vec<PolicyActionDecision> {
         let capability = CapabilityLevel::for_route(aios_spec::DecisionRoute::Mock);
         let mut decisions = Vec::new();
         for (intent_ordinal, intent) in batch.intents.iter().enumerate() {
             let intent_ordinal = intent_ordinal as u32;
-            decisions.extend(self.evaluate_intent(
-                intent,
-                intent_ordinal,
-                &capability,
-                None,
-            ));
+            decisions.extend(self.evaluate_intent(intent, intent_ordinal, &capability, None));
         }
         decisions
     }
@@ -80,12 +72,7 @@ impl PolicyEngine {
         let mut decisions = Vec::new();
         for (intent_ordinal, intent) in batch.intents.iter().enumerate() {
             let intent_ordinal = intent_ordinal as u32;
-            decisions.extend(self.evaluate_intent(
-                intent,
-                intent_ordinal,
-                capability,
-                None,
-            ));
+            decisions.extend(self.evaluate_intent(intent, intent_ordinal, capability, None));
         }
         decisions
     }
@@ -223,10 +210,8 @@ impl PolicyEngine {
             }
 
             if let Some(k) = known {
-                if let Some(reason) = check_target(&action.action_type,
-                    action.target.as_deref(),
-                    k,
-                ) {
+                if let Some(reason) = check_target(&action.action_type, action.target.as_deref(), k)
+                {
                     debug!(
                         intent_id = %intent.intent_id,
                         reason = ?reason,

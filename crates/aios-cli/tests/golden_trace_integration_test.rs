@@ -107,7 +107,10 @@ fn drive_pipeline() -> (Vec<SanitizedEvent>, IntentBatch, Vec<ExecutedAction>) {
 
     let mut executed: Vec<ExecutedAction> = Vec::new();
     for record in &audit_records {
-        if !matches!(record.terminal, aios_spec::governance::ActionState::Succeeded) {
+        if !matches!(
+            record.terminal,
+            aios_spec::governance::ActionState::Succeeded
+        ) {
             continue;
         }
         let summary = record

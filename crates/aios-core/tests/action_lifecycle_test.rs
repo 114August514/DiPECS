@@ -19,9 +19,7 @@ impl ActionAdapter for OkAdapter {
     fn name(&self) -> &'static str {
         "ok"
     }
-    fn execute(&self,
-        authorized: &AuthorizedAction,
-    ) -> Result<ActionOutcome, AdapterError> {
+    fn execute(&self, authorized: &AuthorizedAction) -> Result<ActionOutcome, AdapterError> {
         Ok(ActionOutcome {
             action_type: format!("{:?}", authorized.action().action_type),
             target: authorized.action().target.clone(),
@@ -37,9 +35,7 @@ impl ActionAdapter for FailAdapter {
     fn name(&self) -> &'static str {
         "fail"
     }
-    fn execute(&self,
-        _authorized: &AuthorizedAction,
-    ) -> Result<ActionOutcome, AdapterError> {
+    fn execute(&self, _authorized: &AuthorizedAction) -> Result<ActionOutcome, AdapterError> {
         Err(AdapterError::SimulatedResourceUnavailable(
             "disk full".into(),
         ))
@@ -170,7 +166,10 @@ fn capability_denial_maps_to_denied_by_capability() {
     );
 
     assert_eq!(records.len(), 1);
-    assert!(matches!(records[0].terminal, ActionState::DeniedByCapability));
+    assert!(matches!(
+        records[0].terminal,
+        ActionState::DeniedByCapability
+    ));
     assert_eq!(
         records[0].denial_reason,
         Some(DenialReason::ActionCapabilityDenied)
@@ -252,9 +251,7 @@ fn outcome_drift_changes_audit_hash() {
         fn name(&self) -> &'static str {
             "ok-a"
         }
-        fn execute(&self,
-            authorized: &AuthorizedAction,
-        ) -> Result<ActionOutcome, AdapterError> {
+        fn execute(&self, authorized: &AuthorizedAction) -> Result<ActionOutcome, AdapterError> {
             Ok(ActionOutcome {
                 action_type: format!("{:?}", authorized.action().action_type),
                 target: authorized.action().target.clone(),
@@ -270,9 +267,7 @@ fn outcome_drift_changes_audit_hash() {
         fn name(&self) -> &'static str {
             "ok-b"
         }
-        fn execute(&self,
-            authorized: &AuthorizedAction,
-        ) -> Result<ActionOutcome, AdapterError> {
+        fn execute(&self, authorized: &AuthorizedAction) -> Result<ActionOutcome, AdapterError> {
             Ok(ActionOutcome {
                 action_type: format!("{:?}", authorized.action().action_type),
                 target: authorized.action().target.clone(),

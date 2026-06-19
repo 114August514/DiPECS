@@ -45,9 +45,7 @@ impl ActionAdapter for DefaultActionExecutor {
         "default"
     }
 
-    fn execute(&self,
-        authorized: &AuthorizedAction,
-    ) -> Result<ActionOutcome, AdapterError> {
+    fn execute(&self, authorized: &AuthorizedAction) -> Result<ActionOutcome, AdapterError> {
         let action = authorized.action();
         let action_name = format!("{:?}", action.action_type);
 

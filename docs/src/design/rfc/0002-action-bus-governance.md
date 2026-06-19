@@ -2,7 +2,7 @@
 
 ## 摘要 (Summary)
 
-把现有「`SuggestedAction` → `AuthorizedAction` → executor」的隐式管线，收敛为一个显式的**动作治理状态机**：模型只能提出不可信的 `ActionProposal`，经本地 schema / 隐私 / 策略校验后才生成可执行的 `AuthorizedAction`，每一步状态迁移都落一条 `AuditRecord`，且任何 proposal 都必有且仅有一个**终态审计**。落地范围对应 issue #4（类型治理边界）、#5（生命周期 + 终态审计覆盖）、#8（OfflineAdapter 执行闭环），务实 P0，不引入 Capability/Budget/Scheduler 的完整实现。
+把现有「`SuggestedAction` → `AuthorizedAction` → executor」的隐式管线，收敛为一个显式的**动作治理状态机**：模型只能提出不可信的 `ActionProposal`，经本地 schema / 隐私 / 策略校验后，由 `aios-core` 状态机**唯一构造**出可执行的 `AuthorizedAction`（私有字段、不可跨 crate 伪造），每一步状态迁移都落一条带稳定 `action_id` 的 `AuditRecord`，且每个动作必有且仅有一个**终态审计**。落地范围对应 issue #4（类型治理边界）、#5（生命周期 + 终态审计覆盖）、#8（OfflineAdapter 执行闭环）。务实 P0：Capability 拒绝是真实终态，Budget/调度仅留枚举占位（当前不可达，已在「范围与 issue 验收对齐」声明）。
 
 ## 动机 (Motivation)
 
@@ -19,7 +19,7 @@
 - **不推倒现有管线**。`PrivacyAirGap` / `DecisionRouter` / `PolicyEngine` / 窗口聚合都保留，新状态机**包住** `PolicyEngine`，而不是替换它。
 - **不破坏 golden trace**。现有 `ReplayResult` 三层校验（脱敏/策略/执行）语义不变；新增的 `AuditRecord` 流是**叠加**的可观测层，golden hash 的输入按需扩展而非重定义。
 - **贴合真实的 5 个 action 类型**。不强行套用文档里 11 种 `ActionType` 的宏大枚举；`EffectClass` 按现有动作的真实副作用分级。
-- **务实裁剪**。Capability/Budget 只保留**枚举占位 + 扩展点**（issue 验收明确允许），不实现租约/调度评分。
+- **务实裁剪，但区分「裁实现」与「裁验收」**。Capability 检查**已是真实路径**（`PolicyEngine` 已有 `RiskExceedsCapability`/`ActionCapabilityDenied`），故 `DeniedByCapability` 是真实可达终态而非占位。Budget 在现有代码中无任何机制，`DeniedByBudget` 状态留枚举占位但**当前实现不可达**——这一裁剪会改动 issue #5 的验收勾选，已在「范围与 issue 验收对齐」一节显式声明并同步 issue，不悄悄缩范围。
 
 ## 抽象边界取舍原则 (Abstraction Boundary Principle)
 
@@ -47,47 +47,72 @@
 
 ## 设计方案 (Design)
 
-### 1. 类型治理边界（issue #4，`aios-spec`）
+### 1. 类型治理边界（issue #4，`aios-spec` + `aios-core`）
 
-核心原则：**不可信输入与可执行动作是两个不能隐式互转的类型**。
+核心原则：**不可信输入与可执行动作是两个不能隐式互转的类型**，且「不可伪造」必须由编译器跨 crate 强制，而非靠约定。
+
+#### 1.1 类型归属（解决「私有字段又要跨 crate 构造」的矛盾）
+
+reviewer 指出的硬伤：若 `AuthorizedAction` 留在 `aios-spec` 且字段私有，`aios-core` 反而无法构造它；若字段 `pub`，任何 crate 都能 struct-literal 手搓，不可伪造性失效。结论是**构造器必须和类型同处一个 crate**，所以按「谁是唯一生产者，类型就放谁那」重新归属：
+
+- `ActionProposal`（不可信侧）+ 所有协议数据类型（`EffectClass`/`ActionState`/`AuditRecord`/`ActionOutcome`/`AdapterError`）→ 留在 `aios-spec`，是协议单一真相。
+- `AuthorizedAction`（可执行侧）→ **从 `aios-spec` 移到 `aios-core::governance`**，字段私有，唯一构造器 `pub(crate)`，只能被同 crate 的 `ActionLifecycle` 在策略通过后调用。
+- `ActionAdapter` trait 跟随 `AuthorizedAction` 也定义在能看到该类型的层；`aios-action` **新增对 `aios-core` 的依赖**（`core` 不依赖 `action`，无环），其 adapter 只能接收 core 递来的 `AuthorizedAction`，无法自行构造。
+
+> 这是对「`aios-spec` 是协议唯一真相」的**有意偏离**：不可伪造性是一条*逻辑不变量*，必须和产生它的逻辑（状态机）放在一起才能由编译器保证。spec 仍持有全部线缆类型（proposal/audit/outcome）；移走的只有那个「凭证」类型本身。替代方案（spec 内 sealed-trait + 见证 token）能把类型留在 spec，但构造器仍得在 core，徒增样板，见替代方案 D。
 
 ```rust
-// 不可信侧 —— planner / LLM / agent 的产物。
-// 复用现有 SuggestedAction 作为「裸提议」，包一层带治理元数据的 Proposal。
+// aios-spec —— 不可信侧。planner / LLM / agent 的产物，全 pub、可反序列化。
 pub struct ActionProposal {
+    pub action_id: String,         // 进入边界时生成的稳定标识，见 §2.4
     pub intent_id: String,
+    pub ordinal: u32,              // 同一 intent 内的序号，区分重复 action
     pub action: SuggestedAction,   // 现有类型，不动
-    pub effect: EffectClass,       // 由 action_type 推导，见下
+    pub effect: EffectClass,       // 由 core 可信侧推导填入（见 §1.2），非外部输入
     pub proposed_at_ms: i64,
 }
 
-// 可执行侧 —— 唯一的构造路径是 PolicyEngine 审查通过。
-// 字段保持私有，外部无法手搓；adapter 只认这个类型。
+// aios-core::governance —— 可执行侧。字段私有，唯一构造路径是状态机。
 pub struct AuthorizedAction {
-    pub intent_id: String,
-    pub action: SuggestedAction,
-    pub effect: EffectClass,
-    pub authorized_at_ms: i64,
+    action_id: String,
+    intent_id: String,
+    action: SuggestedAction,
+    effect: EffectClass,
+    authorized_at_ms: i64,
+}
+
+impl AuthorizedAction {
+    // pub(crate)：仅 ActionLifecycle 在 PolicyChecked 后可调用，外部 crate 无法手搓。
+    pub(crate) fn seal(proposal: &ActionProposal, authorized_at_ms: i64) -> Self { /* ... */ }
+    // 只读 getter 对外暴露，adapter 据此执行；但无法反向构造。
+    pub fn action(&self) -> &SuggestedAction { &self.action }
+    pub fn effect(&self) -> EffectClass { self.effect }
+    pub fn action_id(&self) -> &str { &self.action_id }
 }
 ```
 
-- `AuthorizedAction` **不再实现** `From<ActionProposal>`/`Deserialize` 的公开构造捷径；唯一来源是 core 的状态机（下节）。这是「不能隐式互转」的类型级保证。
-- `EffectClass`（按现有 5 个动作的真实副作用分级，不照搬文档 6 级）：
+- `AuthorizedAction` **不实现** `Deserialize`——否则任何 crate 反序列化即可绕过状态机伪造一个可执行动作。Android bridge 仍可 `Serialize` 它发往手机（只读方向安全），但不能 `Deserialize` 反向构造，见风险节。
+- adapter 侧只拿到 `&AuthorizedAction`、只能调 getter；`aios-action` 无 `pub` 构造器可用 → 「planner 输出直接进 adapter」在类型层不可表达。
+
+#### 1.2 effect 由可信侧推导
+
+`effect` 不是 proposal 的「输入字段」而是 core 在建 proposal 时按 `action_type` 计算的派生量（reviewer 第 2 点）。`EffectClass`（按现有 5 个动作的真实副作用分级，不照搬文档 6 级）：
 
   | ActionType | EffectClass |
   | --- | --- |
   | `NoOp` | `PureRead` |
-  | `PrefetchFile` / `KeepAlive` | `LocalCacheWrite` |
-  | `PreWarmProcess` / `ReleaseMemory` | `LocalStateChange` |
+  | `PrefetchFile` | `LocalCacheWrite` |
+  | `PreWarmProcess` / `KeepAlive` / `ReleaseMemory` | `LocalStateChange` |
 
+- `KeepAlive` 归 `LocalStateChange`：它改变进程存活与资源占用，副作用强于单纯缓存写（采纳 reviewer 建议）。
 - schema 校验拒绝：缺失必需 target（`PreWarmProcess`）、未知 action type（serde 天然拒绝）、risk/effect 非法组合（如 `PureRead` 配 `High`）。
 - `RiskLevel` 维持现有三级（`Low/Medium/High`），**不加** `Critical`——现有动作集没有特权动作，加了是死代码。
 
 ### 2. 生命周期状态机与终态审计（issue #5，`aios-spec` + `aios-core`）
 
-#### 2.1 状态枚举（精简版，~12 态）
+#### 2.1 状态枚举（精简版，~11 态）
 
-按 DiPECS 真实管线裁剪文档的 18 态——去掉未实现的 `BudgetReserved`/`Scheduled`/`Retrying`/`RolledBack`/`Expired`/`Cancelled`：
+按 DiPECS 真实管线裁剪文档的 18 态。保留所有**当前可达**的终态；明确区分「真实可达」与「枚举占位但暂不可达」：
 
 ```rust
 pub enum ActionState {
@@ -98,33 +123,64 @@ pub enum ActionState {
     PolicyChecked,
     Dispatched,
     Succeeded,        // 终态
-    // 拒绝/失败终态
+    // 拒绝/失败终态（均当前可达）
     RejectedInvalidSchema,    // 终态
     RejectedPrivacyViolation, // 终态
-    DeniedByPolicy,           // 终态
-    Failed,                   // 终态
+    DeniedByCapability,       // 终态：PolicyEngine 的 RiskExceedsCapability/ActionCapabilityDenied
+    DeniedByPolicy,           // 终态：风险超配置 / 置信度过低 / target 不在上下文
+    Failed,                   // 终态：adapter Err
 }
 ```
 
+裁剪与保留的依据（回应 reviewer 第 5 点，逐项对齐 issue #5 状态建议）：
+
+- **保留 `DeniedByCapability`**：现有 `PolicyEngine` 已有 `RiskExceedsCapability` / `ActionCapabilityDenied`，是**真实可达**的拒绝路径，必须有独立终态，不能并进 `DeniedByPolicy`。
+- **去掉 `Running`**：OfflineAdapter 的 `execute` 是同步纯函数，`Dispatched → Succeeded/Failed` 之间无可观测的运行态。
+- **`DeniedByBudget` / `BudgetReserved` / `Scheduled`**：现有代码**无任何 budget/调度机制**，列为枚举占位但当前实现不可达——这一项使 issue #5「预算拒绝有对应终态」**暂不勾选**，已在「范围与 issue 验收对齐」声明。
+- **去掉 `Retrying`/`RolledBack`/`Expired`/`Cancelled`**：无重试/回滚/超时/取消语义，纯死代码。
+
 #### 2.2 状态机：`ActionLifecycle`（core 新模块 `action_lifecycle.rs`）
 
-这是真正的「Action Bus 内核」，**包住**现有 `PolicyEngine`：
+这是唯一的 Action Bus 内核，**内部持有并调用** `PolicyEngine`——不是「PolicyEngine 之后再过一遍」（消除 reviewer 第 3 点的双管线/重复执行）。输入是现有 PolicyEngine 真实需要的整批上下文，而非裸 proposal：
+
+```rust
+impl ActionLifecycle {
+    // 唯一入口。注意输入是 IntentBatch + capability + context，
+    // 与现有 PolicyEngine.evaluate_batch_with_context 的签名对齐。
+    pub fn run(
+        &self,                       // 内部持有 &PolicyEngine 与 &dyn ActionAdapter
+        batch: &IntentBatch,
+        capability: &CapabilityLevel,
+        ctx: &StructuredContext,
+    ) -> Vec<AuditRecord> { /* 每个 (intent, ordinal, suggested_action) 产出恰好一条 */ }
+}
+```
+
+每条 `(intent, ordinal, suggested_action)` 在边界处被 core 炸开为一个 `ActionProposal`（生成 `action_id`、推导 `effect`），然后单独走状态机：
 
 ```text
-ActionProposal
+SuggestedAction (来自 Intent.suggested_actions[ordinal])
+  → core 建 ActionProposal (生成 action_id = intent_id#ordinal, 推导 effect)
   → Proposed
   → SchemaValidated      (validate: target/effect/risk 组合)   ─┬─ 失败 → RejectedInvalidSchema (终态)
   → RedactionChecked     (target 必须是脱敏实体, 非 raw 包名)   ─┼─ 失败 → RejectedPrivacyViolation (终态)
-  → PolicyChecked        (复用 PolicyEngine.evaluate_*)         ─┼─ 拒绝 → DeniedByPolicy (终态)
-  → Dispatched           (交给 adapter)
+  → PolicyChecked        (内部调 PolicyEngine.evaluate_*)       ─┼─ 能力不足 → DeniedByCapability (终态)
+                                                                ─┼─ 其他拒绝 → DeniedByPolicy (终态)
+  → AuthorizedAction::seal(...)   ← 唯一构造点
+  → Dispatched           (交给唯一的 dispatch 抽象 ActionAdapter)
   → Succeeded (终态)                                            └─ adapter Err → Failed (终态)
 ```
+
+- **唯一 dispatch 抽象**：`ActionLifecycle` 持有一个 `&dyn ActionAdapter`。`DefaultActionExecutor`（含 Android bridge）和 `OfflineAdapter` 都实现这同一个 trait，运行时二选一注入。一个 `AuthorizedAction` 只会被 dispatch 一次，不存在「旧 executor 路径 + 新状态机」并行重复执行——旧的 `ActionExecutor::execute` 直连路径在 daemon/cli 中被状态机取代。
+- `PolicyEngine` 在 `IntentBatch` 级返回 `Vec<AuthorizedAction>`（现状）；状态机据返回结果把对应 `(intent_id, ordinal)` 的 proposal 推进到 `PolicyChecked`，未授权的落对应拒绝终态。risk/confidence 读自 `Intent`（现状如此），不放进 proposal。
 
 #### 2.3 审计记录与强制规则
 
 ```rust
 pub struct AuditRecord {
+    pub action_id: String,              // 稳定主键，见 §2.4
     pub intent_id: String,
+    pub ordinal: u32,
     pub action_type: ActionType,
     pub target: Option<String>,
     pub effect: EffectClass,
@@ -137,22 +193,32 @@ pub struct AuditRecord {
 
 强制不变量（用单测 + 终态覆盖测试钉死）：
 
-1. 每个 `ActionProposal` 产出**恰好一条** `AuditRecord`，且 `terminal` 必为终态之一。
+1. 每个 `ActionProposal`（即每个 `action_id`）产出**恰好一条** `AuditRecord`，且 `terminal` 必为终态之一。
 2. 成功路径记录完整迁移序列 `[Proposed, …, Succeeded]`。
-3. 四类失败各有对应终态，互不混淆。
+3. 五类终态（schema / privacy / capability / policy / failed）各有对应记录，互不混淆。
 4. 全程**不 panic**：所有错误走结构化 `LifecycleError` / `DenialReason` / `AdapterError`。
+
+#### 2.4 稳定动作标识 `action_id`
+
+reviewer 第 4 点：一条 Intent 可含多条甚至重复的 suggested action，仅靠共享 `intent_id` 无法证明「每个 proposal 恰好一条终态审计」。故在进入治理边界时生成稳定标识：
+
+- `action_id = format!("{intent_id}#{ordinal}")`，`ordinal` 是该 action 在 `Intent.suggested_actions` 中的下标。确定性、无 wall-clock、无随机，重复 action 也能区分。
+- `action_id` 贯穿 `ActionProposal` → `AuthorizedAction` → `ActionOutcome` → `AuditRecord`，并纳入 `audit_hash`（§5）。
+- 「恰好一条终态审计」的测试即按 `action_id` 分组断言：每个 id 出现且仅出现一次、且为终态。
 
 ### 3. OfflineAdapter 执行闭环（issue #8，`aios-action`）
 
-新增一个纯离线、确定性的 adapter，与现有 `DefaultActionExecutor`（含 Android bridge）并存。它只认 `AuthorizedAction`，是 replay/CI 的执行层。
+新增一个纯离线、确定性的 adapter。它与现有 `DefaultActionExecutor`（含 Android bridge）**实现同一个 `ActionAdapter` dispatch trait**，运行时二选一注入状态机——这就是 §2.2 说的「唯一 dispatch 抽象」，两条执行路径收敛于此，不并行。
 
 ```rust
+// 定义在能看到私有 AuthorizedAction 的层（随 AuthorizedAction，见 §1.1）。
 pub trait ActionAdapter {
     fn name(&self) -> &'static str;
     fn execute(&self, authorized: &AuthorizedAction) -> Result<ActionOutcome, AdapterError>;
 }
 
 pub struct OfflineAdapter { /* Arc<Mutex<SimulatedState>> */ }
+// DefaultActionExecutor 改为 impl 同一个 trait，复用现有 Android bridge 转发逻辑。
 ```
 
 - 支持动作（映射到现有 5 类 + 模拟语义）：`NoOp`、`PreWarmProcess`→SimulatePrewarm、`PrefetchFile`→SimulateCache、`KeepAlive`、`ReleaseMemory`。
@@ -160,11 +226,21 @@ pub struct OfflineAdapter { /* Arc<Mutex<SimulatedState>> */ }
 - unsupported 动作返回结构化 `AdapterError::Unsupported`，**绝不 panic**，也不破坏状态机。
 - adapter 失败 → 状态机落 `Failed` 终态，窗口继续处理后续动作。
 
+### 范围与 issue 验收对齐（回应 reviewer 第 5 点）
+
+本 RFC 有意调整了 issue 的部分验收范围，在此显式声明哪些会被关闭、哪些延后，不悄悄缩范围：
+
+- **issue #4**：全部验收项本 RFC 覆盖（类型分离、adapter 只收 `AuthorizedAction`、schema 拒绝、serde roundtrip、非法 action 测试）。其中「`ResourceBudget`、带副作用 action 的 budget」**降级为字段占位不校验**——需在 issue #4 补注说明。**可关闭**（带范围注记）。
+- **issue #5**：覆盖 schema/privacy/capability/policy/failed 五类终态 + 「恰好一条终态审计」+ 不 panic。**不覆盖**「预算拒绝有对应终态」（`DeniedByBudget` 当前不可达）与 `Scheduled`/`BudgetReserved`/`Expired`/`Cancelled`。→ 在 issue #5 勾掉已完成项，对未做项注明「延后到 budget/调度机制存在时的后续 RFC」，**该 issue 不由本 PR 完全关闭**。
+- **issue #8**：全部验收项覆盖。**可关闭**。
+
+> 准则：裁实现可以，裁验收必须留痕。任何被本 RFC 推迟的验收项，都会在对应 issue 上注明，并指向承接它的未来工作，避免「RFC 宣称覆盖、issue 却没人关」的悬空。
+
 ### 4. 集成点
 
-- **daemon `pipeline.rs`**：`process_window` 在 `PolicyEngine` 之后，把每条 approved action 走一遍 `ActionLifecycle`，收集 `AuditRecord` 写入现有 runtime trace JSON（新增 `"audit"` 字段）。
-- **cli `replay`**：同样收集 `AuditRecord`，在 summary 里新增 `Audit records` 计数；`audit_hash` 的输入扩展为包含终态序列（确定性来源：状态机纯函数 + OfflineAdapter）。
-- 向后兼容：现有 `ActionExecutor` trait 与 `DefaultActionExecutor` **保留不动**，OfflineAdapter 是新增并行实现。
+- **daemon `pipeline.rs`**：`process_window` 不再「先 PolicyEngine 再 executor」两段式。改为构造一个 `ActionLifecycle`（注入 `PolicyEngine` + 选定的 `ActionAdapter`），对每个窗口调用 `lifecycle.run(batch, capability, ctx)` 一次，拿回 `Vec<AuditRecord>` 写入 runtime trace JSON（新增 `"audit"` 字段）。策略检查与 dispatch 都在 lifecycle 内部，只发生一次。
+- **cli `replay`**：注入 `OfflineAdapter` 作为 `ActionAdapter`，同样调 `lifecycle.run` 收集 `AuditRecord`；summary 新增 `Audit records` 计数；`audit_hash` 输入扩展为包含按 `action_id` 排序的 `(action_id, terminal, transitions)`（确定性来源：状态机纯函数 + OfflineAdapter）。
+- **取代而非并存**：旧的「`PolicyEngine.evaluate_*` → `DefaultActionExecutor::execute`」直连调用在 daemon/cli 中被 `ActionLifecycle` 取代。`DefaultActionExecutor` 不删，但改为 `impl ActionAdapter` 后由 lifecycle 统一驱动，避免两条路径重复执行同一动作。
 
 ### 5. 已定决策：审计轨迹纳入 `audit_hash`
 
@@ -179,15 +255,17 @@ pub struct OfflineAdapter { /* Arc<Mutex<SimulatedState>> */ }
 
 ## 影响面 (Impact)
 
-- **涉及的模块**：`aios-spec`（新增 `ActionProposal`/`EffectClass`/`ActionState`/`AuditRecord`/`AdapterError`，调整 `AuthorizedAction`）、`aios-core`（新增 `action_lifecycle.rs`）、`aios-action`（新增 `OfflineAdapter`）、`aios-daemon`/`aios-cli`（接审计流）。
-- **接口变更**：`AuthorizedAction` 增加 `effect` 字段并收紧构造路径——会触及现有构造点（policy_engine、测试、Android bridge payload）。
+- **涉及的模块**：`aios-spec`（新增 `ActionProposal`/`EffectClass`/`ActionState`/`AuditRecord`/`ActionOutcome`/`AdapterError`；**移出** `AuthorizedAction`）、`aios-core`（接收 `AuthorizedAction` + `ActionAdapter` trait，新增 `governance` 与 `action_lifecycle.rs`）、`aios-action`（新增 `OfflineAdapter`，`DefaultActionExecutor` 改 `impl ActionAdapter`，**新增对 `aios-core` 的依赖**）、`aios-daemon`/`aios-cli`（改用 `ActionLifecycle` 单管线，接审计流）。
+- **接口变更**：`AuthorizedAction` 移到 core、字段私有、加 `effect`/`action_id`/`ordinal`、唯一构造器 `pub(crate) seal`——会触及所有现有构造点（policy_engine 返回值、测试、Android bridge payload）。`ActionExecutor` trait（spec）被 `ActionAdapter` 取代为 dispatch 抽象。
+- **依赖图变更**：新增 `aios-action → aios-core` 边。已确认 `aios-core` 不依赖 `aios-action`，无环；`spec → core → action` 仍单向。
 - **向后兼容性**：现有 golden trace 的脱敏/策略/执行三层语义不变；`audit_hash` 输入扩展属于**有意的确定性升级**，需同步刷新 golden 基线（一次性）。
 
 ## 风险与缓解 (Risks)
 
-- **风险：收紧 `AuthorizedAction` 构造破坏 Android bridge 序列化**。缓解：bridge payload 仍 `Serialize` `AuthorizedAction`，只是禁止外部 `Deserialize` 反向构造可执行动作；用编译期 + 单测双重保证。
+- **风险：`AuthorizedAction` 移出 spec 触及面大**。缓解：这是 reviewer 第 1 点要求的「可编译的所有权方案」——不可伪造性无法在 spec 内跨 crate 实现。改动集中在构造点，由编译器全量暴露，无静默遗漏。
+- **风险：收紧 `AuthorizedAction` 构造破坏 Android bridge 序列化**。缓解：bridge payload 仍 `Serialize`（只读发出方向安全），只禁止 `Deserialize` 反向构造可执行动作；编译期 + 单测双重保证。
 - **已知成本：audit_hash 基线变更影响 #6 golden 测试**（已采纳「纳入」方案，见设计第 5 节）。处理：在同一 PR 内刷新基线，并在 PR 描述说明 hash 输入的扩展。
-- **风险：范围蔓延到 Capability/Budget**。缓解：本 RFC 明确只留枚举占位与扩展点，不实现租约/调度。
+- **风险：范围与 issue 验收不一致**。缓解：见「范围与 issue 验收对齐」一节——被推迟的验收项（budget 终态等）已逐条声明并将在对应 issue 留痕，#5 不由本 PR 完全关闭。
 
 ## 替代方案 (Alternatives)
 
@@ -201,19 +279,24 @@ pub struct OfflineAdapter { /* Arc<Mutex<SimulatedState>> */ }
 
 ### 方案 C：把状态机放进 aios-action 而非 aios-core
 
-违反 `spec → core → adapter` 单向依赖：治理决策（policy/redaction）属于 core，adapter 只负责执行。**不采用**。
+违反 `spec → core → action` 单向依赖：治理决策（policy/redaction）属于 core，adapter 只负责执行。**不采用**。
+
+### 方案 D：`AuthorizedAction` 留在 spec，用 sealed-trait + 见证 token 保不可伪造
+
+可让类型留在 spec：定义一个 `mod sealed` 私有 trait 作为构造见证，仅 core 能产生。但构造器逻辑仍必须在 core，spec 侧只剩一个无法独立构造的空壳，徒增 sealed 样板与一层间接。收益（类型留在 spec）不抵成本，**不采用**，改用方案：直接把类型移到唯一生产者所在的 core（§1.1）。
 
 ## 迁移计划 (Migration Plan)
 
-1. `aios-spec`：加类型 + 调整 `AuthorizedAction`，跑通 serde roundtrip 与非法 action 测试。
-2. `aios-core`：`action_lifecycle.rs` 状态机 + 终态覆盖测试。
-3. `aios-action`：`OfflineAdapter` + 每动作单测 + unsupported 测试。
-4. `aios-daemon`/`aios-cli`：接审计流，刷新 golden 基线。
+1. `aios-spec`：加 `ActionProposal`/`EffectClass`/`ActionState`/`AuditRecord`/`ActionOutcome`/`AdapterError`；**移出** `AuthorizedAction`。跑通 serde roundtrip 与非法 action 测试。
+2. `aios-core`：新建 `governance`（落 `AuthorizedAction` 私有字段 + `seal` + `ActionAdapter` trait）+ `action_lifecycle.rs` 状态机；改 `PolicyEngine` 调用方拿新类型。状态机单测 + 终态覆盖 + 「每 `action_id` 恰好一条终态审计」测试。
+3. `aios-action`：加 `aios-core` 依赖；`OfflineAdapter` + `DefaultActionExecutor` 都 `impl ActionAdapter`；每动作单测 + unsupported 测试。
+4. `aios-daemon`/`aios-cli`：换成 `ActionLifecycle` 单管线，接审计流，刷新 golden 基线。
 5. 全量 `cargo test --workspace` + `cargo clippy -- -D warnings` 通过。
+6. 在 issue #4/#5/#8 按「范围与 issue 验收对齐」勾选/留痕；#5 注明延后项。
 
 ## 参考 (References)
 
-- `docs/src/refs/papers/Action_Bus_设计参考.docx` — Action Bus 完整设计（本 RFC 的务实裁剪来源）。
-- `docs/src/refs/papers/DiPECS参考建议.docx` — P0 最小闭环建议。
+- `docs/src/refs/papers/Action_Bus_设计参考.pdf` — Action Bus 完整设计（本 RFC 的务实裁剪来源）。
+- `docs/src/refs/papers/DiPECS参考建议.pdf` — P0 最小闭环建议。
 - Issues #4 / #5 / #8 — 本 RFC 的验收标准来源。
 - [RFC-0001](0001-layered-collection-and-decision-routing.md) — 分层采集与决策路由（本 RFC 在其管线上叠加治理层）。

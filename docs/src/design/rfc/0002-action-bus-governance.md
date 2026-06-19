@@ -71,8 +71,9 @@ pub struct ActionProposal {
     pub proposed_at_ms: i64,
 }
 
-// 确定性动作坐标：不含 UUID/wall-clock，纯位置量，replay 间稳定。
+// 确定性动作坐标：不含 UUID/wall-clock，纯位置量，replay 间稳定且全局唯一。
 pub struct ActionCoord {
+    pub window_ordinal: u32,       // 窗口在 replay 序列中的确定性序号（跨窗口去碰撞）
     pub intent_ordinal: u32,       // intent 在 batch.intents 中的下标
     pub action_ordinal: u32,       // action 在 intent.suggested_actions 中的下标
 }
@@ -165,7 +166,7 @@ impl ActionLifecycle {
 
 ```text
 SuggestedAction (来自 Intent.suggested_actions[ordinal])
-  → core 建 ActionProposal (坐标 = (intent_ordinal, action_ordinal), 推导 effect)
+  → core 建 ActionProposal (坐标 = (window_ordinal, intent_ordinal, action_ordinal), 推导 effect)
   → Proposed
   → SchemaValidated      (validate: target/effect/risk 组合)   ─┬─ 失败 → RejectedInvalidSchema (终态)
   → RedactionChecked     (target 必须是脱敏实体, 非 raw 包名)   ─┼─ 失败 → RejectedPrivacyViolation (终态)
@@ -195,7 +196,7 @@ pub struct PolicyActionDecision {
 // 每个 action_ordinal 各一条 Denied，verdict 携带对应 DenialReason。
 ```
 
-- `PolicyEngine` 的职责收敛为「裁决」：遍历 `intent.suggested_actions` 时**带 enumerate 下标**，每条产出一个 `PolicyActionDecision`，approve/deny 都带 `(intent_ordinal, action_ordinal)`。
+- `PolicyEngine` 的职责收敛为「裁决」：遍历 `intent.suggested_actions` 时**带 enumerate 下标**，每条产出一个 `PolicyActionDecision`，approve/deny 都带 `(intent_ordinal, action_ordinal)`。`PolicyActionDecision` 只承载 batch 内的二元下标；`window_ordinal` 不在 PolicyEngine 视野内，由 `ActionLifecycle` 在窗口边界用驱动循环的窗口序号补齐，组装成完整三元 `ActionCoord`（见 §2.4）。
 - `AuthorizedAction` 的构造从 `policy_engine.rs` **移除**；唯一 `seal` 点是 `ActionLifecycle` 在消费到 `verdict == Approved` 的 proposal 时。这样「谁授权」与「谁裁决」分离：PolicyEngine 裁决、lifecycle 授权。
 - `action_denials: Vec<DenialReason>`（无 ordinal）被 `Vec<PolicyActionDecision>` 取代；现有 `PolicyDecision` 的调用方（daemon/cli/测试）随之改。risk/confidence 仍读自 `Intent`，不进 proposal。
 
@@ -203,7 +204,7 @@ pub struct PolicyActionDecision {
 
 ```rust
 pub struct AuditRecord {
-    pub coord: ActionCoord,             // 确定性主键 (intent_ordinal, action_ordinal)，进 hash，见 §2.4
+    pub coord: ActionCoord,             // 确定性主键 (window_ordinal, intent_ordinal, action_ordinal)，进 hash，见 §2.4
     pub intent_id: String,              // 运行时关联（volatile：含 UUID，canonical 投影剥离，不进 hash）
     pub action_type: ActionType,
     pub target: Option<String>,
@@ -224,14 +225,14 @@ pub struct AuditRecord {
 
 #### 2.4 稳定动作标识：确定性 `ActionCoord` vs 运行时 `intent_id`
 
-reviewer 第 2 轮第 1 点：一条 Intent 可含多条甚至重复的 suggested action，需稳定标识证明「每个 proposal 恰好一条终态审计」；但**不能把随机 `intent_id`（`Uuid::new_v4()`）嵌进主键再纳入 hash**——现有 canonical audit 正是靠按 key 剥离 `intent_id` 才保证三次回放 hash 一致，UUID 一旦进 hash 即回归。
+reviewer 第 2 轮第 1 点：一条 Intent 可含多条甚至重复的 suggested action，需稳定标识证明「每个 proposal 恰好一条终态审计」；但**不能把随机 `intent_id`（`Uuid::new_v4()`）嵌进主键再纳入 hash**——现有 canonical audit 正是靠按 key 剥离 `intent_id` 才保证三次回放 hash 一致，UUID 一旦进 hash 即回归。reviewer 第 3 轮第 1 点：`(intent_ordinal, action_ordinal)` 只在单个 batch 内唯一，replay 跨多个窗口时第二个窗口的 `(0,0)` 会与第一个碰撞，主键失效。
 
-方案：**运行时标识与 canonical 标识分离**。
+方案：**运行时标识与 canonical 标识分离**，且坐标含窗口序号保证全局唯一。
 
-- **canonical 主键 `coord: ActionCoord = (intent_ordinal, action_ordinal)`**：intent 在 `batch.intents` 中的下标 + action 在 `intent.suggested_actions` 中的下标。纯确定性、无 wall-clock、无 UUID，重复 action 也能区分。它是 `AuditRecord` 的主键，**纳入 `audit_hash`**。
+- **canonical 主键 `coord: ActionCoord = (window_ordinal, intent_ordinal, action_ordinal)`**：窗口在 replay 序列中的确定性序号 + intent 在 `batch.intents` 中的下标 + action 在 `intent.suggested_actions` 中的下标。`window_ordinal` 由 replay 驱动循环按窗口处理顺序单调赋号（确定性、无 wall-clock、无 UUID），跨窗口全局唯一，重复 action 也能区分。它是 `AuditRecord` 的主键，**纳入 `audit_hash`**。
 - **运行时关联 `intent_id: String`**：仍保留在 `AuditRecord` 里供日志/调试关联真实 intent，但它含 UUID，属 volatile——`canonicalize` 把 `intent_id` 加入 `VOLATILE_KEYS` 一并剥离，**不进 hash**（与现有 `event_id`/`window_id` 同等处理）。
 - `coord` 贯穿 `ActionProposal` → `AuthorizedAction` → `ActionOutcome` → `AuditRecord`。
-- 「恰好一条终态审计」的测试按 `coord` 分组断言：每个 coord 出现且仅出现一次、且为终态。
+- 「恰好一条终态审计」的测试按 `coord` 分组断言：每个 coord 出现且仅出现一次、且为终态。**测试场景必须含至少两个窗口、且两窗口出现重复 `(intent_ordinal, action_ordinal)`**，证明 `window_ordinal` 消除碰撞、全局主键成立。
 - **新增确定性回归**：扩展现有 `audit_hash_is_stable_across_repeated_runs`，断言「三次相同 replay 的 action audit hash 完全一致」，钉死 UUID 不泄漏进 hash。
 
 ### 3. OfflineAdapter 执行闭环（issue #8，`aios-action`）
@@ -269,6 +270,10 @@ pub struct OfflineAdapter { /* Arc<Mutex<SimulatedState>> */ }
 - **daemon `pipeline.rs`**：`process_window` 不再「先 PolicyEngine 再 executor」两段式。改为构造一个 `ActionLifecycle`（注入 `PolicyEngine` + 选定的 `ActionAdapter`），对每个窗口调用 `lifecycle.run(batch, capability, ctx)` 一次，拿回 `Vec<AuditRecord>` 写入 runtime trace JSON（新增 `"audit"` 字段）。策略检查与 dispatch 都在 lifecycle 内部，只发生一次。
 - **cli `replay`**：注入 `OfflineAdapter` 作为 `ActionAdapter`，同样调 `lifecycle.run` 收集 `AuditRecord`；summary 新增 `Audit records` 计数；`audit_hash` 输入扩展为包含按 `coord` 排序的 `(coord, terminal, transitions)`（确定性来源：state machine 纯函数 + OfflineAdapter；`intent_id` 经 `VOLATILE_KEYS` 剥离不进 hash）。
 - **取代而非并存**：旧的「`PolicyEngine.evaluate_*` → `DefaultActionExecutor::execute`」直连调用在 daemon/cli 中被 `ActionLifecycle` 取代。`DefaultActionExecutor` 不删，但改为 `impl ActionAdapter` 后由 lifecycle 统一驱动，避免两条路径重复执行同一动作。
+- **封堵 CLI 手动旁路 `SendAuthorizedAction`**（reviewer 第 3 轮第 2 点）：现状 `aios-cli/src/main.rs` 的 `SendAuthorizedAction`（`--json`/`--file`/`--prefetch-target`）直接把任意 `AuthorizedAction` JSON 发往 Android socket（`android_bridge.rs` 甚至手搓一个 `manual-prefetch` 的 `PrefetchFile` payload）。`AuthorizedAction` 移入 core、私有字段、去 `Deserialize` 后，这条路径就是「未经 lifecycle seal 却发往执行端」的授权伪造口子，与核心边界冲突。处置：
+  - **该命令脱离 `AuthorizedAction` 语义**——重命名为诊断用途的 `debug-send-bridge`，明确发送的是**未授权的 raw socket 探针**（发的是裸 JSON 字节，不再声称是 `AuthorizedAction`），仅供本地连通性排障，并在 help 文案标注「不经治理边界，禁用于生产」。
+  - `android_bridge.rs::load_payload` 的 `manual-prefetch` 构造同步去掉 `AuthorizedAction` 类型语义，仅作为诊断 payload 字符串存在。
+  - 真正要把动作发往 Android，须经 `ActionLifecycle` → `DefaultActionExecutor`（`impl ActionAdapter`，内部走 bridge 转发），即唯一 seal + 唯一 dispatch 路径。迁移计划第 4 步包含此项改造与对应测试（断言不存在「绕过 seal 发往 bridge」的公开 API）。
 
 ### 5. 已定决策：审计轨迹纳入 `audit_hash`
 
@@ -316,9 +321,9 @@ pub struct OfflineAdapter { /* Arc<Mutex<SimulatedState>> */ }
 ## 迁移计划 (Migration Plan)
 
 1. `aios-spec`：加 `ActionProposal`/`EffectClass`/`ActionState`/`AuditRecord`/`ActionOutcome`/`AdapterError`；**移出** `AuthorizedAction`。跑通 serde roundtrip 与非法 action 测试。
-2. `aios-core`：新建 `governance`（落 `AuthorizedAction` 私有字段 + `seal` + `ActionAdapter` trait）+ `action_lifecycle.rs` 状态机；改 `PolicyEngine` 调用方拿新类型。状态机单测 + 终态覆盖 + 「每 `coord` 恰好一条终态审计」测试。
+2. `aios-core`：新建 `governance`（落 `AuthorizedAction` 私有字段 + `seal` + `ActionAdapter` trait）+ `action_lifecycle.rs` 状态机；改 `PolicyEngine` 调用方拿新类型。`PolicyActionDecision` 只带 batch 内 `(intent_ordinal, action_ordinal)`，`window_ordinal` 由 lifecycle 在窗口边界补齐组装成完整 `ActionCoord`。状态机单测 + 终态覆盖 + 「每 `coord` 恰好一条终态审计」测试（含**两个窗口、重复 ordinal** 场景，证明全局主键不碰撞）。
 3. `aios-action`：加 `aios-core` 依赖；`OfflineAdapter` + `DefaultActionExecutor` 都 `impl ActionAdapter`；每动作单测 + unsupported 测试。
-4. `aios-daemon`/`aios-cli`：换成 `ActionLifecycle` 单管线，接审计流，刷新 golden 基线。
+4. `aios-daemon`/`aios-cli`：换成 `ActionLifecycle` 单管线，接审计流，刷新 golden 基线；**封堵 CLI 旁路**——`SendAuthorizedAction` 重命名为 `debug-send-bridge` 并脱离 `AuthorizedAction` 语义（见 §4），加测试断言无「绕过 seal 发往 bridge」的公开路径。`replay` 的 `audit_hash` 加「三次回放 hash 一致」回归。
 5. 全量 `cargo test --workspace` + `cargo clippy -- -D warnings` 通过。
 6. 在 issue #4/#5/#8 按「范围与 issue 验收对齐」勾选/留痕；#5 注明延后项。
 

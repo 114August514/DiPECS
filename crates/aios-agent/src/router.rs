@@ -146,6 +146,13 @@ impl DecisionRouter {
     ///
     /// Uses interior mutability (`RefCell`) to track circuit breaker state
     /// across calls without requiring `&mut self`.
+    ///
+    /// Fallback semantics (issue #10, option A): when the circuit breaker
+    /// trips, `DecisionRoute::FallbackNoOp` produces a system-generated safe
+    /// NoOp that passes the policy engine. The failure signal is preserved in
+    /// `DecisionBackendResult::error` and propagated into the audit record's
+    /// `backend_error` field by `ActionLifecycle`, so fallback is visible in
+    /// the audit/trace without blocking the action pipeline.
     pub fn evaluate(&self, context: &StructuredContext) -> DecisionBackendResult {
         let (route, reason) = self.determine_route(context);
         let reason_tag = reason.tag();
@@ -283,5 +290,89 @@ impl DecisionRouter {
 impl Default for DecisionRouter {
     fn default() -> Self {
         Self::new(RouterConfig::default())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use aios_spec::{ContextSummary, SourceTier, StructuredContext};
+
+    fn empty_context() -> StructuredContext {
+        StructuredContext {
+            window_id: "test-window".into(),
+            window_start_ms: 0,
+            window_end_ms: 1000,
+            duration_secs: 1,
+            events: vec![],
+            summary: ContextSummary {
+                foreground_apps: vec![],
+                notified_apps: vec![],
+                all_semantic_hints: vec![],
+                file_activity: vec![],
+                latest_system_status: None,
+                source_tier: SourceTier::PublicApi,
+            },
+        }
+    }
+
+    #[test]
+    fn circuit_breaker_trips_to_fallback_noop() {
+        let config = RouterConfig {
+            circuit_breaker_threshold: 2,
+            circuit_breaker_window_secs: 3600,
+            ..RouterConfig::default()
+        };
+        let router = DecisionRouter::new(config);
+        let ctx = empty_context();
+
+        // First evaluation is normal.
+        let r1 = router.evaluate(&ctx);
+        assert!(!matches!(r1.route, DecisionRoute::FallbackNoOp));
+
+        // Inject two errors directly into the circuit state.
+        router.circuit_state.borrow_mut().record_error();
+        router.circuit_state.borrow_mut().record_error();
+
+        // Next evaluation must route to FallbackNoOp.
+        let r2 = router.evaluate(&ctx);
+        assert!(
+            matches!(r2.route, DecisionRoute::FallbackNoOp),
+            "circuit breaker should trip to FallbackNoOp, got {:?}",
+            r2.route
+        );
+        assert!(r2.error.is_some(), "fallback should carry backend_error");
+        assert!(
+            r2.rationale_tags
+                .iter()
+                .any(|t| t.starts_with("routing:circuit_breaker_fallback")),
+            "fallback should have circuit breaker routing tag, got {:?}",
+            r2.rationale_tags
+        );
+    }
+
+    #[test]
+    fn fallback_noop_keeps_circuit_breaker_tripped() {
+        let config = RouterConfig {
+            circuit_breaker_threshold: 1,
+            circuit_breaker_window_secs: 3600,
+            ..RouterConfig::default()
+        };
+        let router = DecisionRouter::new(config);
+        let ctx = empty_context();
+
+        // Trip the breaker.
+        router.circuit_state.borrow_mut().record_error();
+        let r1 = router.evaluate(&ctx);
+        assert!(matches!(r1.route, DecisionRoute::FallbackNoOp));
+
+        // Fallback NoOp still carries an error signal, so the circuit state
+        // remains tripped on the next call.
+        let r2 = router.evaluate(&ctx);
+        assert!(
+            matches!(r2.route, DecisionRoute::FallbackNoOp),
+            "circuit should stay tripped after fallback, got {:?}",
+            r2.route
+        );
     }
 }

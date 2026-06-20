@@ -128,6 +128,8 @@ fn main() -> Result<()> {
             };
             sink.flush()?;
 
+            eprintln!("{}", summary.human_summary());
+
             info!(
                 lines_total = summary.lines_total,
                 events_ingested = summary.events_ingested,

@@ -57,7 +57,7 @@ pub fn send_ping(host: &str, port: u16, auth_token: &str) -> Result<()> {
                 {
                     break;
                 }
-            }
+            },
             Err(e)
                 if e.kind() == std::io::ErrorKind::WouldBlock
                     || e.kind() == std::io::ErrorKind::TimedOut =>
@@ -66,15 +66,14 @@ pub fn send_ping(host: &str, port: u16, auth_token: &str) -> Result<()> {
                     return Err(e).with_context(|| format!("reading pong from {host}:{port}"));
                 }
                 break;
-            }
+            },
             Err(e) => {
                 return Err(e).with_context(|| format!("reading pong from {host}:{port}"));
-            }
+            },
         }
     }
 
-    let text =
-        std::str::from_utf8(&buf).with_context(|| "bridge returned non-UTF-8 response")?;
+    let text = std::str::from_utf8(&buf).with_context(|| "bridge returned non-UTF-8 response")?;
     let value: serde_json::Value =
         serde_json::from_str(text).with_context(|| "bridge returned invalid JSON")?;
 
@@ -133,10 +132,7 @@ mod tests {
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
         let port = listener.local_addr().unwrap().port();
 
-        read_until_eof_then_reply(
-            listener,
-            br#"{"status":"ok","message":"pong"}"#,
-        );
+        read_until_eof_then_reply(listener, br#"{"status":"ok","message":"pong"}"#);
 
         send_ping("127.0.0.1", port, "secret").unwrap();
     }

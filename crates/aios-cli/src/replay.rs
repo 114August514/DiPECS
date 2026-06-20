@@ -131,10 +131,7 @@ impl ReplaySummary {
         let _ = writeln!(
             out,
             "actions  {} authorized · {} denied · {} failed · {} audit records",
-            self.actions_authorized,
-            self.actions_denied,
-            self.actions_failed,
-            self.audit_records,
+            self.actions_authorized, self.actions_denied, self.actions_failed, self.audit_records,
         );
 
         if !self.denial_counts.is_empty() {

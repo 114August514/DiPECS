@@ -52,6 +52,8 @@ fn audit_record_serde_roundtrip() {
         action_type: ActionType::NoOp,
         target: None,
         effect: EffectClass::PureRead,
+        route: DecisionRoute::RuleBased,
+        backend_error: None,
         transitions: vec![
             ActionState::Proposed,
             ActionState::SchemaValidated,

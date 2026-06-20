@@ -40,13 +40,7 @@ const SCHEMA_VERSION: &str = "dipecs.collector.v1";
 /// Keys whose values are non-deterministic (uuids, wall-clock durations) and
 /// must be stripped from the canonical audit projection so replay hashes are
 /// stable across runs.
-const VOLATILE_KEYS: &[&str] = &[
-    "event_id",
-    "window_id",
-    "intent_id",
-    "latency_us",
-    "backend_error",
-];
+const VOLATILE_KEYS: &[&str] = &["event_id", "window_id", "intent_id", "latency_us"];
 
 /// Pipeline stage at which replay should stop emitting events.
 ///
@@ -395,7 +389,7 @@ fn process_window(
         "model": decision.intent_batch.model,
         "intent_count": decision.intent_batch.intents.len(),
         "rationale_tags": decision.rationale_tags,
-        "error": decision.error.clone(),
+        "error": decision.error,
     }))?;
 
     if !stage.includes(Stage::Policy) {
@@ -405,14 +399,7 @@ fn process_window(
 
     if stage.includes(Stage::Execute) {
         // Full lifecycle: schema -> policy -> seal -> adapter -> terminal audit.
-        let audit_records = lifecycle.run(
-            window_ordinal,
-            &decision.intent_batch,
-            decision.route,
-            decision.error.clone(),
-            &capability,
-            ctx,
-        );
+        let audit_records = lifecycle.run(window_ordinal, &decision.intent_batch, &capability, ctx);
 
         // Aggregate per-intent signals for the human-facing summary.
         // An intent is "approved" once policy authorizes at least one of its

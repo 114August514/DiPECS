@@ -9,7 +9,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::intent::{ActionType, DecisionRoute, DenialReason, SuggestedAction};
+use crate::intent::{ActionType, DenialReason, SuggestedAction};
 
 /// 确定性动作坐标。
 ///
@@ -176,10 +176,6 @@ pub struct AuditRecord {
     pub action_type: ActionType,
     pub target: Option<String>,
     pub effect: EffectClass,
-    /// 产生该动作的后端路由，确定性，进 canonical hash。
-    pub route: DecisionRoute,
-    /// 后端失败/熔断等诊断信息，volatile，不进 canonical hash。
-    pub backend_error: Option<String>,
     /// 完整迁移序列。
     pub transitions: Vec<ActionState>,
     /// 终态（冗余但便于查询/golden）。
@@ -194,15 +190,13 @@ pub struct AuditRecord {
 
 impl AuditRecord {
     /// 从初态 `Proposed` 开始构建一条审计记录。
-    pub fn new(proposal: &ActionProposal, route: DecisionRoute) -> Self {
+    pub fn new(proposal: &ActionProposal) -> Self {
         Self {
             coord: proposal.coord,
             intent_id: proposal.intent_id.clone(),
             action_type: proposal.action.action_type.clone(),
             target: proposal.action.target.clone(),
             effect: proposal.effect,
-            route,
-            backend_error: None,
             transitions: vec![ActionState::Proposed],
             terminal: ActionState::Proposed,
             outcome: None,

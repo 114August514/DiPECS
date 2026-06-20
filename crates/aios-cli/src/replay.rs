@@ -94,6 +94,75 @@ pub struct ReplayWithAudit {
     pub audit_hash: String,
 }
 
+impl ReplaySummary {
+    /// Render a compact, eyeball-friendly summary for stderr. The canonical
+    /// machine view is the `{"stage":"summary",...}` NDJSON record already on
+    /// the output sink; this view trades precision for scannability.
+    ///
+    /// Layout is stable: pipeline / intents / actions blocks are always
+    /// emitted; `denials by reason` only appears when `denial_counts` is
+    /// non-empty. The audit hash is truncated to the first 16 hex chars after
+    /// the `sha256:` prefix — enough to eyeball-diff against a pinned value.
+    pub fn human_summary(&self) -> String {
+        use std::fmt::Write as _;
+        let mut out = String::new();
+        let _ = writeln!(out, "=== DiPECS replay ===");
+        let _ = writeln!(out, "audit    {}", short_hash(&self.audit_hash));
+        let _ = writeln!(
+            out,
+            "input    {} lines · {} ingested · {} skipped · {} parse errors",
+            self.lines_total,
+            self.events_ingested,
+            self.lines_skipped_no_raw_event,
+            self.lines_parse_error,
+        );
+        let _ = writeln!(out, "windows  {} closed", self.windows_closed);
+        out.push('\n');
+        let _ = writeln!(
+            out,
+            "intents  {} total · {} approved · {} rejected",
+            self.intents_total, self.intents_approved, self.intents_rejected,
+        );
+        let _ = writeln!(
+            out,
+            "actions  {} authorized · {} denied",
+            self.actions_authorized, self.actions_denied,
+        );
+
+        if !self.denial_counts.is_empty() {
+            out.push('\n');
+            let _ = writeln!(out, "denials by reason");
+            let name_width = self
+                .denial_counts
+                .keys()
+                .map(|r| format!("{r:?}").len())
+                .max()
+                .unwrap_or(0);
+            for (reason, count) in &self.denial_counts {
+                let _ = writeln!(
+                    out,
+                    "  {name:<width$}  {count}",
+                    name = format!("{reason:?}"),
+                    width = name_width,
+                );
+            }
+        }
+        out
+    }
+}
+
+fn short_hash(audit_hash: &str) -> String {
+    if audit_hash.is_empty() {
+        return "(none)".into();
+    }
+    if let Some(hex) = audit_hash.strip_prefix("sha256:") {
+        if hex.len() > 16 {
+            return format!("sha256:{}…  (full hash in NDJSON summary)", &hex[..16]);
+        }
+    }
+    audit_hash.to_string()
+}
+
 /// Replay a JSONL stream through the core pipeline without writing a separate
 /// audit file. The canonical-projection hash is still computed and surfaced as
 /// `ReplaySummary.audit_hash` so callers can pin determinism without managing
@@ -441,5 +510,100 @@ fn raw_event_kind(raw: &RawEvent) -> &'static str {
         RawEvent::NotificationInteraction(_) => "NotificationInteraction",
         RawEvent::ScreenState(_) => "ScreenState",
         RawEvent::SystemState(_) => "SystemState",
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn human_summary_renders_all_blocks() {
+        let mut summary = ReplaySummary {
+            lines_total: 3,
+            events_ingested: 3,
+            windows_closed: 1,
+            intents_total: 3,
+            intents_approved: 2,
+            intents_rejected: 1,
+            actions_authorized: 2,
+            actions_denied: 2,
+            audit_hash: "sha256:3fd30718ffd3f8953c14f4b5030b8d6ac52fd3e598ac3c9ab050554c89c3ae14"
+                .into(),
+            ..Default::default()
+        };
+        summary
+            .denial_counts
+            .insert(DenialReason::ActionCapabilityDenied, 2);
+
+        let rendered = summary.human_summary();
+        assert!(rendered.contains("=== DiPECS replay ==="));
+        assert!(rendered.contains("sha256:3fd30718ffd3f895…"));
+        assert!(rendered.contains("3 lines · 3 ingested · 0 skipped · 0 parse errors"));
+        assert!(rendered.contains("windows  1 closed"));
+        assert!(rendered.contains("intents  3 total · 2 approved · 1 rejected"));
+        assert!(rendered.contains("actions  2 authorized · 2 denied"));
+        assert!(rendered.contains("denials by reason"));
+        assert!(rendered.contains("ActionCapabilityDenied"));
+        assert!(
+            rendered
+                .lines()
+                .any(|l| l.trim() == "ActionCapabilityDenied  2"
+                    || l.contains("ActionCapabilityDenied") && l.trim_end().ends_with('2')),
+            "denial row must show count; got:\n{rendered}"
+        );
+    }
+
+    #[test]
+    fn human_summary_omits_denials_block_when_empty() {
+        let summary = ReplaySummary {
+            lines_total: 1,
+            events_ingested: 1,
+            audit_hash: "sha256:abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789"
+                .into(),
+            ..Default::default()
+        };
+        let rendered = summary.human_summary();
+        assert!(
+            !rendered.contains("denials by reason"),
+            "empty denial_counts must not emit a section header; got:\n{rendered}"
+        );
+    }
+
+    #[test]
+    fn human_summary_handles_empty_audit_hash() {
+        let summary = ReplaySummary::default();
+        let rendered = summary.human_summary();
+        assert!(
+            rendered.contains("audit    (none)"),
+            "empty audit hash should render '(none)' placeholder; got:\n{rendered}"
+        );
+    }
+
+    #[test]
+    fn human_summary_denial_table_aligns_widest_variant() {
+        let mut summary = ReplaySummary::default();
+        summary
+            .denial_counts
+            .insert(DenialReason::ConfidenceTooLow, 1);
+        summary
+            .denial_counts
+            .insert(DenialReason::BatchActionCapExceeded, 3);
+        let rendered = summary.human_summary();
+        let denial_lines: Vec<&str> = rendered
+            .lines()
+            .skip_while(|l| !l.starts_with("denials by reason"))
+            .skip(1)
+            .filter(|l| !l.is_empty())
+            .collect();
+        assert_eq!(denial_lines.len(), 2);
+        let widths: Vec<usize> = denial_lines
+            .iter()
+            .map(|l| l.find(|c: char| c.is_ascii_digit()).unwrap_or(0))
+            .collect();
+        assert_eq!(
+            widths[0], widths[1],
+            "count column must be aligned across denial rows; got lines:\n{denial_lines:#?}"
+        );
     }
 }

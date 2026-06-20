@@ -27,7 +27,8 @@ use aios_core::privacy_airgap::DefaultPrivacyAirGap;
 use aios_spec::governance::{ActionState, AuditRecord};
 use aios_spec::traits::PrivacySanitizer;
 use aios_spec::{
-    CapabilityLevel, CollectorEnvelope, IngestedRawEvent, RawEvent, SourceTier, StructuredContext,
+    CapabilityLevel, CollectorEnvelope, DenialReason, IngestedRawEvent, RawEvent, SourceTier,
+    StructuredContext,
 };
 use anyhow::{Context, Result};
 use serde::Serialize;
@@ -86,7 +87,7 @@ pub struct ReplaySummary {
     pub actions_denied: u64,
     pub actions_failed: u64,
     pub audit_records: u64,
-    pub denial_counts: BTreeMap<aios_spec::DenialReason, u64>,
+    pub denial_counts: BTreeMap<DenialReason, u64>,
     pub audit_hash: String,
 }
 

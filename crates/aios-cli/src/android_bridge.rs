@@ -1,5 +1,5 @@
 use std::io::{Read, Write};
-use std::net::TcpStream;
+use std::net::{Shutdown, TcpStream};
 use std::time::Duration;
 
 use anyhow::{bail, Context, Result};
@@ -32,12 +32,49 @@ pub fn send_ping(host: &str, port: u16, auth_token: &str) -> Result<()> {
         .flush()
         .with_context(|| format!("flushing ping to {host}:{port}"))?;
 
-    let mut buf = [0u8; MAX_RESPONSE_BYTES];
-    let n = stream
-        .read(&mut buf)
-        .with_context(|| format!("reading pong from {host}:{port}"))?;
+    // Signal EOF so the server (which reads until EOF) knows the request is
+    // complete and can send its pong without waiting for a half-open timeout.
+    stream
+        .shutdown(Shutdown::Write)
+        .with_context(|| format!("shutting down write side to {host}:{port}"))?;
+
+    let mut buf = Vec::with_capacity(MAX_RESPONSE_BYTES);
+    let mut chunk = [0u8; 1024];
+    loop {
+        match stream.read(&mut chunk) {
+            Ok(0) => break,
+            Ok(n) => {
+                if buf.len() + n > MAX_RESPONSE_BYTES {
+                    bail!("bridge response exceeded {MAX_RESPONSE_BYTES} bytes");
+                }
+                buf.extend_from_slice(&chunk[..n]);
+                // If we already have a complete JSON value we can stop reading;
+                // the server may keep its half-open socket alive after sending.
+                if std::str::from_utf8(&buf)
+                    .ok()
+                    .and_then(|text| serde_json::from_str::<serde_json::Value>(text).ok())
+                    .is_some()
+                {
+                    break;
+                }
+            }
+            Err(e)
+                if e.kind() == std::io::ErrorKind::WouldBlock
+                    || e.kind() == std::io::ErrorKind::TimedOut =>
+            {
+                if buf.is_empty() {
+                    return Err(e).with_context(|| format!("reading pong from {host}:{port}"));
+                }
+                break;
+            }
+            Err(e) => {
+                return Err(e).with_context(|| format!("reading pong from {host}:{port}"));
+            }
+        }
+    }
+
     let text =
-        std::str::from_utf8(&buf[..n]).with_context(|| "bridge returned non-UTF-8 response")?;
+        std::str::from_utf8(&buf).with_context(|| "bridge returned non-UTF-8 response")?;
     let value: serde_json::Value =
         serde_json::from_str(text).with_context(|| "bridge returned invalid JSON")?;
 
@@ -51,7 +88,7 @@ pub fn send_ping(host: &str, port: u16, auth_token: &str) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use std::io::{Read, Write};
-    use std::net::TcpListener;
+    use std::net::{Shutdown, TcpListener};
     use std::thread;
 
     use super::send_ping;
@@ -68,23 +105,38 @@ mod tests {
         assert_eq!(value["auth_token"], "secret");
     }
 
+    /// Read until EOF, like Android's `readPayload`, then reply.
+    fn read_until_eof_then_reply(listener: TcpListener, response: &[u8]) {
+        let response = response.to_vec();
+        thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut buf = Vec::new();
+            let mut chunk = [0u8; 1024];
+            loop {
+                match stream.read(&mut chunk) {
+                    Ok(0) => break,
+                    Ok(n) => buf.extend_from_slice(&chunk[..n]),
+                    Err(_) => break,
+                }
+            }
+            let req = std::str::from_utf8(&buf).unwrap();
+            let value: serde_json::Value = serde_json::from_str(req).unwrap();
+            assert_eq!(value["message_type"], "ping");
+            stream.write_all(&response).unwrap();
+            stream.flush().unwrap();
+            stream.shutdown(Shutdown::Write).ok();
+        });
+    }
+
     #[test]
     fn ping_validates_ok_response() {
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
         let port = listener.local_addr().unwrap().port();
 
-        thread::spawn(move || {
-            let (mut stream, _) = listener.accept().unwrap();
-            let mut buf = [0u8; 1024];
-            let n = stream.read(&mut buf).unwrap();
-            let req = std::str::from_utf8(&buf[..n]).unwrap();
-            let value: serde_json::Value = serde_json::from_str(req).unwrap();
-            assert_eq!(value["message_type"], "ping");
-            stream
-                .write_all(br#"{"status":"ok","message":"pong"}"#)
-                .unwrap();
-            stream.flush().unwrap();
-        });
+        read_until_eof_then_reply(
+            listener,
+            br#"{"status":"ok","message":"pong"}"#,
+        );
 
         send_ping("127.0.0.1", port, "secret").unwrap();
     }
@@ -94,13 +146,7 @@ mod tests {
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
         let port = listener.local_addr().unwrap().port();
 
-        thread::spawn(move || {
-            let (mut stream, _) = listener.accept().unwrap();
-            let mut buf = [0u8; 1024];
-            let _ = stream.read(&mut buf).unwrap();
-            stream.write_all(br#"{"status":"forbidden"}"#).unwrap();
-            stream.flush().unwrap();
-        });
+        read_until_eof_then_reply(listener, br#"{"status":"forbidden"}"#);
 
         let err = send_ping("127.0.0.1", port, "secret").unwrap_err();
         assert!(err.to_string().contains("forbidden"));

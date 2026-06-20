@@ -130,8 +130,11 @@ impl ReplaySummary {
         );
         let _ = writeln!(
             out,
-            "actions  {} authorized · {} denied",
-            self.actions_authorized, self.actions_denied,
+            "actions  {} authorized · {} denied · {} failed · {} audit records",
+            self.actions_authorized,
+            self.actions_denied,
+            self.actions_failed,
+            self.audit_records,
         );
 
         if !self.denial_counts.is_empty() {
@@ -402,6 +405,9 @@ fn process_window(
         let audit_records = lifecycle.run(window_ordinal, &decision.intent_batch, &capability, ctx);
 
         // Aggregate per-intent signals for the human-facing summary.
+        // An intent is "approved" once policy authorizes at least one of its
+        // actions, regardless of whether the downstream adapter later fails.
+        // The `Failed` terminal is therefore counted as authorized *and* failed.
         let mut approved_intents = 0u64;
         let mut rejected_intents = 0u64;
         for (intent_idx, _intent) in decision.intent_batch.intents.iter().enumerate() {
@@ -410,10 +416,10 @@ fn process_window(
                 .iter()
                 .filter(|r| r.coord.intent_ordinal == intent_ordinal)
                 .collect();
-            let any_succeeded = intent_records
+            let any_authorized = intent_records
                 .iter()
-                .any(|r| matches!(r.terminal, ActionState::Succeeded));
-            if any_succeeded {
+                .any(|r| matches!(r.terminal, ActionState::Succeeded | ActionState::Failed));
+            if any_authorized {
                 approved_intents += 1;
             } else {
                 rejected_intents += 1;
@@ -425,7 +431,7 @@ fn process_window(
         for record in &audit_records {
             summary.audit_records += 1;
             match record.terminal {
-                ActionState::Succeeded => {
+                ActionState::Succeeded | ActionState::Failed => {
                     summary.actions_authorized += 1;
                 },
                 ActionState::RejectedInvalidSchema
@@ -436,10 +442,10 @@ fn process_window(
                         *summary.denial_counts.entry(reason).or_insert(0) += 1;
                     }
                 },
-                ActionState::Failed => {
-                    summary.actions_failed += 1;
-                },
                 _ => {},
+            }
+            if matches!(record.terminal, ActionState::Failed) {
+                summary.actions_failed += 1;
             }
         }
 
@@ -637,7 +643,7 @@ mod tests {
         assert!(rendered.contains("3 lines · 3 ingested · 0 skipped · 0 parse errors"));
         assert!(rendered.contains("windows  1 closed"));
         assert!(rendered.contains("intents  3 total · 2 approved · 1 rejected"));
-        assert!(rendered.contains("actions  2 authorized · 2 denied"));
+        assert!(rendered.contains("actions  2 authorized · 2 denied · 0 failed · 0 audit records"));
         assert!(rendered.contains("denials by reason"));
         assert!(rendered.contains("ActionCapabilityDenied"));
         assert!(

@@ -12,7 +12,7 @@ use aios_spec::governance::{PolicyActionDecision, PolicyVerdict};
 use aios_spec::intent::{
     ActionType, ActionUrgency, CapabilityLevel, DenialReason, Intent, IntentBatch, RiskLevel,
 };
-use aios_spec::{SanitizedEventType, StructuredContext};
+use aios_spec::{SanitizedEventType, SourceTier, StructuredContext};
 use tracing::debug;
 
 /// 策略引擎配置
@@ -58,7 +58,7 @@ impl PolicyEngine {
         let mut decisions = Vec::new();
         for (intent_ordinal, intent) in batch.intents.iter().enumerate() {
             let intent_ordinal = intent_ordinal as u32;
-            decisions.extend(self.evaluate_intent(intent, intent_ordinal, &capability, None));
+            decisions.extend(self.evaluate_intent(intent, intent_ordinal, &capability, None, SourceTier::PublicApi));
         }
         decisions
     }
@@ -72,7 +72,7 @@ impl PolicyEngine {
         let mut decisions = Vec::new();
         for (intent_ordinal, intent) in batch.intents.iter().enumerate() {
             let intent_ordinal = intent_ordinal as u32;
-            decisions.extend(self.evaluate_intent(intent, intent_ordinal, capability, None));
+            decisions.extend(self.evaluate_intent(intent, intent_ordinal, capability, None, SourceTier::PublicApi));
         }
         decisions
     }
@@ -88,6 +88,7 @@ impl PolicyEngine {
         ctx: &StructuredContext,
     ) -> Vec<PolicyActionDecision> {
         let known = Some(KnownTargets::from_context(ctx));
+        let source_tier = ctx.summary.source_tier;
         let mut decisions = Vec::new();
         for (intent_ordinal, intent) in batch.intents.iter().enumerate() {
             let intent_ordinal = intent_ordinal as u32;
@@ -96,6 +97,7 @@ impl PolicyEngine {
                 intent_ordinal,
                 capability,
                 known.as_ref(),
+                source_tier,
             ));
         }
         decisions
@@ -107,7 +109,14 @@ impl PolicyEngine {
         intent_ordinal: u32,
         capability: &CapabilityLevel,
         known: Option<&KnownTargets>,
+        source_tier: SourceTier,
     ) -> Vec<PolicyActionDecision> {
+        debug!(
+            intent_id = %intent.intent_id,
+            ?source_tier,
+            "policy evaluating intent with source tier"
+        );
+
         // 1. 后端能力等级检查 — 先于通用策略
         if !capability.allows_risk(intent.risk_level) {
             return self.denied_all(

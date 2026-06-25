@@ -67,6 +67,7 @@ fn audit_record_serde_roundtrip() {
         }),
         denial_reason: None,
         error: None,
+        source_tier: SourceTier::Daemon,
     };
 
     let json = serde_json::to_string(&record).unwrap();
@@ -74,6 +75,7 @@ fn audit_record_serde_roundtrip() {
     assert_eq!(back.coord, record.coord);
     assert_eq!(back.transitions.len(), 5);
     assert!(matches!(back.terminal, ActionState::Succeeded));
+    assert_eq!(back.source_tier, SourceTier::Daemon);
 }
 
 #[test]

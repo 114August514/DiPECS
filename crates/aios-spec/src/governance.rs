@@ -9,6 +9,7 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::event::SourceTier;
 use crate::intent::{ActionType, DenialReason, SuggestedAction};
 
 /// 确定性动作坐标。
@@ -186,11 +187,14 @@ pub struct AuditRecord {
     pub denial_reason: Option<DenialReason>,
     /// 错误信息（终态为 Failed 时）。
     pub error: Option<String>,
+    /// Source tier of the window that produced this action proposal.
+    /// Deterministic, included in canonical hash.
+    pub source_tier: SourceTier,
 }
 
 impl AuditRecord {
     /// 从初态 `Proposed` 开始构建一条审计记录。
-    pub fn new(proposal: &ActionProposal) -> Self {
+    pub fn new(proposal: &ActionProposal, source_tier: SourceTier) -> Self {
         Self {
             coord: proposal.coord,
             intent_id: proposal.intent_id.clone(),
@@ -202,6 +206,7 @@ impl AuditRecord {
             outcome: None,
             denial_reason: None,
             error: None,
+            source_tier,
         }
     }
 

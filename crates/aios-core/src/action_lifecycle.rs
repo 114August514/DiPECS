@@ -85,7 +85,7 @@ impl<'a> ActionLifecycle<'a> {
                     proposed_at_ms: authorized_at_ms,
                 };
 
-                let mut record = AuditRecord::new(&proposal);
+                let mut record = AuditRecord::new(&proposal, ctx.summary.source_tier.clone());
 
                 // Schema validation
                 if let Some(err) = validate_schema(&proposal, &intent.risk_level) {

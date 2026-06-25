@@ -92,6 +92,7 @@ fn happy_path_records_full_transition_sequence() {
         &batch_with_single(noop_intent()),
         &CapabilityLevel::for_route(DecisionRoute::RuleBased),
         &ctx_with_apps(&[]),
+        DecisionRoute::RuleBased,
     );
 
     assert_eq!(records.len(), 1);
@@ -131,6 +132,7 @@ fn missing_prewarm_target_rejected_invalid_schema() {
         &batch_with_single(intent),
         &CapabilityLevel::for_route(DecisionRoute::RuleBased),
         &ctx_with_apps(&[]),
+        DecisionRoute::RuleBased,
     );
 
     assert_eq!(records.len(), 1);
@@ -162,6 +164,7 @@ fn capability_denial_maps_to_denied_by_capability() {
         &batch_with_single(intent),
         &CapabilityLevel::for_route(DecisionRoute::RuleBased),
         &ctx_with_apps(&["com.example.app"]),
+        DecisionRoute::RuleBased,
     );
 
     assert_eq!(records.len(), 1);
@@ -184,6 +187,7 @@ fn adapter_err_maps_to_failed_terminal() {
         &batch_with_single(noop_intent()),
         &CapabilityLevel::for_route(DecisionRoute::RuleBased),
         &ctx_with_apps(&[]),
+        DecisionRoute::RuleBased,
     );
 
     assert_eq!(records.len(), 1);
@@ -207,6 +211,7 @@ fn each_coord_has_exactly_one_terminal_audit_record() {
         &batch,
         &CapabilityLevel::for_route(DecisionRoute::RuleBased),
         &ctx_with_apps(&[]),
+        DecisionRoute::RuleBased,
     );
 
     assert_eq!(records.len(), 2);
@@ -226,12 +231,14 @@ fn window_ordinal_prevents_collision_across_windows() {
         &batch,
         &CapabilityLevel::for_route(DecisionRoute::RuleBased),
         &ctx_with_apps(&[]),
+        DecisionRoute::RuleBased,
     );
     let r1 = lifecycle.run(
         1,
         &batch,
         &CapabilityLevel::for_route(DecisionRoute::RuleBased),
         &ctx_with_apps(&[]),
+        DecisionRoute::RuleBased,
     );
 
     assert_eq!(r0.len(), 1);
@@ -285,12 +292,14 @@ fn outcome_drift_changes_audit_hash() {
         &batch,
         &CapabilityLevel::for_route(DecisionRoute::RuleBased),
         &ctx_with_apps(&[]),
+        DecisionRoute::RuleBased,
     );
     let records_b = lifecycle_b.run(
         0,
         &batch,
         &CapabilityLevel::for_route(DecisionRoute::RuleBased),
         &ctx_with_apps(&[]),
+        DecisionRoute::RuleBased,
     );
 
     assert_ne!(
@@ -315,12 +324,14 @@ fn audit_hash_is_stable_across_repeated_runs() {
         &batch,
         &CapabilityLevel::for_route(DecisionRoute::RuleBased),
         &ctx_with_apps(&[]),
+        DecisionRoute::RuleBased,
     );
     let r1 = lifecycle.run(
         0,
         &batch,
         &CapabilityLevel::for_route(DecisionRoute::RuleBased),
         &ctx_with_apps(&[]),
+        DecisionRoute::RuleBased,
     );
 
     assert_eq!(r0.len(), r1.len());

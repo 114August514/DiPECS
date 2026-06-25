@@ -10,8 +10,8 @@ use aios_core::policy_engine::PolicyEngine;
 use aios_spec::context::ContextSummary;
 use aios_spec::governance::ActionState;
 use aios_spec::intent::{
-    ActionType, ActionUrgency, CapabilityLevel, Intent, IntentBatch, IntentType, RiskLevel,
-    SuggestedAction,
+    ActionType, ActionUrgency, CapabilityLevel, DecisionRoute, Intent, IntentBatch, IntentType,
+    RiskLevel, SuggestedAction,
 };
 use aios_spec::{SourceTier, StructuredContext};
 
@@ -99,6 +99,7 @@ fn default_executor_noop_succeeds() {
         &batch_with_single(noop_intent()),
         &permissive_capability(),
         &empty_context(),
+        DecisionRoute::RuleBased,
     );
 
     assert_eq!(records.len(), 1);
@@ -141,6 +142,7 @@ fn offline_adapter_covers_all_action_types() {
             &batch_with_single(intent),
             &permissive_capability(),
             &context_with_apps(&["com.example.app"]),
+            DecisionRoute::RuleBased,
         );
 
         assert_eq!(records.len(), 1, "action_type={action_type_name}");
@@ -181,12 +183,14 @@ fn offline_adapter_outcome_is_deterministic() {
         &batch_with_single(intent.clone()),
         &permissive_capability(),
         &empty_context(),
+        DecisionRoute::RuleBased,
     );
     let b = lifecycle.run(
         0,
         &batch_with_single(intent),
         &permissive_capability(),
         &empty_context(),
+        DecisionRoute::RuleBased,
     );
 
     assert_eq!(a[0].outcome, b[0].outcome);

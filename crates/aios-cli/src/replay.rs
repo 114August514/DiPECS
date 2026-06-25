@@ -399,7 +399,7 @@ fn process_window(
 
     if stage.includes(Stage::Execute) {
         // Full lifecycle: schema -> policy -> seal -> adapter -> terminal audit.
-        let audit_records = lifecycle.run(window_ordinal, &decision.intent_batch, &capability, ctx);
+        let audit_records = lifecycle.run(window_ordinal, &decision.intent_batch, &capability, ctx, decision.route);
 
         // Aggregate per-intent signals for the human-facing summary.
         // An intent is "approved" once policy authorizes at least one of its

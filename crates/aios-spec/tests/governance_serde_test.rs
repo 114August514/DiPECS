@@ -42,40 +42,31 @@ fn unknown_action_type_deserialization_rejected() {
 
 #[test]
 fn audit_record_serde_roundtrip() {
-    let record = AuditRecord {
+    let proposal = ActionProposal {
+        intent_id: "intent-1".into(),
         coord: ActionCoord {
             window_ordinal: 0,
             intent_ordinal: 0,
             action_ordinal: 0,
         },
-        intent_id: "intent-1".into(),
-        action_type: ActionType::NoOp,
-        target: None,
-        effect: EffectClass::PureRead,
-        transitions: vec![
-            ActionState::Proposed,
-            ActionState::SchemaValidated,
-            ActionState::PolicyChecked,
-            ActionState::Dispatched,
-            ActionState::Succeeded,
-        ],
-        terminal: ActionState::Succeeded,
-        outcome: Some(ActionOutcomeSummary {
-            action_type: "NoOp".into(),
+        action: SuggestedAction {
+            action_type: ActionType::NoOp,
             target: None,
-            summary: "noop".into(),
-        }),
-        denial_reason: None,
-        error: None,
-        source_tier: SourceTier::Daemon,
+            urgency: ActionUrgency::IdleTime,
+        },
+        effect: EffectClass::PureRead,
+        proposed_at_ms: 1000,
     };
+
+    let record = AuditRecord::new(&proposal, DecisionRoute::RuleBased, SourceTier::Daemon);
 
     let json = serde_json::to_string(&record).unwrap();
     let back: AuditRecord = serde_json::from_str(&json).unwrap();
     assert_eq!(back.coord, record.coord);
-    assert_eq!(back.transitions.len(), 5);
-    assert!(matches!(back.terminal, ActionState::Succeeded));
+    assert_eq!(back.transitions.len(), 1);
+    assert!(matches!(back.terminal, ActionState::Proposed));
     assert_eq!(back.source_tier, SourceTier::Daemon);
+    assert_eq!(back.route, DecisionRoute::RuleBased);
 }
 
 #[test]

@@ -10,7 +10,7 @@ use aios_spec::governance::{
     ActionCoord, ActionOutcomeSummary, ActionProposal, ActionState, AuditRecord, EffectClass,
     PolicyActionDecision, PolicyVerdict,
 };
-use aios_spec::intent::{ActionType, CapabilityLevel, DenialReason, IntentBatch, RiskLevel};
+use aios_spec::intent::{ActionType, CapabilityLevel, DecisionRoute, DenialReason, IntentBatch, RiskLevel};
 use aios_spec::StructuredContext;
 use thiserror::Error;
 use tracing::debug;
@@ -56,6 +56,7 @@ impl<'a> ActionLifecycle<'a> {
         batch: &IntentBatch,
         capability: &CapabilityLevel,
         ctx: &StructuredContext,
+        route: DecisionRoute,
     ) -> Vec<AuditRecord> {
         let policy_decisions = self
             .policy
@@ -85,7 +86,7 @@ impl<'a> ActionLifecycle<'a> {
                     proposed_at_ms: authorized_at_ms,
                 };
 
-                let mut record = AuditRecord::new(&proposal, ctx.summary.source_tier.clone());
+                let mut record = AuditRecord::new(&proposal, route, ctx.summary.source_tier);
 
                 // Schema validation
                 if let Some(err) = validate_schema(&proposal, &intent.risk_level) {

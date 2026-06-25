@@ -70,6 +70,7 @@ pub(crate) fn process_window(
         &decision_result.intent_batch,
         &capability,
         ctx,
+        decision_result.route,
     );
 
     let executed = audit_records

@@ -34,6 +34,7 @@
       }
     }
   ],
+  "source_tiers": ["PublicApi", "Daemon", "PublicApi"],
   "expected_sanitized": [
     {
       "event_id": "4b94314e-6dc6-465d-93b1-2552df9204b5",

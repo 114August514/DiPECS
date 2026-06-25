@@ -344,6 +344,23 @@ fn audit_hash_is_stable_across_repeated_runs() {
 }
 
 #[test]
+fn audit_record_source_tier_matches_context_summary() {
+    let policy = PolicyEngine::default();
+    let lifecycle = ActionLifecycle::new(&policy, &OkAdapter);
+    let ctx = ctx_with_apps(&[]);
+    let records = lifecycle.run(
+        0,
+        &batch_with_single(noop_intent()),
+        &CapabilityLevel::for_route(DecisionRoute::RuleBased),
+        &ctx,
+        DecisionRoute::RuleBased,
+    );
+
+    assert_eq!(records.len(), 1);
+    assert_eq!(records[0].source_tier, ctx.summary.source_tier);
+}
+
+#[test]
 fn deterministic_coord_excludes_runtime_volatiles() {
     // ActionCoord 只含位置量，不含 UUID/wall-clock。
     let coord = ActionCoord {

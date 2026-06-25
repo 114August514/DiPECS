@@ -315,6 +315,82 @@ fn test_summary_source_tier_public_api_only() {
     assert_eq!(ctx.summary.source_tier, SourceTier::PublicApi);
 }
 
+#[test]
+fn summary_source_tier_promotes_to_daemon() {
+    let mut w = WindowAggregator::new(10, 1000);
+    w.push(make_sanitized_event(
+        "pub",
+        5000,
+        SourceTier::PublicApi,
+        SanitizedEventType::SystemStatus {
+            battery_pct: Some(80),
+            is_charging: true,
+            network: NetworkType::Wifi,
+            ringer_mode: RingerMode::Normal,
+            location_type: LocationType::Home,
+            headphone_connected: false,
+        },
+    ));
+    w.push(make_sanitized_event(
+        "daemon",
+        6000,
+        SourceTier::Daemon,
+        SanitizedEventType::ProcessResource {
+            pid: 1234,
+            package_name: Some("com.daemon".into()),
+            vm_rss_mb: 100,
+            vm_swap_mb: 0,
+            thread_count: 4,
+            oom_score: 0,
+        },
+    ));
+    let ctx = w.close(11000).unwrap();
+    assert_eq!(ctx.summary.source_tier, SourceTier::Daemon);
+}
+
+#[test]
+fn summary_source_tier_stays_public_api() {
+    let mut w = WindowAggregator::new(10, 1000);
+    w.push(make_sanitized_event(
+        "pub1",
+        5000,
+        SourceTier::PublicApi,
+        SanitizedEventType::SystemStatus {
+            battery_pct: Some(80),
+            is_charging: true,
+            network: NetworkType::Wifi,
+            ringer_mode: RingerMode::Normal,
+            location_type: LocationType::Home,
+            headphone_connected: false,
+        },
+    ));
+    w.push(make_sanitized_event(
+        "pub2",
+        6000,
+        SourceTier::PublicApi,
+        SanitizedEventType::Notification {
+            source_package: "com.app".into(),
+            category: None,
+            channel_id: None,
+            title_hint: TextHint {
+                length_chars: 3,
+                script: ScriptHint::Latin,
+                is_emoji_only: false,
+            },
+            text_hint: TextHint {
+                length_chars: 10,
+                script: ScriptHint::Latin,
+                is_emoji_only: false,
+            },
+            semantic_hints: vec![],
+            is_ongoing: false,
+            group_key: None,
+        },
+    ));
+    let ctx = w.close(11000).unwrap();
+    assert_eq!(ctx.summary.source_tier, SourceTier::PublicApi);
+}
+
 // ===== 多窗口循环 =====
 
 #[test]

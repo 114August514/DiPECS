@@ -40,7 +40,8 @@ pub struct GoldenTrace {
     /// 期望的本地执行动作
     pub expected_actions: Vec<ExecutedAction>,
     /// Per-event source tier, parallel to `raw_events`.
-    /// Missing entries fall back to `SourceTier::PublicApi` for backward compatibility.
+    /// Empty or missing entries are handled at the consumption site
+    /// (trace_engine falls back to `SourceTier::PublicApi`).
     #[serde(default = "default_source_tiers")]
     pub source_tiers: Vec<SourceTier>,
 }

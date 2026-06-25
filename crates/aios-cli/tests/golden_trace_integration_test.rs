@@ -36,7 +36,7 @@ use aios_spec::traits::{PrivacySanitizer, TraceValidator};
 use aios_spec::{
     AppTransition, AppTransitionRawEvent, CapabilityLevel, ExecutedAction, FsAccessEvent,
     FsAccessType, GoldenTrace, IntentBatch, LocationType, NetworkType, RawEvent, RingerMode,
-    SanitizedEvent, SystemStateEvent,
+    SanitizedEvent, SourceTier, SystemStateEvent,
 };
 
 fn golden_path() -> PathBuf {
@@ -320,6 +320,7 @@ fn regen_golden_sample() {
         window_start_ms: 1_000,
         window_end_ms: 3_000,
         raw_events: fixture_raw_events(),
+        source_tiers: vec![SourceTier::PublicApi; 3],
         expected_sanitized: sanitized,
         expected_intents: intents,
         expected_actions: executed,

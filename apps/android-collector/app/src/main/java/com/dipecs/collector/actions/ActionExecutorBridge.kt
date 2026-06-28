@@ -5,7 +5,11 @@ import org.json.JSONObject
 import com.dipecs.collector.storage.EventRepository
 
 object ActionExecutorBridge {
+    const val ACTION_TYPE_PREWARM_PROCESS = "PreWarmProcess"
     const val ACTION_TYPE_PREFETCH_FILE = "PrefetchFile"
+    const val ACTION_TYPE_KEEP_ALIVE = "KeepAlive"
+    const val ACTION_TYPE_RELEASE_MEMORY = "ReleaseMemory"
+    const val ACTION_TYPE_NO_OP = "NoOp"
 
     fun dispatch(
         context: Context,
@@ -15,6 +19,13 @@ object ActionExecutorBridge {
     ): Boolean {
         val normalizedTarget = target?.trim().takeUnless { it.isNullOrBlank() }
         return when (actionType) {
+            ACTION_TYPE_PREWARM_PROCESS -> {
+                if (normalizedTarget == null || normalizedTarget.startsWith("own:")) {
+                    OwnResourceWarmer.warm(context, normalizedTarget, reason)
+                } else {
+                    UserVisibleActionNotifier.postLaunchHint(context, normalizedTarget, reason)
+                }
+            }
             ACTION_TYPE_PREFETCH_FILE -> {
                 if (normalizedTarget == null) {
                     EventRepository.recordInternal(
@@ -30,6 +41,22 @@ object ActionExecutorBridge {
                     AccessibleContentPrefetcher.enqueue(context, normalizedTarget, reason)
                     true
                 }
+            }
+            ACTION_TYPE_KEEP_ALIVE -> {
+                ActionMaintenanceScheduler.schedule(context, normalizedTarget, reason)
+            }
+            ACTION_TYPE_RELEASE_MEMORY -> {
+                CacheTrimmer.release(context, normalizedTarget, reason)
+                true
+            }
+            ACTION_TYPE_NO_OP -> {
+                EventRepository.recordInternal(
+                    context,
+                    "action_noop",
+                    "NoOp action acknowledged",
+                    JSONObject().put("reason", reason),
+                )
+                true
             }
             else -> {
                 EventRepository.recordInternal(

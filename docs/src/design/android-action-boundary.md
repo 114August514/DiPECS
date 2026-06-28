@@ -26,7 +26,7 @@
 - Android 侧 `AuthorizedActionSocketServer` 只监听 `127.0.0.1`，但每个 payload 必须包含 `auth_token`。
 - token 由 Android collector 生成，存储在 `EncryptedSharedPreferences`；UI 只脱敏显示，可通过 Copy Action Socket Token 主动复制。
 - socket 读取限制为 64KB，并设置读超时；空 payload、无效 JSON、超大 payload、鉴权失败都会进入失败退避。
-- Android 侧当前可执行动作集中在 `PrefetchFile`，目标限制为 `url:https://...` 或 app 有权访问的 `uri:content://...`。
+- Android 侧当前可执行动作包括 `PrefetchFile`、`ReleaseMemory`、`KeepAlive`、`PreWarmProcess` 和 `NoOp` 的安全子集：prefetch 目标限制为 `url:https://...` 或 app 有权访问的 `uri:content://...`；release 只清理 app 自己的 cache；keepalive 只调度 DiPECS 自己的 `JobScheduler` 任务；prewarm 只预热 DiPECS 自身资源或发用户可见通知提示。
 
 ## 结论先行
 

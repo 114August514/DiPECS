@@ -203,6 +203,14 @@ fn test_activity_launch_triggers_switch_to_app() {
         .suggested_actions
         .iter()
         .any(|a| matches!(a.action_type, ActionType::KeepAlive)));
+    assert!(switch.suggested_actions.iter().any(|a| {
+        matches!(a.action_type, ActionType::PreWarmProcess)
+            && a.target.as_deref() == Some("pkg:com.android.chrome")
+    }));
+    assert!(switch.suggested_actions.iter().any(|a| {
+        matches!(a.action_type, ActionType::KeepAlive)
+            && a.target.as_deref() == Some("work:collector_heartbeat")
+    }));
 }
 
 #[test]
@@ -313,6 +321,10 @@ fn test_screen_on_triggers_keepalive() {
         screen_intent.suggested_actions[0].action_type,
         ActionType::KeepAlive
     ));
+    assert_eq!(
+        screen_intent.suggested_actions[0].target.as_deref(),
+        Some("work:collector_heartbeat")
+    );
 }
 
 // ===== 低电量检测 =====
@@ -336,6 +348,10 @@ fn test_low_battery_triggers_release_memory() {
         battery_intent.suggested_actions[0].action_type,
         ActionType::ReleaseMemory
     ));
+    assert_eq!(
+        battery_intent.suggested_actions[0].target.as_deref(),
+        Some("cache:prefetch")
+    );
 }
 
 #[test]

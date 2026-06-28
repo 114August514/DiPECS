@@ -29,7 +29,8 @@ Implemented:
 - `CloudLlmBackend` supports DeepSeek, Qwen/DashScope, and generic
   OpenAI-compatible endpoints.
 - `aios-action` keeps local replay fallback behavior and can forward
-  `PrefetchFile(url:/uri:)` actions to the Android localhost bridge.
+  Android-safe `PrefetchFile`, `ReleaseMemory`, `KeepAlive`, and
+  `PreWarmProcess` subsets to the Android localhost bridge.
 - `aios-cli` provides Android JSONL replay, audit hash output, and Android
   `AuthorizedAction` socket tooling.
 - `aios-daemon` runs the long-lived pipeline and can record runtime window
@@ -37,7 +38,7 @@ Implemented:
 
 Still in progress:
 
-- More Android-safe real actions beyond accessible-content prefetch.
+- True-device validation for the Android-safe action subset.
 - LocalEvaluator backend.
 - True device validation for the Android APK and action bridge.
 - System-level collection routes such as fanotify, Binder/eBPF, and system image

@@ -106,6 +106,26 @@ Ping:
 - Android 在 dispatch 前校验 token、freshness window 和 signature。
 - 缺签名、签名不匹配、过期或 TTL 过长都会拒绝。
 
+## Android-Safe Action Targets
+
+当前 Android bridge 只接受以下低风险 action 语义：
+
+| ActionType | 允许 target | Android 侧行为 |
+| :--- | :--- | :--- |
+| `PrefetchFile` | `url:https://...`, `uri:content://...` | 预取可访问内容到 app cache |
+| `ReleaseMemory` | `cache:prefetch`, `cache:all`, 或空 target | 只清理 DiPECS 自己的 cache |
+| `KeepAlive` | `work:*` 或空 target | 调度 DiPECS 自己的 `JobScheduler` 维护任务 |
+| `PreWarmProcess` | `own:*` | 预热 DiPECS 自己的资源 |
+| `PreWarmProcess` | `pkg:*`, `notif:*` | 发用户可见通知提示，不后台启动第三方 App |
+| `NoOp` | 任意 | 只记录审计事件 |
+
+不支持：
+
+- 后台拉起第三方 Activity。
+- 修改第三方进程优先级或 `oom_score_adj`。
+- 清理第三方 App 内存或私有文件。
+- 访问未授权的第三方 URI 或本机/内网 HTTP 目标。
+
 ## 文档与样本要求
 
 可以提交：

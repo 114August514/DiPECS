@@ -305,17 +305,42 @@ fn check_target(
     match action {
         ActionType::NoOp => None,
         ActionType::PreWarmProcess => match target {
-            Some(t) if !t.is_empty() && (known.packages.contains(t) || known.files.contains(t)) => {
-                None
-            },
+            Some(t) if is_allowed_prewarm_target(t, known) => None,
             _ => Some(DenialReason::TargetNotInContext),
         },
         ActionType::KeepAlive | ActionType::ReleaseMemory | ActionType::PrefetchFile => {
             match target {
                 None => None,
                 Some("") => Some(DenialReason::TargetNotInContext),
-                Some(t) if known.packages.contains(t) || known.files.contains(t) => None,
+                Some(t) if is_allowed_low_risk_target(action, t, known) => None,
                 Some(_) => Some(DenialReason::TargetNotInContext),
+            }
+        },
+    }
+}
+
+fn is_allowed_prewarm_target(target: &str, known: &KnownTargets) -> bool {
+    if target.starts_with("own:") || target.starts_with("notif:") {
+        return true;
+    }
+    if let Some(package) = target.strip_prefix("pkg:") {
+        return known.packages.contains(package);
+    }
+    !target.is_empty() && (known.packages.contains(target) || known.files.contains(target))
+}
+
+fn is_allowed_low_risk_target(action: &ActionType, target: &str, known: &KnownTargets) -> bool {
+    match action {
+        ActionType::KeepAlive if target.starts_with("work:") => true,
+        ActionType::ReleaseMemory if matches!(target, "cache:prefetch" | "cache:all") => true,
+        ActionType::PrefetchFile if target.starts_with("url:") || target.starts_with("uri:") => {
+            true
+        },
+        _ => {
+            if let Some(package) = target.strip_prefix("pkg:") {
+                known.packages.contains(package)
+            } else {
+                known.packages.contains(target) || known.files.contains(target)
             }
         },
     }

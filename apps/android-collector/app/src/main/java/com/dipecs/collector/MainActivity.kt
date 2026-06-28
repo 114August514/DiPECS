@@ -334,6 +334,46 @@ class MainActivity : Activity() {
             )
             toast("Service prefetch queued")
         })
+        content.addView(rowButton("Release Own Prefetch Cache") {
+            ActionExecutorBridge.dispatch(
+                this@MainActivity,
+                ActionExecutorBridge.ACTION_TYPE_RELEASE_MEMORY,
+                "cache:prefetch",
+                reason = "manual",
+            )
+            toast("ReleaseMemory queued")
+            refreshStatus()
+        })
+        content.addView(rowButton("Schedule KeepAlive Job") {
+            ActionExecutorBridge.dispatch(
+                this@MainActivity,
+                ActionExecutorBridge.ACTION_TYPE_KEEP_ALIVE,
+                "work:collector_heartbeat",
+                reason = "manual",
+            )
+            toast("KeepAlive job scheduled")
+            refreshStatus()
+        })
+        content.addView(rowButton("Warm Own Resources") {
+            ActionExecutorBridge.dispatch(
+                this@MainActivity,
+                ActionExecutorBridge.ACTION_TYPE_PREWARM_PROCESS,
+                "own:resources",
+                reason = "manual",
+            )
+            toast("Own resources warmed")
+            refreshStatus()
+        })
+        content.addView(rowButton("Post User-Visible Hint") {
+            ActionExecutorBridge.dispatch(
+                this@MainActivity,
+                ActionExecutorBridge.ACTION_TYPE_PREWARM_PROCESS,
+                "notif:review_action",
+                reason = "manual",
+            )
+            toast("Action hint requested")
+            refreshStatus()
+        })
         content.addView(rowButton("Pick Document URI") {
             val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
                 addCategory(Intent.CATEGORY_OPENABLE)

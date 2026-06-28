@@ -145,6 +145,13 @@ prefetch：
 - 单次下载上限 2 MiB。
 - 缓存写入 app cache，24 小时 TTL；点击 Clear 会同时删除 trace 和 prefetch cache。
 
+其他 Android-safe action：
+
+- `ReleaseMemory(cache:prefetch)` 应删除 DiPECS 自己的 prefetch cache，并记录 `release_memory_completed`。
+- `KeepAlive(work:collector_heartbeat)` 应调度 `JobScheduler` 维护任务，并记录 `keep_alive_scheduled` 和 `keep_alive_job_executed`。
+- `PreWarmProcess(own:resources)` 应预热 DiPECS 自己的 trace/cache/token 相关资源，并记录 `own_resources_prewarmed`。
+- `PreWarmProcess(pkg:* 或 notif:*)` 应只发用户可见通知提示，不后台启动第三方 App。
+
 ## Action Socket
 
 1. 在 App 中复制完整 action socket token。
@@ -172,6 +179,7 @@ cargo run -p aios-cli -- send-authorized-action \
 - CLI ping 不 dispatch 动作。
 - 真正的 prefetch 动作必须由 Rust `ActionLifecycle` 授权后通过 `aios-action` 转发。
 - Android 侧会校验 `issued_at_ms`、`expires_at_ms` 和 `action_signature`，拒绝过期、缺签名或签名不匹配的 action payload。
+- socket 转发的 `ReleaseMemory`、`KeepAlive`、`PreWarmProcess` 也必须使用上述 Android-safe target 前缀。
 
 ## 交付材料
 

@@ -173,22 +173,10 @@ fn try_forward_to_android_bridge(
     authorized: &AuthorizedAction,
     config: &AndroidBridgeConfig,
 ) -> Result<ForwardOutcome, String> {
-    if !matches!(authorized.action().action_type, ActionType::PrefetchFile) {
-        return Ok(ForwardOutcome::Skipped(
-            "only PrefetchFile is currently supported by the Android bridge",
-        ));
-    }
-
-    let Some(target) = authorized.action().target.as_deref() else {
-        return Ok(ForwardOutcome::Skipped(
-            "PrefetchFile without target keeps local stub behavior",
-        ));
-    };
-
-    if !(target.starts_with("url:") || target.starts_with("uri:")) {
-        return Ok(ForwardOutcome::Skipped(
-            "PrefetchFile target is not an Android bridge target",
-        ));
+    let action = authorized.action();
+    if let Some(reason) = android_bridge_skip_reason(&action.action_type, action.target.as_deref())
+    {
+        return Ok(ForwardOutcome::Skipped(reason));
     }
 
     let Some(auth_token) = config.auth_token.as_deref() else {
@@ -221,10 +209,45 @@ fn try_forward_to_android_bridge(
     tracing::info!(
         host = %config.host,
         port = config.port,
-        target = %target,
+        target = ?action.target,
         "Forwarded AuthorizedAction to Android bridge"
     );
     Ok(ForwardOutcome::Forwarded)
+}
+
+fn android_bridge_skip_reason(
+    action_type: &ActionType,
+    target: Option<&str>,
+) -> Option<&'static str> {
+    match action_type {
+        ActionType::PrefetchFile => match target {
+            Some(value) if value.starts_with("url:") || value.starts_with("uri:") => None,
+            Some(_) => Some("PrefetchFile target is not an Android bridge target"),
+            None => Some("PrefetchFile without target keeps local stub behavior"),
+        },
+        ActionType::KeepAlive => match target {
+            Some(value) if value.starts_with("work:") => None,
+            None => None,
+            Some(_) => Some("KeepAlive target is not DiPECS-owned work"),
+        },
+        ActionType::ReleaseMemory => match target {
+            Some("cache:prefetch" | "cache:all") => None,
+            None => None,
+            Some(_) => Some("ReleaseMemory target is not app-owned cache"),
+        },
+        ActionType::PreWarmProcess => match target {
+            Some(value)
+                if value.starts_with("own:")
+                    || value.starts_with("notif:")
+                    || value.starts_with("pkg:") =>
+            {
+                None
+            },
+            Some(_) => Some("PreWarmProcess target is not Android-safe"),
+            None => Some("PreWarmProcess without target keeps local stub behavior"),
+        },
+        ActionType::NoOp => Some("NoOp keeps local stub behavior"),
+    }
 }
 
 fn authorized_action_payload(
@@ -339,7 +362,10 @@ fn env_flag(name: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::{canonical_action_signature_input, env_flag, hmac_sha256_hex};
+    use super::{
+        android_bridge_skip_reason, canonical_action_signature_input, env_flag, hmac_sha256_hex,
+    };
+    use aios_spec::intent::ActionType;
 
     #[test]
     fn env_flag_accepts_true_values() {
@@ -380,5 +406,33 @@ mod tests {
         assert!(input.contains("action_type:12:PrefetchFile"));
         assert!(input.contains("target:28:url:https://example.test/a:b"));
         assert!(input.contains("urgency:9:Immediate"));
+    }
+
+    #[test]
+    fn android_bridge_allows_only_safe_action_targets() {
+        assert_eq!(
+            android_bridge_skip_reason(&ActionType::PrefetchFile, Some("url:https://example.test")),
+            None,
+        );
+        assert_eq!(
+            android_bridge_skip_reason(&ActionType::KeepAlive, Some("work:collector_heartbeat")),
+            None,
+        );
+        assert_eq!(
+            android_bridge_skip_reason(&ActionType::ReleaseMemory, Some("cache:prefetch")),
+            None,
+        );
+        assert_eq!(
+            android_bridge_skip_reason(&ActionType::PreWarmProcess, Some("own:resources")),
+            None,
+        );
+        assert_eq!(
+            android_bridge_skip_reason(&ActionType::PreWarmProcess, Some("pkg:com.example")),
+            None,
+        );
+        assert!(android_bridge_skip_reason(&ActionType::KeepAlive, Some("com.example")).is_some());
+        assert!(
+            android_bridge_skip_reason(&ActionType::ReleaseMemory, Some("cache:other")).is_some()
+        );
     }
 }

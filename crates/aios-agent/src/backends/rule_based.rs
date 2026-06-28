@@ -96,6 +96,11 @@ impl RuleBasedBackend {
 
         if has_file_mention {
             let from_app = notified_apps.first().cloned().unwrap_or_default();
+            let prewarm_target = if from_app.is_empty() {
+                "own:resources".to_string()
+            } else {
+                format!("pkg:{from_app}")
+            };
             intents.push(Intent {
                 intent_id: new_id(),
                 intent_type: IntentType::OpenApp(from_app.clone()),
@@ -103,7 +108,7 @@ impl RuleBasedBackend {
                 risk_level: RiskLevel::Low,
                 suggested_actions: vec![SuggestedAction {
                     action_type: ActionType::PreWarmProcess,
-                    target: Some(from_app),
+                    target: Some(prewarm_target),
                     urgency: ActionUrgency::Immediate,
                 }],
                 rationale_tags: vec!["file_received".into()],
@@ -120,12 +125,12 @@ impl RuleBasedBackend {
                 suggested_actions: vec![
                     SuggestedAction {
                         action_type: ActionType::PreWarmProcess,
-                        target: Some(target.clone()),
+                        target: Some(format!("pkg:{target}")),
                         urgency: ActionUrgency::Immediate,
                     },
                     SuggestedAction {
                         action_type: ActionType::KeepAlive,
-                        target: Some(target),
+                        target: Some("work:collector_heartbeat".into()),
                         urgency: ActionUrgency::Immediate,
                     },
                 ],
@@ -142,12 +147,12 @@ impl RuleBasedBackend {
                 suggested_actions: vec![
                     SuggestedAction {
                         action_type: ActionType::PreWarmProcess,
-                        target: Some(target.clone()),
+                        target: Some(format!("pkg:{target}")),
                         urgency: ActionUrgency::Immediate,
                     },
                     SuggestedAction {
                         action_type: ActionType::KeepAlive,
-                        target: Some(target),
+                        target: Some("work:collector_heartbeat".into()),
                         urgency: ActionUrgency::Immediate,
                     },
                 ],
@@ -163,7 +168,7 @@ impl RuleBasedBackend {
                 risk_level: RiskLevel::Low,
                 suggested_actions: vec![SuggestedAction {
                     action_type: ActionType::KeepAlive,
-                    target: summary.foreground_apps.first().cloned(),
+                    target: Some("work:collector_heartbeat".into()),
                     urgency: ActionUrgency::IdleTime,
                 }],
                 rationale_tags: vec!["screen_on".into()],
@@ -178,7 +183,7 @@ impl RuleBasedBackend {
                 risk_level: RiskLevel::Low,
                 suggested_actions: vec![SuggestedAction {
                     action_type: ActionType::ReleaseMemory,
-                    target: None,
+                    target: Some("cache:prefetch".into()),
                     urgency: ActionUrgency::Immediate,
                 }],
                 rationale_tags: vec!["low_battery".into()],

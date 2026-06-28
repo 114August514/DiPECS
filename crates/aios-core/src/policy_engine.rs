@@ -58,7 +58,13 @@ impl PolicyEngine {
         let mut decisions = Vec::new();
         for (intent_ordinal, intent) in batch.intents.iter().enumerate() {
             let intent_ordinal = intent_ordinal as u32;
-            decisions.extend(self.evaluate_intent(intent, intent_ordinal, &capability, None, SourceTier::PublicApi));
+            decisions.extend(self.evaluate_intent(
+                intent,
+                intent_ordinal,
+                &capability,
+                None,
+                SourceTier::PublicApi,
+            ));
         }
         decisions
     }
@@ -72,7 +78,13 @@ impl PolicyEngine {
         let mut decisions = Vec::new();
         for (intent_ordinal, intent) in batch.intents.iter().enumerate() {
             let intent_ordinal = intent_ordinal as u32;
-            decisions.extend(self.evaluate_intent(intent, intent_ordinal, capability, None, SourceTier::PublicApi));
+            decisions.extend(self.evaluate_intent(
+                intent,
+                intent_ordinal,
+                capability,
+                None,
+                SourceTier::PublicApi,
+            ));
         }
         decisions
     }

@@ -76,8 +76,10 @@ Core boundaries:
   `StructuredContext`.
 - Decision backends output only `IntentBatch`; action execution accepts only
   `AuthorizedAction`.
-- Android action socket payloads require `auth_token`; the token is stored in
-  Android `EncryptedSharedPreferences` and is injected by CLI/bridge tooling.
+- Android action socket payloads require `auth_token`. Dispatched actions also
+  require a short freshness window and an HMAC-SHA256 `action_signature` over
+  the action summary; the token is stored in Android `EncryptedSharedPreferences`
+  and is injected by CLI/bridge tooling.
 
 ## Quick Start
 
@@ -122,15 +124,18 @@ cd apps/android-collector
 Local Android builds require Android SDK Platform 35. In GitHub Actions this is
 installed by `.github/workflows/android-collector.yml`.
 
-Send an authorized Android prefetch action:
+Ping the Android action socket with its auth token:
 
 ```bash
 cargo run -p aios-cli -- send-authorized-action \
-  --prefetch-target url:https://example.test/feed.json \
   --auth-token <token-copied-from-app> \
   --host 127.0.0.1 \
   --port 46321
 ```
+
+This CLI command is a health-check ping. Real prefetch dispatch is produced by
+`aios-action` after `ActionLifecycle` seals an `AuthorizedAction`; the Android
+side rejects unsigned, stale, or malformed action payloads.
 
 Enable direct forwarding from `aios-action` to Android:
 
@@ -175,10 +180,14 @@ Still screening:
 | `crates/aios-daemon` | `dipecsd` runtime pipeline. |
 | `crates/aios-cli` | Replay, audit, and Android action socket tooling. |
 | `apps/android-collector` | Android public-API collector and action bridge. |
+| `tools/trace-dashboard` | Local-only static viewer for sanitized JSONL and replay/audit NDJSON. |
 | `docs/src` | MkDocs Material documentation. |
 | `docs/academic-src` | Academic report sources. |
 
 ## Documentation
+
+Text files are normalized with LF endings through `.gitattributes`; keep
+`cargo fmt --all -- --check` and `git diff --check` green before submitting.
 
 Local preview:
 
@@ -192,6 +201,8 @@ PYTHONPATH=. uv run mkdocs serve
 - [Architecture Overview](docs/src/design/overview.md)
 - [Daemon Architecture](docs/src/design/daemon-architecture.md)
 - [Android Interface MVP](docs/src/design/android-interface-mvp.md)
+- [Android Real-Device Validation](docs/src/design/android-real-device-validation.md)
+- [Android Security and Privacy Boundary](docs/src/design/android-security-privacy.md)
 - [Android Action Boundary](docs/src/design/android-action-boundary.md)
 - [RFC-0001](docs/src/design/rfc/0001-layered-collection-and-decision-routing.md)
 - [Android Collector](apps/android-collector/README.md)

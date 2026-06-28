@@ -37,21 +37,6 @@ class EventStore(context: Context) {
             .toList()
     }
 
-    fun readRecentLines(limit: Int): List<String> {
-        val file = traceFile
-        if (!file.exists()) {
-            return emptyList()
-        }
-        return file.readLines()
-            .asSequence()
-            .filter { it.isNotBlank() }
-            .takeLastCompat(limit)
-            .map { line ->
-                runCatching { sanitizeForTrace(JSONObject(line)).toString() }
-                    .getOrElse { line }
-            }
-    }
-
     fun clear() {
         synchronized(LOCK) {
             val file = traceFile
@@ -91,6 +76,75 @@ class EventStore(context: Context) {
             return 0
         }
         return file.useLines { lines -> lines.count() }
+    }
+
+    fun stats(): TraceStats {
+        val file = traceFile
+        if (!file.exists()) {
+            return TraceStats(fileSizeBytes = 0L)
+        }
+
+        var total = 0
+        var rawEventRows = 0
+        var rawEventNullRows = 0
+        var parseErrors = 0
+        var latestParseError: String? = null
+        var latestTimestampMs: Long? = null
+        var latestRawEventKind: String? = null
+        val sourceCounts = linkedMapOf<String, Int>()
+        val eventTypeCounts = linkedMapOf<String, Int>()
+        val rawEventKindCounts = linkedMapOf<String, Int>()
+
+        file.useLines { lines ->
+            for (line in lines) {
+                if (line.isBlank()) {
+                    continue
+                }
+                total += 1
+                val parsed = runCatching { JSONObject(line) }
+                val event = parsed.getOrNull()
+                if (event == null) {
+                    parseErrors += 1
+                    latestParseError = parsed.exceptionOrNull()?.message
+                        ?: "Invalid JSON row"
+                    continue
+                }
+
+                latestTimestampMs = maxOf(
+                    latestTimestampMs ?: Long.MIN_VALUE,
+                    event.optLong("timestampMs", Long.MIN_VALUE),
+                ).takeIf { it != Long.MIN_VALUE }
+                increment(sourceCounts, event.optString("source", "unknown").ifBlank { "unknown" })
+                increment(eventTypeCounts, event.optString("eventType", "unknown").ifBlank { "unknown" })
+
+                val rawEvent = event.optJSONObject("rawEvent")
+                if (rawEvent != null) {
+                    val keys = rawEvent.keys()
+                    if (keys.hasNext()) {
+                        val kind = keys.next()
+                        rawEventRows += 1
+                        latestRawEventKind = kind
+                        increment(rawEventKindCounts, kind)
+                    }
+                } else {
+                    rawEventNullRows += 1
+                }
+            }
+        }
+
+        return TraceStats(
+            totalRows = total,
+            fileSizeBytes = file.length(),
+            rawEventRows = rawEventRows,
+            rawEventNullRows = rawEventNullRows,
+            parseErrors = parseErrors,
+            latestParseError = latestParseError,
+            latestTimestampMs = latestTimestampMs,
+            latestRawEventKind = latestRawEventKind,
+            sourceCounts = sourceCounts,
+            eventTypeCounts = eventTypeCounts,
+            rawEventKindCounts = rawEventKindCounts,
+        )
     }
 
     private fun <T> Sequence<T>.takeLastCompat(count: Int): List<T> {
@@ -162,5 +216,23 @@ class EventStore(context: Context) {
             }
             return sanitized
         }
+
+        private fun increment(counts: MutableMap<String, Int>, key: String) {
+            counts[key] = (counts[key] ?: 0) + 1
+        }
     }
 }
+
+data class TraceStats(
+    val totalRows: Int = 0,
+    val fileSizeBytes: Long = 0L,
+    val rawEventRows: Int = 0,
+    val rawEventNullRows: Int = 0,
+    val parseErrors: Int = 0,
+    val latestParseError: String? = null,
+    val latestTimestampMs: Long? = null,
+    val latestRawEventKind: String? = null,
+    val sourceCounts: Map<String, Int> = emptyMap(),
+    val eventTypeCounts: Map<String, Int> = emptyMap(),
+    val rawEventKindCounts: Map<String, Int> = emptyMap(),
+)

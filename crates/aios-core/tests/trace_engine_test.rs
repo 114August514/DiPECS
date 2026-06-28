@@ -57,7 +57,10 @@ fn trace_engine_uses_source_tiers() {
     let engine = DefaultTraceEngine::new(DefaultPrivacyAirGap);
     let result = engine.validate_sanitization(&golden);
 
-    assert!(result.sanitization_match, "expected sanitization to match with Daemon tier");
+    assert!(
+        result.sanitization_match,
+        "expected sanitization to match with Daemon tier"
+    );
 }
 
 #[test]
@@ -84,7 +87,10 @@ fn trace_engine_fallback_to_public_api_for_missing_tiers() {
     let engine = DefaultTraceEngine::new(DefaultPrivacyAirGap);
     let result = engine.validate_sanitization(&golden);
 
-    assert!(result.sanitization_match, "expected fallback to PublicApi when source_tiers is empty");
+    assert!(
+        result.sanitization_match,
+        "expected fallback to PublicApi when source_tiers is empty"
+    );
 }
 
 #[test]
@@ -117,5 +123,8 @@ fn trace_engine_fallback_for_partial_tiers() {
     let engine = DefaultTraceEngine::new(DefaultPrivacyAirGap);
     let result = engine.validate_sanitization(&golden);
 
-    assert!(result.sanitization_match, "expected fallback to PublicApi for missing tier entries");
+    assert!(
+        result.sanitization_match,
+        "expected fallback to PublicApi for missing tier entries"
+    );
 }

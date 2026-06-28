@@ -18,6 +18,7 @@ dependencies = [
  "aios-core",
  "aios-spec",
  "serde_json",
+ "sha2",
  "tracing",
 ]
 

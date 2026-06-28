@@ -118,26 +118,59 @@ impl RoutingReason {
 
 pub struct DecisionRouter {
     config: RouterConfig,
-    rule_based: RuleBasedBackend,
-    fallback: FallbackNoOpBackend,
-    cloud_llm: CloudBackendState,
+    rule_based: Box<dyn DecisionBackend + Send + Sync>,
+    fallback: Box<dyn DecisionBackend + Send + Sync>,
+    cloud_llm: Option<Box<dyn DecisionBackend + Send + Sync>>,
+    cloud_disabled: bool,
+    cloud_misconfigured: Option<String>,
     circuit_state: RefCell<CircuitState>,
 }
 
 impl DecisionRouter {
     pub fn new(config: RouterConfig) -> Self {
-        let cloud_llm = CloudBackendState::from_env();
-        if let CloudBackendState::Misconfigured(error) = &cloud_llm {
+        let cloud_state = CloudBackendState::from_env();
+        if let CloudBackendState::Misconfigured(error) = &cloud_state {
             tracing::warn!(
                 error = %error,
                 "cloud llm backend configuration ignored; DecisionRouter will stay local"
             );
         }
+
+        let (cloud_llm, cloud_disabled, cloud_misconfigured) = match cloud_state {
+            CloudBackendState::Ready(backend) => {
+                let backend: Box<dyn DecisionBackend + Send + Sync> = Box::new(backend);
+                (Some(backend), false, None)
+            },
+            CloudBackendState::Disabled => (None, true, None),
+            CloudBackendState::Misconfigured(error) => (None, false, Some(error)),
+        };
+
         Self {
             config,
-            rule_based: RuleBasedBackend,
-            fallback: FallbackNoOpBackend,
+            rule_based: Box::new(RuleBasedBackend),
+            fallback: Box::new(FallbackNoOpBackend),
             cloud_llm,
+            cloud_disabled,
+            cloud_misconfigured,
+            circuit_state: RefCell::new(CircuitState::default()),
+        }
+    }
+
+    #[cfg(test)]
+    fn with_backends(
+        config: RouterConfig,
+        rule_based: Box<dyn DecisionBackend + Send + Sync>,
+        cloud_llm: Option<Box<dyn DecisionBackend + Send + Sync>>,
+        fallback: Box<dyn DecisionBackend + Send + Sync>,
+    ) -> Self {
+        let cloud_disabled = cloud_llm.is_none();
+        Self {
+            config,
+            rule_based,
+            fallback,
+            cloud_llm,
+            cloud_disabled,
+            cloud_misconfigured: None,
             circuit_state: RefCell::new(CircuitState::default()),
         }
     }
@@ -150,27 +183,44 @@ impl DecisionRouter {
         let (route, reason) = self.determine_route(context);
         let reason_tag = reason.tag();
 
-        let mut result = match route {
-            DecisionRoute::RuleBased => self.rule_based.evaluate(context),
+        let (mut result, backend_failed) = match route {
+            DecisionRoute::RuleBased => {
+                let result = self.rule_based.evaluate(context);
+                let backend_failed = result.error.is_some();
+                (result, backend_failed)
+            },
             DecisionRoute::CloudLlm => match &self.cloud_llm {
-                CloudBackendState::Ready(backend) => {
+                Some(backend) => {
                     let cloud_result = backend.evaluate(context);
-                    if let Some(error) = cloud_result.error.clone() {
+                    if let Some(error) = cloud_result.error.as_deref() {
                         let mut fallback = self.rule_based.evaluate(context);
                         fallback.error = Some(format!("cloud llm backend failed: {error}"));
                         fallback
                             .rationale_tags
                             .push("backend:cloud_llm_error(rule_based_fallback)".to_string());
-                        fallback
+                        (fallback, true)
                     } else {
-                        cloud_result
+                        (cloud_result, false)
                     }
                 },
-                _ => self.rule_based.evaluate(context),
+                None => {
+                    let result = self.rule_based.evaluate(context);
+                    let backend_failed = result.error.is_some();
+                    (result, backend_failed)
+                },
             },
-            DecisionRoute::FallbackNoOp => self.fallback.evaluate(context),
+            DecisionRoute::FallbackNoOp => {
+                let result = self.fallback.evaluate(context);
+                // FallbackNoOp may preserve an audit error while successfully
+                // generating the safe NoOp used to probe recovery.
+                (result, false)
+            },
             // Future routes (LocalEvaluator) fall back to RuleBased
-            _ => self.rule_based.evaluate(context),
+            _ => {
+                let result = self.rule_based.evaluate(context);
+                let backend_failed = result.error.is_some();
+                (result, backend_failed)
+            },
         };
 
         // Inject routing reason tag
@@ -180,7 +230,7 @@ impl DecisionRouter {
 
         // Update circuit breaker state
         let mut state = self.circuit_state.borrow_mut();
-        if result.error.is_some() {
+        if backend_failed {
             state.record_error();
         } else {
             state.record_success();
@@ -227,20 +277,29 @@ impl DecisionRouter {
     }
 
     fn cloud_route_or_fallback(&self, complexity: &'static str) -> (DecisionRoute, RoutingReason) {
-        match &self.cloud_llm {
-            CloudBackendState::Ready(_) => (
+        if self.cloud_llm.is_some() {
+            return (
                 DecisionRoute::CloudLlm,
                 RoutingReason::CloudPreferred { complexity },
-            ),
-            CloudBackendState::Disabled => (
+            );
+        }
+        if self.cloud_disabled {
+            return (
                 DecisionRoute::RuleBased,
                 RoutingReason::CloudDisabled { complexity },
-            ),
-            CloudBackendState::Misconfigured(_) => (
+            );
+        }
+        if self.cloud_misconfigured.is_some() {
+            return (
                 DecisionRoute::RuleBased,
                 RoutingReason::CloudMisconfigured { complexity },
-            ),
+            );
         }
+        // No cloud backend available; treat as disabled for safety.
+        (
+            DecisionRoute::RuleBased,
+            RoutingReason::CloudDisabled { complexity },
+        )
     }
 
     /// Count privacy-sensitive signals:
@@ -283,5 +342,284 @@ impl DecisionRouter {
 impl Default for DecisionRouter {
     fn default() -> Self {
         Self::new(RouterConfig::default())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use aios_spec::{
+        ActionType, ActionUrgency, ContextSummary, DecisionBackendResult, DecisionRoute, Intent,
+        IntentBatch, IntentType, RiskLevel, SanitizedEvent, SanitizedEventType, SemanticHint,
+        SourceTier, StructuredContext, SuggestedAction,
+    };
+
+    use crate::DecisionBackend;
+
+    fn empty_context() -> StructuredContext {
+        StructuredContext {
+            window_id: "test-window".into(),
+            window_start_ms: 0,
+            window_end_ms: 1000,
+            duration_secs: 1,
+            events: vec![],
+            summary: ContextSummary {
+                foreground_apps: vec![],
+                notified_apps: vec![],
+                all_semantic_hints: vec![],
+                file_activity: vec![],
+                latest_system_status: None,
+                source_tier: SourceTier::PublicApi,
+            },
+        }
+    }
+
+    fn idle_batch(context: &StructuredContext) -> IntentBatch {
+        IntentBatch {
+            window_id: context.window_id.clone(),
+            intents: vec![Intent {
+                intent_id: "idle".into(),
+                intent_type: IntentType::Idle,
+                confidence: 1.0,
+                risk_level: RiskLevel::Low,
+                suggested_actions: vec![SuggestedAction {
+                    action_type: ActionType::NoOp,
+                    target: None,
+                    urgency: ActionUrgency::IdleTime,
+                }],
+                rationale_tags: vec![],
+            }],
+            generated_at_ms: context.window_end_ms,
+            model: "test".into(),
+        }
+    }
+
+    /// A backend that always fails, carrying the given route label and error message.
+    struct FailingBackend {
+        route: DecisionRoute,
+        error: String,
+    }
+
+    impl DecisionBackend for FailingBackend {
+        fn evaluate(&self, context: &StructuredContext) -> DecisionBackendResult {
+            DecisionBackendResult {
+                route: self.route,
+                intent_batch: idle_batch(context),
+                rationale_tags: vec!["failing_backend".into()],
+                latency_us: 0,
+                error: Some(self.error.clone()),
+            }
+        }
+    }
+
+    /// A backend that always succeeds, carrying the given route label.
+    struct OkBackend {
+        route: DecisionRoute,
+    }
+
+    impl DecisionBackend for OkBackend {
+        fn evaluate(&self, context: &StructuredContext) -> DecisionBackendResult {
+            DecisionBackendResult {
+                route: self.route,
+                intent_batch: idle_batch(context),
+                rationale_tags: vec!["ok_backend".into()],
+                latency_us: 0,
+                error: None,
+            }
+        }
+    }
+
+    #[test]
+    fn circuit_state_persists_across_evaluate_calls() {
+        let config = RouterConfig {
+            circuit_breaker_threshold: 2,
+            circuit_breaker_window_secs: 3600,
+            ..RouterConfig::default()
+        };
+        let router = DecisionRouter::with_backends(
+            config,
+            Box::new(FailingBackend {
+                route: DecisionRoute::RuleBased,
+                error: "rule-based failure".into(),
+            }),
+            None,
+            Box::new(FallbackNoOpBackend),
+        );
+        let ctx = empty_context();
+
+        // First window: one error recorded, circuit still closed.
+        let r1 = router.evaluate(&ctx);
+        assert!(
+            !matches!(r1.route, DecisionRoute::FallbackNoOp),
+            "first failure should not trip breaker"
+        );
+
+        // Second window: second error pushes the counter over the threshold.
+        let r2 = router.evaluate(&ctx);
+        assert!(
+            !matches!(r2.route, DecisionRoute::FallbackNoOp),
+            "route is determined before the second failure is recorded"
+        );
+
+        // Third window: circuit is now open, so we fall back to NoOp.
+        let r3 = router.evaluate(&ctx);
+        assert!(
+            matches!(r3.route, DecisionRoute::FallbackNoOp),
+            "circuit breaker should trip after two consecutive errors, got {:?}",
+            r3.route
+        );
+    }
+
+    #[test]
+    fn circuit_state_resets_after_successful_fallback() {
+        let config = RouterConfig {
+            circuit_breaker_threshold: 2,
+            circuit_breaker_window_secs: 3600,
+            ..RouterConfig::default()
+        };
+        let router = DecisionRouter::with_backends(
+            config,
+            Box::new(FailingBackend {
+                route: DecisionRoute::RuleBased,
+                error: "rule-based failure".into(),
+            }),
+            None,
+            Box::new(FallbackNoOpBackend),
+        );
+        let ctx = empty_context();
+
+        // Trip the breaker with two consecutive failures.
+        let _ = router.evaluate(&ctx);
+        let _ = router.evaluate(&ctx);
+        let r_open = router.evaluate(&ctx);
+        assert!(
+            matches!(r_open.route, DecisionRoute::FallbackNoOp),
+            "breaker should be open"
+        );
+        assert!(
+            r_open.error.is_some(),
+            "real fallback should preserve an audit error while succeeding safely"
+        );
+
+        // A generated NoOp is a successful safe fallback, even though it preserves
+        // an audit error for downstream visibility.
+        let r_reset = router.evaluate(&ctx);
+        assert!(
+            !matches!(r_reset.route, DecisionRoute::FallbackNoOp),
+            "circuit should reset after a successful fallback, got {:?}",
+            r_reset.route
+        );
+    }
+
+    #[test]
+    fn circuit_state_counts_cloud_backend_errors() {
+        // Use a context that routes to CloudLlm: two distinct semantic hint
+        // types and a low privacy score.
+        let ctx = StructuredContext {
+            window_id: "cloud-route-window".into(),
+            window_start_ms: 0,
+            window_end_ms: 1000,
+            duration_secs: 1,
+            events: vec![
+                SanitizedEvent {
+                    event_id: "n1".into(),
+                    timestamp_ms: 100,
+                    event_type: SanitizedEventType::Notification {
+                        source_package: "com.a".into(),
+                        category: None,
+                        channel_id: None,
+                        title_hint: aios_spec::TextHint {
+                            length_chars: 1,
+                            script: aios_spec::ScriptHint::Latin,
+                            is_emoji_only: false,
+                        },
+                        text_hint: aios_spec::TextHint {
+                            length_chars: 1,
+                            script: aios_spec::ScriptHint::Latin,
+                            is_emoji_only: false,
+                        },
+                        semantic_hints: vec![SemanticHint::FileMention],
+                        is_ongoing: false,
+                        group_key: None,
+                    },
+                    source_tier: SourceTier::PublicApi,
+                    app_package: None,
+                    uid: None,
+                },
+                SanitizedEvent {
+                    event_id: "n2".into(),
+                    timestamp_ms: 200,
+                    event_type: SanitizedEventType::Notification {
+                        source_package: "com.b".into(),
+                        category: None,
+                        channel_id: None,
+                        title_hint: aios_spec::TextHint {
+                            length_chars: 1,
+                            script: aios_spec::ScriptHint::Latin,
+                            is_emoji_only: false,
+                        },
+                        text_hint: aios_spec::TextHint {
+                            length_chars: 1,
+                            script: aios_spec::ScriptHint::Latin,
+                            is_emoji_only: false,
+                        },
+                        semantic_hints: vec![SemanticHint::ImageMention],
+                        is_ongoing: false,
+                        group_key: None,
+                    },
+                    source_tier: SourceTier::PublicApi,
+                    app_package: None,
+                    uid: None,
+                },
+            ],
+            summary: ContextSummary {
+                foreground_apps: vec![],
+                notified_apps: vec!["com.a".into(), "com.b".into()],
+                all_semantic_hints: vec![SemanticHint::FileMention, SemanticHint::ImageMention],
+                file_activity: vec![],
+                latest_system_status: None,
+                source_tier: SourceTier::PublicApi,
+            },
+        };
+
+        let config = RouterConfig {
+            privacy_score_threshold: 10,
+            circuit_breaker_threshold: 2,
+            circuit_breaker_window_secs: 3600,
+        };
+        let router = DecisionRouter::with_backends(
+            config,
+            Box::new(OkBackend {
+                route: DecisionRoute::RuleBased,
+            }),
+            Some(Box::new(FailingBackend {
+                route: DecisionRoute::CloudLlm,
+                error: "cloud failure".into(),
+            })),
+            Box::new(FallbackNoOpBackend),
+        );
+
+        let r1 = router.evaluate(&ctx);
+        assert!(
+            matches!(r1.route, DecisionRoute::RuleBased),
+            "cloud failure falls back to rule-based before the circuit trips"
+        );
+        assert!(
+            r1.error.as_deref().unwrap_or("").contains("cloud failure"),
+            "cloud error should be preserved in the fallback result"
+        );
+
+        let r2 = router.evaluate(&ctx);
+        assert!(
+            matches!(r2.route, DecisionRoute::RuleBased),
+            "second cloud failure still routes through rule-based fallback"
+        );
+
+        let r3 = router.evaluate(&ctx);
+        assert!(
+            matches!(r3.route, DecisionRoute::FallbackNoOp),
+            "cloud errors should trip the circuit breaker, got {:?}",
+            r3.route
+        );
     }
 }

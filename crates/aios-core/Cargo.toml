@@ -8,6 +8,7 @@ repository.workspace = true
 
 [dependencies]
 aios-spec = { workspace = true }
+serde = { workspace = true }
 tokio = { workspace = true, features = ["sync", "macros"] }
 thiserror = { workspace = true }
 tracing = { workspace = true }

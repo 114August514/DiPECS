@@ -94,14 +94,6 @@ pub struct SuggestedAction {
     pub urgency: ActionUrgency,
 }
 
-/// 已经由 `PolicyEngine` 审查通过、允许交给 executor 的动作。
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct AuthorizedAction {
-    pub intent_id: String,
-    pub action: SuggestedAction,
-    pub authorized_at_ms: i64,
-}
-
 /// 动作类型
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ActionType {

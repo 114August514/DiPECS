@@ -88,7 +88,7 @@ class CollectorForegroundService : Service() {
             ACTION_STOP -> stopCollector()
             ACTION_UPLOAD_NOW -> CloudUploader.uploadRecent(this, reason = "manual")
             ACTION_PREFETCH_NOW -> triggerPrefetch(intent ?: Intent())
-            ACTION_EXECUTE_AUTHORIZED_ACTION -> triggerAuthorizedAction(intent ?: Intent())
+            else -> DebugServiceActions.handle(this, intent, running)
         }
         return START_STICKY
     }
@@ -154,46 +154,6 @@ class CollectorForegroundService : Service() {
         }
     }
 
-    private fun triggerAuthorizedAction(intent: Intent) {
-        val payload = intent.getStringExtra(EXTRA_AUTHORIZED_ACTION_JSON)
-            ?.takeIf { it.isNotBlank() }
-            ?: CollectorPreferences.authorizedActionJson(this)
-        val shouldStopAfterDispatch = !running
-
-        if (payload.isBlank()) {
-            EventRepository.recordInternal(
-                this,
-                "authorized_action_skipped",
-                "No AuthorizedAction JSON configured",
-            )
-            if (shouldStopAfterDispatch) {
-                stopSelf()
-            }
-            return
-        }
-
-        runCatching { JSONObject(payload) }
-            .onSuccess { json ->
-                ActionExecutorBridge.dispatchAuthorizedActionJson(
-                    this,
-                    json,
-                    reason = "service_authorized_action",
-                )
-            }
-            .onFailure { error ->
-                EventRepository.recordInternal(
-                    this,
-                    "authorized_action_rejected",
-                    error.message ?: "Invalid AuthorizedAction JSON",
-                    JSONObject().put("payload", payload.take(2048)),
-                )
-            }
-
-        if (shouldStopAfterDispatch) {
-            stopSelf()
-        }
-    }
-
     private fun foregroundNotification(content: String): Notification {
         val launchIntent = Intent(this, MainActivity::class.java)
         val pendingIntent = PendingIntent.getActivity(
@@ -247,7 +207,6 @@ class CollectorForegroundService : Service() {
         const val ACTION_STOP = "com.dipecs.collector.action.STOP"
         const val ACTION_UPLOAD_NOW = "com.dipecs.collector.action.UPLOAD_NOW"
         const val ACTION_PREFETCH_NOW = "com.dipecs.collector.action.PREFETCH_NOW"
-        const val ACTION_EXECUTE_AUTHORIZED_ACTION = "com.dipecs.collector.action.EXECUTE_AUTHORIZED_ACTION"
         const val EXTRA_PREFETCH_TARGET = "prefetch_target"
         const val EXTRA_AUTHORIZED_ACTION_JSON = "authorized_action_json"
 

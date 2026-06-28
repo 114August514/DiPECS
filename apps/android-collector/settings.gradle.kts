@@ -1,5 +1,8 @@
 pluginManagement {
     repositories {
+        // USTC 镜像优先，失败时回退官方源
+        maven { url = uri("https://mirrors.ustc.edu.cn/google-android/") }
+        maven { url = uri("https://mirrors.ustc.edu.cn/gradle/") }
         google()
         mavenCentral()
         gradlePluginPortal()
@@ -12,6 +15,9 @@ plugins {
 dependencyResolutionManagement {
     repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
     repositories {
+        // USTC 镜像优先，失败时回退官方源
+        maven { url = uri("https://mirrors.ustc.edu.cn/google-android/") }
+        maven { url = uri("https://mirrors.ustc.edu.cn/maven/") }
         google()
         mavenCentral()
     }

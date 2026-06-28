@@ -17,7 +17,8 @@
 
 use aios_spec::traits::{PrivacySanitizer, TraceValidator};
 use aios_spec::{
-    ExecutedAction, GoldenTrace, Intent, IntentBatch, ReplayResult, SanitizedEvent, SuggestedAction,
+    ExecutedAction, GoldenTrace, Intent, IntentBatch, ReplayResult, SanitizedEvent, SourceTier,
+    SuggestedAction,
 };
 
 /// 默认 Trace 引擎
@@ -55,10 +56,17 @@ impl DefaultTraceEngine {
     }
 
     fn sanitization_divergences(&self, golden: &GoldenTrace) -> Vec<usize> {
+        let default_tier = SourceTier::PublicApi;
+        let tiers = golden
+            .source_tiers
+            .iter()
+            .chain(std::iter::repeat(&default_tier));
+
         let actual_sanitized: Vec<SanitizedEvent> = golden
             .raw_events
             .iter()
-            .map(|raw| self.sanitizer.sanitize(raw.clone()))
+            .zip(tiers)
+            .map(|(raw, tier)| self.sanitizer.sanitize_with_tier(raw.clone(), *tier))
             .collect();
 
         let mut divergences = Vec::new();

@@ -5,25 +5,25 @@
 
 #![deny(unsafe_op_in_unsafe_fn)]
 
-mod context;
-mod event;
-mod intent;
-mod sanitized;
-mod trace;
+pub mod context;
+pub mod event;
+pub mod governance;
+pub mod intent;
+pub mod sanitized;
+pub mod trace;
 
 pub use context::*;
 pub use event::*;
+pub use governance::*;
 pub use intent::*;
 pub use sanitized::*;
 pub use trace::*;
 
 /// aios-spec 定义的公共 trait
 pub mod traits {
-    mod executor;
     mod privacy;
     mod trace_validator;
 
-    pub use executor::{ActionExecutor, ActionResult};
     pub use privacy::PrivacySanitizer;
     pub use trace_validator::TraceValidator;
 }

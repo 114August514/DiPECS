@@ -12,6 +12,7 @@
 use std::collections::BTreeMap;
 
 use aios_core::policy_engine::{PolicyConfig, PolicyEngine};
+use aios_spec::governance::{PolicyActionDecision, PolicyVerdict};
 use aios_spec::*;
 
 fn ctx_with_packages(pkgs: &[&str]) -> StructuredContext {
@@ -67,16 +68,11 @@ fn batch(intents: Vec<Intent>) -> IntentBatch {
 /// Aggregate the per-decision denial signals (intent-level rejection_reason
 /// and per-action action_denials) into a single histogram, mirroring how
 /// `ReplaySummary.denial_counts` is built in the CLI.
-fn aggregate(
-    decisions: &[aios_core::policy_engine::PolicyDecision],
-) -> BTreeMap<DenialReason, u64> {
+fn aggregate(decisions: &[PolicyActionDecision]) -> BTreeMap<DenialReason, u64> {
     let mut counts: BTreeMap<DenialReason, u64> = BTreeMap::new();
     for d in decisions {
-        if let Some(r) = d.rejection_reason {
+        if let PolicyVerdict::Denied(r) = d.verdict {
             *counts.entry(r).or_insert(0) += 1;
-        }
-        for r in &d.action_denials {
-            *counts.entry(*r).or_insert(0) += 1;
         }
     }
     counts

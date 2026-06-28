@@ -11,7 +11,6 @@ import android.content.Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION
 import android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION
 import android.graphics.Color
 import android.graphics.Typeface
-import android.graphics.drawable.GradientDrawable
 import android.os.Build
 import android.os.Bundle
 import android.os.PersistableBundle
@@ -26,7 +25,6 @@ import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.Spinner
 import android.widget.TextView
-import android.widget.Toast
 import com.dipecs.collector.actions.ActionExecutorBridge
 import com.dipecs.collector.net.CloudUploader
 import com.dipecs.collector.services.CollectorForegroundService
@@ -45,7 +43,6 @@ class MainActivity : Activity() {
     private lateinit var endpointInput: EditText
     private lateinit var apiKeyInput: EditText
     private lateinit var prefetchTargetInput: EditText
-    private lateinit var authorizedActionInput: EditText
     private lateinit var actionSocketPortInput: EditText
     private lateinit var modeSpinner: Spinner
     private lateinit var usageCheck: CheckBox
@@ -153,7 +150,8 @@ class MainActivity : Activity() {
 
         root.addView(uploadConfigCard())
         root.addView(prefetchCard())
-        root.addView(authorizedActionCard())
+        root.addView(actionSocketCard())
+        addAuthorizedActionCard(root)
         root.addView(controlCard())
 
         traceStatusView = TextView(this).apply {
@@ -319,19 +317,11 @@ class MainActivity : Activity() {
         return card("Prefetch action", content)
     }
 
-    private fun authorizedActionCard(): View {
+    private fun actionSocketCard(): View {
         val content = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
         }
 
-        authorizedActionInput = EditText(this).apply {
-            hint = """{"intent_id":"demo","action":{"action_type":"PrefetchFile","target":"url:https://example.test/feed.json","urgency":"IdleTime"},"authorized_at_ms":0}"""
-            minLines = 4
-            maxLines = 8
-            setText(CollectorPreferences.authorizedActionJson(this@MainActivity))
-        }
-        content.addView(sectionLabel("AuthorizedAction JSON"))
-        content.addView(authorizedActionInput)
         actionSocketPortInput = EditText(this).apply {
             hint = CollectorPreferences.DEFAULT_ACTION_SOCKET_PORT.toString()
             inputType = android.text.InputType.TYPE_CLASS_NUMBER
@@ -349,56 +339,7 @@ class MainActivity : Activity() {
         content.addView(rowButton("Copy Action Socket Token") {
             copyActionSocketToken()
         })
-        content.addView(rowButton("Save AuthorizedAction JSON") {
-            CollectorPreferences.setAuthorizedActionJson(this@MainActivity, authorizedActionInput.text.toString())
-            if (!saveActionSocketPort()) {
-                return@rowButton
-            }
-            EventRepository.recordInternal(
-                this@MainActivity,
-                "authorized_action_saved",
-                "AuthorizedAction JSON saved",
-            )
-            toast("AuthorizedAction JSON saved")
-            refreshStatus()
-        })
-        content.addView(rowButton("Run AuthorizedAction Now") {
-            val payload = authorizedActionInput.text.toString().trim()
-            CollectorPreferences.setAuthorizedActionJson(this@MainActivity, payload)
-            val dispatched = runCatching { JSONObject(payload) }
-                .map { json ->
-                    ActionExecutorBridge.dispatchAuthorizedActionJson(
-                        this@MainActivity,
-                        json,
-                        reason = "manual_authorized_action",
-                    )
-                }
-                .getOrElse { error ->
-                    EventRepository.recordInternal(
-                        this@MainActivity,
-                        "authorized_action_rejected",
-                        error.message ?: "Invalid AuthorizedAction JSON",
-                        JSONObject().put("payload", payload.take(2048)),
-                    )
-                    false
-                }
-            if (dispatched) {
-                toast("AuthorizedAction queued")
-            } else {
-                toast("AuthorizedAction rejected")
-            }
-            refreshStatus()
-        })
-        content.addView(rowButton("Run AuthorizedAction Via Service") {
-            val payload = authorizedActionInput.text.toString().trim()
-            CollectorPreferences.setAuthorizedActionJson(this@MainActivity, payload)
-            startCollectorService(
-                action = CollectorForegroundService.ACTION_EXECUTE_AUTHORIZED_ACTION,
-                authorizedActionJson = payload,
-            )
-            toast("AuthorizedAction service dispatch queued")
-        })
-        return card("Authorized action bridge", content)
+        return card("Action socket bridge", content)
     }
 
     private fun sourceCard(
@@ -456,52 +397,10 @@ class MainActivity : Activity() {
         }
     }
 
-    private fun rowButton(text: String, onClick: () -> Unit): Button =
-        Button(this).apply {
-            this.text = text
-            setAllCaps(false)
-            setOnClickListener { onClick() }
-        }
-
-    private fun sectionLabel(text: String): TextView =
-        TextView(this).apply {
-            this.text = text
-            textSize = 13f
-            setTextColor(Color.rgb(75, 85, 99))
-            setPadding(0, 14, 0, 4)
-        }
-
-    private fun card(title: String, content: View): View =
-        LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(24, 22, 24, 22)
-            background = GradientDrawable().apply {
-                setColor(Color.WHITE)
-                cornerRadius = 16f
-                setStroke(1, Color.rgb(226, 232, 240))
-            }
-            val params = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT,
-            )
-            params.setMargins(0, 0, 0, 18)
-            layoutParams = params
-
-            addView(TextView(this@MainActivity).apply {
-                text = title
-                textSize = 17f
-                typeface = Typeface.DEFAULT_BOLD
-                setTextColor(Color.rgb(17, 24, 39))
-                setPadding(0, 0, 0, 10)
-            })
-            addView(content)
-        }
-
     private fun loadPreferences() {
         endpointInput.setText(CollectorPreferences.endpoint(this))
         apiKeyInput.setText(CollectorPreferences.apiKey(this))
         prefetchTargetInput.setText(CollectorPreferences.prefetchTarget(this))
-        authorizedActionInput.setText(CollectorPreferences.authorizedActionJson(this))
         actionSocketPortInput.setText(CollectorPreferences.actionSocketPort(this).toString())
         val mode = CollectorPreferences.uploadMode(this)
         modeSpinner.setSelection(if (mode == CollectorPreferences.MODE_LLM) 1 else 0)
@@ -515,7 +414,6 @@ class MainActivity : Activity() {
         CollectorPreferences.setEndpoint(this, endpointInput.text.toString())
         CollectorPreferences.setApiKey(this, apiKeyInput.text.toString())
         CollectorPreferences.setPrefetchTarget(this, prefetchTargetInput.text.toString())
-        CollectorPreferences.setAuthorizedActionJson(this, authorizedActionInput.text.toString())
         if (!saveActionSocketPort()) {
             return
         }
@@ -531,7 +429,7 @@ class MainActivity : Activity() {
         refreshStatus()
     }
 
-    private fun refreshStatus() {
+    internal fun refreshStatus() {
         permissionStatusView.text = buildString {
             appendLine("Usage access: ${mark(PermissionStatus.hasUsageAccess(this@MainActivity))}")
             appendLine("Notification listener: ${mark(PermissionStatus.hasNotificationAccess(this@MainActivity))}")
@@ -552,7 +450,6 @@ class MainActivity : Activity() {
             appendLine("Upload endpoint: ${CollectorPreferences.endpoint(this@MainActivity).ifBlank { "(not set)" }}")
             appendLine("Upload mode: ${CollectorPreferences.uploadMode(this@MainActivity)}")
             appendLine("Prefetch target: ${CollectorPreferences.prefetchTarget(this@MainActivity).ifBlank { "(not set)" }}")
-            appendLine("AuthorizedAction JSON: ${if (CollectorPreferences.authorizedActionJson(this@MainActivity).isBlank()) "(not set)" else "configured"}")
             appendLine("Action socket: 127.0.0.1:${CollectorPreferences.actionSocketPort(this@MainActivity)}")
             appendLine("Action socket token: ${redactSecret(CollectorPreferences.actionSocketToken(this@MainActivity))}")
             appendLine()
@@ -620,7 +517,7 @@ class MainActivity : Activity() {
             "configured (...${secret.takeLast(6)})"
         }
 
-    private fun startCollectorService(
+    internal fun startCollectorService(
         action: String,
         prefetchTarget: String? = null,
         authorizedActionJson: String? = null,
@@ -679,10 +576,6 @@ class MainActivity : Activity() {
         clipboard.setPrimaryClip(clip)
         toast("Action socket token copied")
         refreshStatus()
-    }
-
-    private fun toast(message: String) {
-        Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
     }
 
     companion object {

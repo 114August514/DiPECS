@@ -1,6 +1,8 @@
 //! 验证 DecisionRouter 的意图生成与路由逻辑
 
 use aios_agent::{DecisionRouter, RouterConfig};
+use aios_core::action_lifecycle::ActionLifecycle;
+use aios_core::policy_engine::PolicyEngine;
 use aios_spec::*;
 
 /// 构建最小 StructuredContext 的辅助函数
@@ -478,13 +480,18 @@ fn test_fallback_noop_passes_policy_engine() {
     assert_eq!(decisions.len(), 1);
     let decision = &decisions[0];
     assert!(
-        decision.approved,
-        "fallback NoOp must clear policy gate; got reject reason {:?}",
-        decision.rejection_reason,
+        matches!(
+            decision.verdict,
+            aios_spec::governance::PolicyVerdict::Approved
+        ),
+        "fallback NoOp must clear policy gate; got verdict {:?}",
+        decision.verdict,
     );
-    assert_eq!(decision.approved_actions.len(), 1);
+    assert_eq!(decision.action_ordinal, 0);
     assert!(matches!(
-        decision.approved_actions[0].action.action_type,
+        result.intent_batch.intents[decision.intent_ordinal as usize].suggested_actions
+            [decision.action_ordinal as usize]
+            .action_type,
         ActionType::NoOp
     ));
 }
@@ -535,4 +542,67 @@ fn test_circuit_state_resets_on_success() {
     let r2 = router.evaluate(&ctx);
     assert!(r2.error.is_none());
     assert!(matches!(r2.route, DecisionRoute::RuleBased));
+}
+
+// ===== Fallback 审计可见性 =====
+
+#[test]
+fn test_fallback_noop_audit_record_is_visible() {
+    use aios_agent::DecisionBackend;
+    use aios_agent::FallbackNoOpBackend;
+    use aios_spec::governance::ActionState;
+
+    let ctx = make_context(vec![], make_summary());
+    let result = FallbackNoOpBackend.evaluate(&ctx);
+
+    assert!(matches!(result.route, DecisionRoute::FallbackNoOp));
+    assert!(result.error.is_some());
+
+    let capability = CapabilityLevel::for_route(DecisionRoute::FallbackNoOp);
+    let policy = PolicyEngine::default();
+    let lifecycle = ActionLifecycle::new(&policy, &NoOpAdapter);
+    let records = lifecycle.run(
+        0,
+        &result.intent_batch,
+        result.route,
+        result.error.clone(),
+        &capability,
+        &ctx,
+    );
+
+    assert_eq!(records.len(), 1);
+    let record = &records[0];
+    assert!(matches!(record.terminal, ActionState::Succeeded));
+    assert!(matches!(record.route, DecisionRoute::FallbackNoOp));
+    assert!(
+        record.backend_error.is_some(),
+        "fallback audit record should carry backend_error"
+    );
+    assert_eq!(
+        record.outcome.as_ref().unwrap().action_type,
+        "NoOp",
+        "fallback action type should be NoOp"
+    );
+}
+
+/// A minimal adapter that succeeds on NoOp, mirroring the offline/stub behavior
+/// used by `DefaultActionExecutor` for the local NoOp path.
+struct NoOpAdapter;
+
+impl aios_core::governance::ActionAdapter for NoOpAdapter {
+    fn name(&self) -> &'static str {
+        "noop"
+    }
+
+    fn execute(
+        &self,
+        authorized: &aios_core::governance::AuthorizedAction,
+    ) -> Result<aios_spec::governance::ActionOutcome, aios_spec::governance::AdapterError> {
+        Ok(aios_spec::governance::ActionOutcome {
+            action_type: format!("{:?}", authorized.action().action_type),
+            target: authorized.action().target.clone(),
+            summary: "noop".into(),
+            latency_us: 0,
+        })
+    }
 }

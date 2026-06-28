@@ -37,6 +37,7 @@ use aios_collector::{
     system_collector::SystemStateCollector,
 };
 use aios_core::action_bus::ActionBus;
+use aios_core::action_lifecycle::ActionLifecycle;
 use aios_core::collector_ingress::RustCollectorIngress;
 use aios_core::context_builder::WindowAggregator;
 use aios_core::policy_engine::PolicyEngine;
@@ -229,7 +230,8 @@ pub async fn run() -> anyhow::Result<()> {
     let sanitizer = DefaultPrivacyAirGap;
     let router = DecisionRouter::default();
     let policy = PolicyEngine::default();
-    let executor = DefaultActionExecutor;
+    let executor = DefaultActionExecutor::new();
+    let lifecycle = ActionLifecycle::new(&policy, &executor);
     let mut trace_recorder = match runtime_trace_output {
         Some(path) => Some(RuntimeTraceRecorder::new(&path).map_err(|error| {
             anyhow::anyhow!(
@@ -243,6 +245,7 @@ pub async fn run() -> anyhow::Result<()> {
     let mut window = WindowAggregator::new(WINDOW_DURATION_SECS, timestamp_ms());
     let mut raw_stats = RawEventStats::default();
     let mut window_deadline = Instant::now() + window_dur;
+    let mut window_ordinal = 0u32;
 
     loop {
         let remaining = if window_deadline > Instant::now() {
@@ -272,10 +275,10 @@ pub async fn run() -> anyhow::Result<()> {
             let window_stats = std::mem::take(&mut raw_stats);
             if let Some(ctx) = window.close(timestamp_ms()) {
                 pipeline::process_window(
+                    window_ordinal,
                     &ctx,
                     &router,
-                    &policy,
-                    &executor,
+                    &lifecycle,
                     &window_stats,
                     trace_recorder.as_mut(),
                 );
@@ -301,13 +304,14 @@ pub async fn run() -> anyhow::Result<()> {
             let window_stats = std::mem::take(&mut raw_stats);
             if let Some(ctx) = window.close(timestamp_ms()) {
                 pipeline::process_window(
+                    window_ordinal,
                     &ctx,
                     &router,
-                    &policy,
-                    &executor,
+                    &lifecycle,
                     &window_stats,
                     trace_recorder.as_mut(),
                 );
+                window_ordinal += 1;
             }
             window_deadline = Instant::now() + window_dur;
         }

@@ -5,9 +5,13 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::event::RawEvent;
+use crate::event::{RawEvent, SourceTier};
 use crate::intent::IntentBatch;
 use crate::SanitizedEvent;
+
+fn default_source_tiers() -> Vec<SourceTier> {
+    Vec::new()
+}
 
 /// 一条 Golden Trace
 ///
@@ -35,6 +39,11 @@ pub struct GoldenTrace {
     pub expected_intents: IntentBatch,
     /// 期望的本地执行动作
     pub expected_actions: Vec<ExecutedAction>,
+    /// Per-event source tier, parallel to `raw_events`.
+    /// Empty or missing entries are handled at the consumption site
+    /// (trace_engine falls back to `SourceTier::PublicApi`).
+    #[serde(default = "default_source_tiers")]
+    pub source_tiers: Vec<SourceTier>,
 }
 
 /// 已执行的动作记录

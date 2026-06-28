@@ -115,6 +115,20 @@ cargo run -p aios-cli -- replay data/traces/sample_replay.jsonl \
   --audit data/evaluation/audit.ndjson
 ```
 
+Replay the larger synthetic Android trace when real-device data is not
+available:
+
+```bash
+python tools/generate_synthetic_android_trace.py --rows 2400
+cargo run -p aios-cli -- replay data/traces/android_synthetic_large.redacted.jsonl \
+  --stages policy \
+  --audit data/evaluation/android_synthetic_large.audit.ndjson
+```
+
+`data/traces/android_synthetic_large.redacted.jsonl` is deterministic,
+redacted, and explicitly synthetic. It is suitable for dashboard, replay, and
+policy/audit demos, but it is not real-device validation evidence.
+
 Build Android collector:
 
 ```bash

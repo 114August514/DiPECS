@@ -67,6 +67,19 @@ load the exported sanitized JSONL plus replay/audit NDJSON. The dashboard is
 static and local-only; it summarizes event kinds, `rawEvent` coverage, replay
 stages, and policy/audit decisions without rendering sensitive raw text.
 
+When real-device data is not available, use the deterministic synthetic sample
+instead:
+
+```bash
+python tools/generate_synthetic_android_trace.py --rows 2400
+cargo run -p aios-cli -- replay data/traces/android_synthetic_large.redacted.jsonl \
+  --stages policy \
+  --audit data/evaluation/android_synthetic_large.audit.ndjson
+```
+
+This fixture is large enough for dashboard and replay demos, but every row is
+marked `synthetic: true` and must not be described as a real-device capture.
+
 ## Rust Daemon Ingress
 
 `dipecsd` can continuously consume an append-only Android trace file:

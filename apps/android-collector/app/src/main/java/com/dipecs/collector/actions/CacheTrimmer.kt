@@ -42,9 +42,7 @@ object CacheTrimmer {
             return 0
         }
         return dir.listFiles()
-            ?.sumOf { child ->
-                if (deleteRecursively(child)) 1 else 0
-            }
+            ?.count { child -> deleteRecursively(child) }
             ?: 0
     }
 

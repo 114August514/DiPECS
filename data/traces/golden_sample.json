@@ -114,12 +114,12 @@
         "suggested_actions": [
           {
             "action_type": "PreWarmProcess",
-            "target": "com.android.chrome",
+            "target": "pkg:com.android.chrome",
             "urgency": "Immediate"
           },
           {
             "action_type": "KeepAlive",
-            "target": "com.android.chrome",
+            "target": "work:collector_heartbeat",
             "urgency": "Immediate"
           }
         ],
@@ -135,7 +135,7 @@
         "suggested_actions": [
           {
             "action_type": "ReleaseMemory",
-            "target": null,
+            "target": "cache:prefetch",
             "urgency": "Immediate"
           }
         ],
@@ -150,14 +150,14 @@
   "expected_actions": [
     {
       "action_type": "KeepAlive",
-      "target": "com.android.chrome",
+      "target": "work:collector_heartbeat",
       "executed_at_ms": 3000,
       "success": true,
       "error_reason": null
     },
     {
       "action_type": "ReleaseMemory",
-      "target": null,
+      "target": "cache:prefetch",
       "executed_at_ms": 3000,
       "success": true,
       "error_reason": null

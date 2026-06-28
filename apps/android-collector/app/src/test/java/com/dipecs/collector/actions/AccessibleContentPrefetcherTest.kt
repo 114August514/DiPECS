@@ -14,7 +14,7 @@ class AccessibleContentPrefetcherTest {
         assertTrue(target.cacheFileName().endsWith(".json"))
     }
 
-    @Test(expected = IllegalStateException::class)
+    @Test(expected = IllegalArgumentException::class)
     fun parseUrlTargetRejectsHttpUrl() {
         AccessibleContentPrefetcher.PrefetchTarget.parse("url:http://example.test/feed.json")
     }

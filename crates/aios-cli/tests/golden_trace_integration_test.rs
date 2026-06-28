@@ -187,7 +187,7 @@ fn replay_matches_golden_sample() {
     assert_eq!(
         executed.len(),
         2,
-        "exactly 2 actions survive policy: KeepAlive(com.android.chrome) + ReleaseMemory(None)"
+        "exactly 2 actions survive policy: KeepAlive(work:collector_heartbeat) + ReleaseMemory(cache:prefetch)"
     );
 }
 

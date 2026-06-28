@@ -11,7 +11,6 @@ use aios_spec::{
     SuggestedAction,
 };
 
-use super::prefetch_target::default_prefetch_target;
 use crate::{new_id, DecisionBackend};
 
 pub struct RuleBasedBackend;
@@ -58,27 +57,6 @@ impl RuleBasedBackend {
                 } if !observed_foreground_apps.contains(package_name) => {
                     observed_foreground_apps.push(package_name.clone());
                 },
-                SanitizedEventType::FileActivity {
-                    package_name,
-                    extension_category,
-                    ..
-                } => {
-                    intents.push(Intent {
-                        intent_id: new_id(),
-                        intent_type: IntentType::HandleFile(extension_category.clone()),
-                        confidence: 0.75,
-                        risk_level: RiskLevel::Low,
-                        suggested_actions: vec![SuggestedAction {
-                            action_type: ActionType::PrefetchFile,
-                            target: Some(default_prefetch_target(
-                                extension_category,
-                                package_name.as_deref(),
-                            )),
-                            urgency: ActionUrgency::IdleTime,
-                        }],
-                        rationale_tags: vec![format!("{:?}", extension_category)],
-                    });
-                },
                 SanitizedEventType::Screen { state } => {
                     if matches!(state, aios_spec::ScreenState::Interactive) {
                         has_screen_on = true;
@@ -90,6 +68,12 @@ impl RuleBasedBackend {
                 } if *pct < 20 => {
                     is_low_battery = true;
                 },
+                // FileActivity is intentionally not actioned here. Its only
+                // useful action is PrefetchFile, which the RuleBased capability
+                // forbids — speculative file IO belongs to the richer
+                // LocalEvaluator / CloudLlm tier (which do allow PrefetchFile).
+                // Emitting it here would only produce perpetual capability
+                // denials in the audit log.
                 _ => {},
             }
         }
@@ -101,13 +85,42 @@ impl RuleBasedBackend {
                 intent_type: IntentType::OpenApp(from_app.clone()),
                 confidence: 0.70,
                 risk_level: RiskLevel::Low,
+                // KeepAlive, not PreWarmProcess: the file-bearing app already
+                // exists (it raised the notification), and the RuleBased
+                // capability forbids PreWarmProcess. Keeping it warm makes the
+                // imminent open fast without a capability-denied pre-warm.
                 suggested_actions: vec![SuggestedAction {
-                    action_type: ActionType::PreWarmProcess,
+                    action_type: ActionType::KeepAlive,
                     target: Some(from_app),
                     urgency: ActionUrgency::Immediate,
                 }],
                 rationale_tags: vec!["file_received".into()],
             });
+        }
+
+        // Generic notification engagement: an app raised or updated a
+        // notification without a file mention. The process usually already
+        // exists (it posted the notification) and the user may open it soon,
+        // so keep it warm. KeepAlive is deliberate — the RuleBased capability
+        // authorizes KeepAlive but denies PreWarmProcess, so a pre-warm here
+        // would be dropped by policy. Distinguishing a tap from a dismiss
+        // needs the interaction action preserved through the air-gap, which it
+        // currently is not (future refinement).
+        if !has_file_mention {
+            if let Some(app) = notified_apps.first().cloned() {
+                intents.push(Intent {
+                    intent_id: new_id(),
+                    intent_type: IntentType::OpenApp(app.clone()),
+                    confidence: 0.55,
+                    risk_level: RiskLevel::Low,
+                    suggested_actions: vec![SuggestedAction {
+                        action_type: ActionType::KeepAlive,
+                        target: Some(app),
+                        urgency: ActionUrgency::IdleTime,
+                    }],
+                    rationale_tags: vec!["notification_engagement".into()],
+                });
+            }
         }
 
         if has_activity_launch && !launched_apps.is_empty() {
@@ -139,18 +152,15 @@ impl RuleBasedBackend {
                 intent_type: IntentType::SwitchToApp(target.clone()),
                 confidence: 0.80,
                 risk_level: RiskLevel::Low,
-                suggested_actions: vec![
-                    SuggestedAction {
-                        action_type: ActionType::PreWarmProcess,
-                        target: Some(target.clone()),
-                        urgency: ActionUrgency::Immediate,
-                    },
-                    SuggestedAction {
-                        action_type: ActionType::KeepAlive,
-                        target: Some(target),
-                        urgency: ActionUrgency::Immediate,
-                    },
-                ],
+                // KeepAlive only: PreWarmProcess is outside the RuleBased
+                // capability and was previously emitted just to be denied. The
+                // app is already foregrounded, so keeping it alive is the
+                // meaningful (and authorized) action.
+                suggested_actions: vec![SuggestedAction {
+                    action_type: ActionType::KeepAlive,
+                    target: Some(target),
+                    urgency: ActionUrgency::Immediate,
+                }],
                 rationale_tags: vec!["app_foreground_observed".into()],
             });
         }
@@ -219,7 +229,7 @@ impl DecisionBackend for RuleBasedBackend {
             window_id: context.window_id.clone(),
             intents,
             generated_at_ms: context.window_end_ms,
-            model: "rule-based-v0.2".to_string(),
+            model: "rule-based-v0.3".to_string(),
         };
         let rationale_tags = intent_batch
             .intents

@@ -107,7 +107,7 @@ fn test_empty_window_returns_idle() {
     let result = DecisionRouter::default().evaluate(&ctx);
     let batch = result.intent_batch;
 
-    assert_eq!(batch.model, "rule-based-v0.2");
+    assert_eq!(batch.model, "rule-based-v0.3");
     assert_eq!(batch.intents.len(), 1);
     let intent = &batch.intents[0];
     assert!(matches!(intent.intent_type, IntentType::Idle));
@@ -125,7 +125,7 @@ fn test_default_decision_router_returns_backend_result() {
 
     assert!(matches!(result.route, DecisionRoute::RuleBased));
     assert_eq!(result.intent_batch.window_id, ctx.window_id);
-    assert_eq!(result.intent_batch.model, "rule-based-v0.2");
+    assert_eq!(result.intent_batch.model, "rule-based-v0.3");
     assert!(result.error.is_none());
     // Routing reason tag should be present
     assert!(
@@ -158,9 +158,11 @@ fn test_file_mention_triggers_open_app() {
         .expect("should have OpenApp intent");
     assert!(open_app.confidence >= 0.70);
     assert_eq!(open_app.suggested_actions.len(), 1);
+    // KeepAlive after capability reconciliation: PreWarmProcess is outside the
+    // RuleBased capability, so the file-bearing app is kept warm instead.
     assert!(matches!(
         open_app.suggested_actions[0].action_type,
-        ActionType::PreWarmProcess
+        ActionType::KeepAlive
     ));
 }
 
@@ -238,54 +240,40 @@ fn test_app_transition_foreground_triggers_switch_to_app() {
 // ===== FileActivity 处理 =====
 
 #[test]
-fn test_file_activity_generates_handle_file() {
-    let events = vec![make_file_activity(ExtensionCategory::Document)];
-    let ctx = make_context(events, make_summary());
-
-    let result = DecisionRouter::default().evaluate(&ctx);
-    let batch = result.intent_batch;
-    let handle = batch
-        .intents
-        .iter()
-        .find(|i| {
-            matches!(
-                i.intent_type,
-                IntentType::HandleFile(ExtensionCategory::Document)
-            )
-        })
-        .expect("should have HandleFile intent");
-    assert_eq!(handle.confidence, 0.75);
-    assert_eq!(handle.suggested_actions.len(), 1);
-    assert!(matches!(
-        handle.suggested_actions[0].action_type,
-        ActionType::PrefetchFile
-    ));
-    assert!(
-        handle.suggested_actions[0]
-            .target
-            .as_deref()
-            .is_some_and(|target| target.starts_with("url:")),
-        "PrefetchFile should emit an Android bridge prefetch target"
-    );
-}
-
-#[test]
-fn test_multiple_file_activities_generate_multiple_intents() {
+fn test_file_activity_not_actioned_under_rule_based() {
+    // After capability reconciliation, FileActivity yields no HandleFile intent
+    // under RuleBased: its only action (PrefetchFile) is a Cloud/LocalEvaluator
+    // tier action the RuleBased capability forbids. A lone file access therefore
+    // falls through to the idle NoOp, and the rule engine emits no
+    // capability-denied action.
     let events = vec![
         make_file_activity(ExtensionCategory::Document),
         make_file_activity(ExtensionCategory::Image),
-        make_file_activity(ExtensionCategory::Video),
     ];
     let ctx = make_context(events, make_summary());
 
     let result = DecisionRouter::default().evaluate(&ctx);
     let batch = result.intent_batch;
-    let handle_count = batch
-        .intents
-        .iter()
-        .filter(|i| matches!(i.intent_type, IntentType::HandleFile(_)))
-        .count();
-    assert_eq!(handle_count, 3);
+
+    assert!(
+        !batch
+            .intents
+            .iter()
+            .any(|i| matches!(i.intent_type, IntentType::HandleFile(_))),
+        "FileActivity must not produce a HandleFile intent under RuleBased"
+    );
+    assert!(
+        batch.intents.iter().all(|i| {
+            i.suggested_actions.iter().all(|a| {
+                !matches!(
+                    a.action_type,
+                    ActionType::PrefetchFile | ActionType::PreWarmProcess
+                )
+            })
+        }),
+        "RuleBased must not emit capability-denied actions, got {:?}",
+        batch.intents
+    );
 }
 
 // ===== 屏幕亮起检测 =====
@@ -404,7 +392,13 @@ fn test_combined_signals_all_detected() {
         .iter()
         .filter(|i| matches!(i.intent_type, IntentType::HandleFile(_)))
         .count();
-    assert_eq!(handle_count, 1, "only 1 file_activity event");
+    // FileActivity is no longer actioned under RuleBased (PrefetchFile moved to
+    // the Cloud/LocalEvaluator tier), so the Image file access yields no
+    // HandleFile intent even though the other four signals still fire.
+    assert_eq!(
+        handle_count, 0,
+        "FileActivity is not actioned under RuleBased"
+    );
 }
 
 // ===== 路由行为测试 =====

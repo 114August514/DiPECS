@@ -103,7 +103,14 @@ fn drive_pipeline() -> (Vec<SanitizedEvent>, IntentBatch, Vec<ExecutedAction>) {
     let policy = PolicyEngine::default();
     let executor = DefaultActionExecutor::new();
     let lifecycle = ActionLifecycle::new(&policy, &executor);
-    let audit_records = lifecycle.run(0, &decision.intent_batch, &capability, &ctx, decision.route);
+    let audit_records = lifecycle.run(
+        0,
+        &decision.intent_batch,
+        decision.route,
+        decision.error.clone(),
+        &capability,
+        &ctx,
+    );
 
     let mut executed: Vec<ExecutedAction> = Vec::new();
     for record in &audit_records {

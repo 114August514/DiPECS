@@ -68,9 +68,10 @@ pub(crate) fn process_window(
     let audit_records = lifecycle.run(
         window_ordinal,
         &decision_result.intent_batch,
+        decision_result.route,
+        decision_result.error.clone(),
         &capability,
         ctx,
-        decision_result.route,
     );
 
     let executed = audit_records

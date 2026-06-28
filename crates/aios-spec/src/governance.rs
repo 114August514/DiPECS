@@ -10,7 +10,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::event::SourceTier;
-use crate::intent::{ActionType, DenialReason, DecisionRoute, SuggestedAction};
+use crate::intent::{ActionType, DecisionRoute, DenialReason, SuggestedAction};
 
 /// 确定性动作坐标。
 ///
@@ -177,9 +177,9 @@ pub struct AuditRecord {
     pub action_type: ActionType,
     pub target: Option<String>,
     pub effect: EffectClass,
-    /// 决策路由，确定性，进 canonical hash。
+    /// 产生该动作的后端路由，确定性，进 canonical hash。
     pub route: DecisionRoute,
-    /// 后端错误信息（终态为 Failed 且由后端报错时）。
+    /// 后端失败/熔断等诊断信息，volatile，不进 canonical hash。
     pub backend_error: Option<String>,
     /// 完整迁移序列。
     pub transitions: Vec<ActionState>,

@@ -97,9 +97,10 @@ fn default_executor_noop_succeeds() {
     let records = lifecycle.run(
         0,
         &batch_with_single(noop_intent()),
+        DecisionRoute::RuleBased,
+        None,
         &permissive_capability(),
         &empty_context(),
-        DecisionRoute::RuleBased,
     );
 
     assert_eq!(records.len(), 1);
@@ -140,9 +141,10 @@ fn offline_adapter_covers_all_action_types() {
         let records = lifecycle.run(
             0,
             &batch_with_single(intent),
+            DecisionRoute::RuleBased,
+            None,
             &permissive_capability(),
             &context_with_apps(&["com.example.app"]),
-            DecisionRoute::RuleBased,
         );
 
         assert_eq!(records.len(), 1, "action_type={action_type_name}");
@@ -181,16 +183,18 @@ fn offline_adapter_outcome_is_deterministic() {
     let a = lifecycle.run(
         0,
         &batch_with_single(intent.clone()),
+        DecisionRoute::RuleBased,
+        None,
         &permissive_capability(),
         &empty_context(),
-        DecisionRoute::RuleBased,
     );
     let b = lifecycle.run(
         0,
         &batch_with_single(intent),
+        DecisionRoute::RuleBased,
+        None,
         &permissive_capability(),
         &empty_context(),
-        DecisionRoute::RuleBased,
     );
 
     assert_eq!(a[0].outcome, b[0].outcome);

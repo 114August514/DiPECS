@@ -10,7 +10,9 @@ use aios_spec::governance::{
     ActionCoord, ActionOutcomeSummary, ActionProposal, ActionState, AuditRecord, EffectClass,
     PolicyActionDecision, PolicyVerdict,
 };
-use aios_spec::intent::{ActionType, CapabilityLevel, DecisionRoute, DenialReason, IntentBatch, RiskLevel};
+use aios_spec::intent::{
+    ActionType, CapabilityLevel, DecisionRoute, DenialReason, IntentBatch, RiskLevel,
+};
 use aios_spec::StructuredContext;
 use thiserror::Error;
 use tracing::debug;
@@ -54,9 +56,10 @@ impl<'a> ActionLifecycle<'a> {
         &self,
         window_ordinal: u32,
         batch: &IntentBatch,
+        route: DecisionRoute,
+        backend_error: Option<String>,
         capability: &CapabilityLevel,
         ctx: &StructuredContext,
-        route: DecisionRoute,
     ) -> Vec<AuditRecord> {
         let policy_decisions = self
             .policy
@@ -92,6 +95,7 @@ impl<'a> ActionLifecycle<'a> {
                 if let Some(err) = validate_schema(&proposal, &intent.risk_level) {
                     record.transition(ActionState::RejectedInvalidSchema);
                     record.error = Some(err.to_string());
+                    record.backend_error = backend_error.clone();
                     records.push(record);
                     continue;
                 }
@@ -114,10 +118,12 @@ impl<'a> ActionLifecycle<'a> {
                                     record.transition(ActionState::Succeeded);
                                     record.outcome =
                                         Some(ActionOutcomeSummary::from_outcome(&outcome));
+                                    record.backend_error = backend_error.clone();
                                 },
                                 Err(err) => {
                                     record.transition(ActionState::Failed);
                                     record.error = Some(err.to_string());
+                                    record.backend_error = backend_error.clone();
                                 },
                             }
                         },
@@ -126,12 +132,14 @@ impl<'a> ActionLifecycle<'a> {
                             let terminal = denial_to_terminal(reason);
                             record.transition(terminal);
                             record.denial_reason = Some(reason);
+                            record.backend_error = backend_error.clone();
                         },
                     },
                     Err(err) => {
                         debug!(error = %err, "lifecycle internal error");
                         record.transition(ActionState::Failed);
                         record.error = Some(err.to_string());
+                        record.backend_error = backend_error.clone();
                     },
                 }
 

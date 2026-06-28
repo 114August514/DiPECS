@@ -183,27 +183,44 @@ impl DecisionRouter {
         let (route, reason) = self.determine_route(context);
         let reason_tag = reason.tag();
 
-        let mut result = match route {
-            DecisionRoute::RuleBased => self.rule_based.evaluate(context),
+        let (mut result, backend_failed) = match route {
+            DecisionRoute::RuleBased => {
+                let result = self.rule_based.evaluate(context);
+                let backend_failed = result.error.is_some();
+                (result, backend_failed)
+            },
             DecisionRoute::CloudLlm => match &self.cloud_llm {
                 Some(backend) => {
                     let cloud_result = backend.evaluate(context);
-                    if let Some(error) = cloud_result.error.clone() {
+                    if let Some(error) = cloud_result.error.as_deref() {
                         let mut fallback = self.rule_based.evaluate(context);
                         fallback.error = Some(format!("cloud llm backend failed: {error}"));
                         fallback
                             .rationale_tags
                             .push("backend:cloud_llm_error(rule_based_fallback)".to_string());
-                        fallback
+                        (fallback, true)
                     } else {
-                        cloud_result
+                        (cloud_result, false)
                     }
                 },
-                None => self.rule_based.evaluate(context),
+                None => {
+                    let result = self.rule_based.evaluate(context);
+                    let backend_failed = result.error.is_some();
+                    (result, backend_failed)
+                },
             },
-            DecisionRoute::FallbackNoOp => self.fallback.evaluate(context),
+            DecisionRoute::FallbackNoOp => {
+                let result = self.fallback.evaluate(context);
+                // FallbackNoOp may preserve an audit error while successfully
+                // generating the safe NoOp used to probe recovery.
+                (result, false)
+            },
             // Future routes (LocalEvaluator) fall back to RuleBased
-            _ => self.rule_based.evaluate(context),
+            _ => {
+                let result = self.rule_based.evaluate(context);
+                let backend_failed = result.error.is_some();
+                (result, backend_failed)
+            },
         };
 
         // Inject routing reason tag
@@ -213,7 +230,7 @@ impl DecisionRouter {
 
         // Update circuit breaker state
         let mut state = self.circuit_state.borrow_mut();
-        if result.error.is_some() {
+        if backend_failed {
             state.record_error();
         } else {
             state.record_success();
@@ -467,9 +484,7 @@ mod tests {
                 error: "rule-based failure".into(),
             }),
             None,
-            Box::new(OkBackend {
-                route: DecisionRoute::FallbackNoOp,
-            }),
+            Box::new(FallbackNoOpBackend),
         );
         let ctx = empty_context();
 
@@ -481,8 +496,13 @@ mod tests {
             matches!(r_open.route, DecisionRoute::FallbackNoOp),
             "breaker should be open"
         );
+        assert!(
+            r_open.error.is_some(),
+            "real fallback should preserve an audit error while succeeding safely"
+        );
 
-        // The fallback backend succeeds this time, clearing the error window.
+        // A generated NoOp is a successful safe fallback, even though it preserves
+        // an audit error for downstream visibility.
         let r_reset = router.evaluate(&ctx);
         assert!(
             !matches!(r_reset.route, DecisionRoute::FallbackNoOp),

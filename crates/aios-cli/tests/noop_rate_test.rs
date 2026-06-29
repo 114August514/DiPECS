@@ -96,11 +96,13 @@ const EXPECTED: &[Case] = &[
         label: "gap:battery_ok",
         expect_noop: true,
     },
-    // Latent dead rule: ActivityLaunch is detected but the air-gap nulls
-    // `source_package`, so `launched_apps` is always empty and the branch
-    // can never fire. See `rule_based.rs` + `sanitize_binder`.
+    // ActivityLaunch carries no actionable target under RuleBased: the air-gap
+    // nulls `source_package` (only a uid survives) and PreWarmProcess is outside
+    // the RuleBased capability. The dead rule was removed (Fix 2), so a
+    // binder/activity event now legitimately produces no intent. Closing this
+    // gap needs collector-side uid→package resolution (tracked separately).
     Case {
-        label: "gap:activity_launch_dead_rule",
+        label: "gap:activity_launch_no_target",
         expect_noop: true,
     },
 ];

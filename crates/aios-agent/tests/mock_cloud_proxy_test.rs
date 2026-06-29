@@ -186,8 +186,16 @@ fn test_file_mention_triggers_open_app() {
 
 // ===== ActivityLaunch 检测 =====
 
+// ActivityLaunch is intentionally NOT actioned under the RuleBased route (the
+// rule was removed in Fix 2). Two reasons compound: the privacy air-gap nulls
+// `source_package` for binder transactions, so the launch target is unknowable
+// without collector-side uid→package resolution; and PreWarmProcess — its one
+// useful action — is outside the RuleBased capability. Even a synthetically
+// populated `source_package` (which never occurs after the air-gap) must
+// therefore yield no SwitchToApp / `app_launch_detected` intent. If this
+// fails, a dead, capability-denied rule was reintroduced.
 #[test]
-fn test_activity_launch_triggers_switch_to_app() {
+fn test_activity_launch_not_actioned_under_rule_based() {
     let mut summary = make_summary();
     summary.foreground_apps = vec!["com.android.chrome".into()];
     let events = vec![SanitizedEvent {
@@ -206,21 +214,19 @@ fn test_activity_launch_triggers_switch_to_app() {
 
     let result = DecisionRouter::default().evaluate(&ctx);
     let batch = result.intent_batch;
-    let switch = batch
-        .intents
-        .iter()
-        .find(|i| matches!(i.intent_type, IntentType::SwitchToApp(_)))
-        .expect("should have SwitchToApp intent");
-    assert!(switch.confidence >= 0.80);
-    assert_eq!(switch.suggested_actions.len(), 2);
-    assert!(switch
-        .suggested_actions
-        .iter()
-        .any(|a| matches!(a.action_type, ActionType::PreWarmProcess)));
-    assert!(switch
-        .suggested_actions
-        .iter()
-        .any(|a| matches!(a.action_type, ActionType::KeepAlive)));
+    assert!(
+        !batch.intents.iter().any(|i| i
+            .rationale_tags
+            .contains(&"app_launch_detected".to_string())),
+        "ActivityLaunch must not be actioned under RuleBased"
+    );
+    assert!(
+        !batch
+            .intents
+            .iter()
+            .any(|i| matches!(i.intent_type, IntentType::SwitchToApp(_))),
+        "no SwitchToApp intent should come from an ActivityLaunch under RuleBased"
+    );
 }
 
 #[test]
@@ -445,8 +451,8 @@ fn test_combined_signals_all_detected() {
         "should detect file mention"
     );
     assert!(
-        tags.contains(&"app_launch_detected"),
-        "should detect activity launch"
+        !tags.contains(&"app_launch_detected"),
+        "ActivityLaunch is no longer actioned under RuleBased (rule removed in Fix 2)"
     );
     assert!(tags.contains(&"screen_on"), "should detect screen on");
     assert!(tags.contains(&"low_battery"), "should detect low battery");

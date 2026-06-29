@@ -31,8 +31,6 @@ impl RuleBasedBackend {
         let summary = &context.summary;
 
         let mut has_file_mention = false;
-        let mut has_activity_launch = false;
-        let mut launched_apps: Vec<String> = Vec::new();
         let mut observed_foreground_apps: Vec<String> = Vec::new();
         let mut has_screen_on = false;
         let mut is_low_battery = false;
@@ -47,20 +45,6 @@ impl RuleBasedBackend {
                     if semantic_hints.contains(&SemanticHint::FileMention) =>
                 {
                     has_file_mention = true;
-                },
-                SanitizedEventType::InterAppInteraction {
-                    interaction_type,
-                    source_package,
-                    ..
-                } => {
-                    if matches!(interaction_type, aios_spec::InteractionType::ActivityLaunch) {
-                        has_activity_launch = true;
-                        if let Some(pkg) = source_package {
-                            if !launched_apps.contains(pkg) {
-                                launched_apps.push(pkg.clone());
-                            }
-                        }
-                    }
                 },
                 SanitizedEventType::AppTransition {
                     package_name,
@@ -96,12 +80,23 @@ impl RuleBasedBackend {
                         memory_pressure = Some((*vm_rss_mb, package_name.clone()));
                     }
                 },
-                // FileActivity is intentionally not actioned here. Its only
-                // useful action is PrefetchFile, which the RuleBased capability
-                // forbids — speculative file IO belongs to the richer
-                // LocalEvaluator / CloudLlm tier (which do allow PrefetchFile).
-                // Emitting it here would only produce perpetual capability
-                // denials in the audit log.
+                // InterAppInteraction / ActivityLaunch is intentionally not
+                // actioned here (the rule was removed in Fix 2). Two reasons
+                // compound: the privacy air-gap nulls `source_package` for
+                // binder transactions — only a uid survives — so the launch
+                // target is unknowable without collector-side uid→package
+                // resolution; and PreWarmProcess, its one useful action, is
+                // outside the RuleBased capability. The branch could therefore
+                // never fire in replay or production, and would only ever yield
+                // capability denials. Closing this gap is collector-side work
+                // (uid→package), tracked separately.
+                //
+                // FileActivity is likewise not actioned: its only useful action
+                // is PrefetchFile, which the RuleBased capability forbids —
+                // speculative file IO belongs to the richer LocalEvaluator /
+                // CloudLlm tier (which do allow PrefetchFile). Emitting it here
+                // would only produce perpetual capability denials in the audit
+                // log.
                 _ => {},
             }
         }
@@ -149,29 +144,6 @@ impl RuleBasedBackend {
                     rationale_tags: vec!["notification_engagement".into()],
                 });
             }
-        }
-
-        if has_activity_launch && !launched_apps.is_empty() {
-            let target = launched_apps[0].clone();
-            intents.push(Intent {
-                intent_id: new_id(),
-                intent_type: IntentType::SwitchToApp(target.clone()),
-                confidence: 0.85,
-                risk_level: RiskLevel::Low,
-                suggested_actions: vec![
-                    SuggestedAction {
-                        action_type: ActionType::PreWarmProcess,
-                        target: Some(target.clone()),
-                        urgency: ActionUrgency::Immediate,
-                    },
-                    SuggestedAction {
-                        action_type: ActionType::KeepAlive,
-                        target: Some(target),
-                        urgency: ActionUrgency::Immediate,
-                    },
-                ],
-                rationale_tags: vec!["app_launch_detected".into()],
-            });
         }
 
         if let Some(target) = observed_foreground_apps.first().cloned() {

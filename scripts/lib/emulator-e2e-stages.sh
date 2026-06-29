@@ -87,3 +87,22 @@ stage4_grant_and_start() {
   sleep 3
   log "权限已授,采集服务已启动"
 }
+
+stage5_generate_events() {
+  banner "阶段 5:制造事件(mode=$MODE)"
+  if [ "$MODE" = "manual" ]; then
+    printf '\n>>> 环境已就绪。请在模拟器里操作:打开几个应用、触发几条通知。\n'
+    printf '>>> 完成后按回车继续……\n'
+    read -r _
+  else
+    # auto:切应用(AppTransition)+ 发通知(可能采不到,后续判定)
+    adb shell am start -n com.android.settings/.Settings >>"$RUN_LOG" 2>&1 || true
+    sleep 2
+    adb shell am start -a android.intent.action.VIEW -d "https://example.com" >>"$RUN_LOG" 2>&1 || true
+    sleep 2
+    adb shell cmd notification post -S bigtext -t 'e2e-test' tag-e2e 'hello from e2e' >>"$RUN_LOG" 2>&1 || true
+    sleep 3
+  fi
+  log "事件制造完成,等待 app 写盘"
+  sleep 3
+}

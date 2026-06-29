@@ -29,3 +29,5 @@ stage3_build_install
 stage4_grant_and_start
 stage5_generate_events
 stage6_pull_and_replay
+write_validation_record
+banner "完成 数据源=$DATA_SOURCE 审计哈希=${AUDIT_HASH:-未捕获}"

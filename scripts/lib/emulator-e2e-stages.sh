@@ -36,3 +36,36 @@ stage1_provision_sdk() {
     log "AVD $AVD_NAME 已存在,复用"
   fi
 }
+
+stage2_boot_emulator() {
+  banner "阶段 2:起模拟器"
+  if adb devices | grep -q "emulator-.*device"; then
+    log "已有模拟器在线,复用"; return 0
+  fi
+  log "后台启动模拟器 $AVD_NAME ..."
+  "$ANDROID_HOME/emulator/emulator" -avd "$AVD_NAME" \
+    -no-window -no-audio -no-snapshot -gpu swiftshader_indirect \
+    >>"$RUN_LOG" 2>&1 &
+  adb wait-for-device
+  local t=0
+  until [ "$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')" = "1" ]; do
+    sleep 2; t=$((t+2)); [ "$t" -ge 180 ] && die "模拟器启动超时(180s)"
+  done
+  log "模拟器开机完成(${t}s)"
+}
+
+APK="apps/android-collector/app/build/outputs/apk/debug/app-debug.apk"
+
+stage3_build_install() {
+  banner "阶段 3:编译 + 安装"
+  if [ ! -f "$APK" ]; then
+    log "编译 debug APK ..."
+    (cd apps/android-collector && ./gradlew :app:assembleDebug) >>"$RUN_LOG" 2>&1 \
+      || die "APK 编译失败"
+  else
+    log "APK 已存在,复用(如需重编译删除 $APK)"
+  fi
+  log "安装 APK ..."
+  adb install -r -g "$APK" >>"$RUN_LOG" 2>&1 || die "APK 安装失败"
+  log "已安装 $PKG"
+}

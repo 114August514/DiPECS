@@ -24,3 +24,5 @@ log "emulator-e2e 启动 mode=$MODE ts=$TS"
 
 stage0_preflight
 stage1_provision_sdk
+stage2_boot_emulator
+stage3_build_install

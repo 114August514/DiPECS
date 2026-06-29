@@ -21,3 +21,6 @@ PKG="com.dipecs.collector"
 
 source "$REPO_ROOT/scripts/lib/emulator-e2e-stages.sh"
 log "emulator-e2e 启动 mode=$MODE ts=$TS"
+
+stage0_preflight
+stage1_provision_sdk

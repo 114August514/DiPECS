@@ -15,6 +15,15 @@ use crate::{new_id, DecisionBackend};
 
 pub struct RuleBasedBackend;
 
+/// A single process holding at least this much resident memory (MB) is a heavy
+/// footprint whose non-critical caches are worth trimming. Tunable heuristic —
+/// validate against real ProcReader traces (Tier B) before treating it as
+/// load-bearing.
+const MEMORY_PRESSURE_RSS_MB: u32 = 1024;
+/// A process with at least this much swapped-out memory (MB) signals the system
+/// has been under real memory pressure (zram eviction), independent of its RSS.
+const MEMORY_PRESSURE_SWAP_MB: u32 = 128;
+
 impl RuleBasedBackend {
     /// Generate intents by scanning context events for known signal patterns.
     fn generate_intents(&self, context: &StructuredContext) -> Vec<Intent> {
@@ -27,6 +36,9 @@ impl RuleBasedBackend {
         let mut observed_foreground_apps: Vec<String> = Vec::new();
         let mut has_screen_on = false;
         let mut is_low_battery = false;
+        // The most memory-heavy process seen this window that crosses the
+        // pressure threshold: (rss_mb, package). We keep the worst offender.
+        let mut memory_pressure: Option<(u32, Option<String>)> = None;
         let notified_apps: Vec<String> = summary.notified_apps.clone();
 
         for event in &context.events {
@@ -67,6 +79,22 @@ impl RuleBasedBackend {
                     ..
                 } if *pct < 20 => {
                     is_low_battery = true;
+                },
+                SanitizedEventType::ProcessResource {
+                    package_name,
+                    vm_rss_mb,
+                    vm_swap_mb,
+                    ..
+                } if *vm_rss_mb >= MEMORY_PRESSURE_RSS_MB
+                    || *vm_swap_mb >= MEMORY_PRESSURE_SWAP_MB =>
+                {
+                    // Keep the heaviest-RSS offender so we trim the worst one.
+                    let is_worse = memory_pressure
+                        .as_ref()
+                        .is_none_or(|(rss, _)| *vm_rss_mb > *rss);
+                    if is_worse {
+                        memory_pressure = Some((*vm_rss_mb, package_name.clone()));
+                    }
                 },
                 // FileActivity is intentionally not actioned here. Its only
                 // useful action is PrefetchFile, which the RuleBased capability
@@ -192,6 +220,26 @@ impl RuleBasedBackend {
                     urgency: ActionUrgency::Immediate,
                 }],
                 rationale_tags: vec!["low_battery".into()],
+            });
+        }
+
+        // Memory pressure: a heavy / swapped process is trimmed by releasing its
+        // non-critical memory. ReleaseMemory is within the RuleBased capability;
+        // the target (the offending package) was observed this window, so it
+        // passes the policy in-context check. A `None` target means a
+        // system-wide trim when the process package is unknown.
+        if let Some((_, target)) = memory_pressure {
+            intents.push(Intent {
+                intent_id: new_id(),
+                intent_type: IntentType::Idle,
+                confidence: 0.65,
+                risk_level: RiskLevel::Low,
+                suggested_actions: vec![SuggestedAction {
+                    action_type: ActionType::ReleaseMemory,
+                    target,
+                    urgency: ActionUrgency::Immediate,
+                }],
+                rationale_tags: vec!["memory_pressure".into()],
             });
         }
 

@@ -78,8 +78,8 @@ const EXPECTED: &[Case] = &[
         expect_noop: false,
     },
     Case {
-        label: "gap:proc_state_memory_pressure",
-        expect_noop: true,
+        label: "ok:proc_state_release_memory",
+        expect_noop: false,
     },
     // Fix 1 keeps the app warm on any notification interaction. This is
     // imperfect: the air-gap drops the tap/dismiss action, so a dismiss is

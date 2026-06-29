@@ -81,6 +81,24 @@ fn make_screen_event(state: ScreenState) -> SanitizedEvent {
     }
 }
 
+fn make_process_resource(pkg: &str, vm_rss_mb: u32, vm_swap_mb: u32) -> SanitizedEvent {
+    SanitizedEvent {
+        event_id: "evt-proc".into(),
+        timestamp_ms: 5000,
+        event_type: SanitizedEventType::ProcessResource {
+            pid: 4321,
+            package_name: Some(pkg.into()),
+            vm_rss_mb,
+            vm_swap_mb,
+            thread_count: 32,
+            oom_score: 100,
+        },
+        source_tier: SourceTier::Daemon,
+        app_package: Some(pkg.into()),
+        uid: Some(10200),
+    }
+}
+
 fn make_system_status(battery_pct: Option<u8>) -> SanitizedEvent {
     SanitizedEvent {
         event_id: "evt-sys".into(),
@@ -338,6 +356,51 @@ fn test_normal_battery_no_release() {
     assert!(
         !has_release,
         "should not trigger ReleaseMemory at 85% battery"
+    );
+}
+
+// ===== 内存压力检测 =====
+
+#[test]
+fn test_memory_pressure_triggers_release_memory() {
+    // A heavy + swapped process is trimmed via ReleaseMemory targeting it.
+    let events = vec![make_process_resource("com.android.chrome", 1280, 192)];
+    let ctx = make_context(events, make_summary());
+
+    let result = DecisionRouter::default().evaluate(&ctx);
+    let batch = result.intent_batch;
+    let mem = batch
+        .intents
+        .iter()
+        .find(|i| i.rationale_tags.contains(&"memory_pressure".to_string()))
+        .expect("should have memory_pressure intent");
+    assert_eq!(mem.confidence, 0.65);
+    assert_eq!(mem.suggested_actions.len(), 1);
+    assert!(matches!(
+        mem.suggested_actions[0].action_type,
+        ActionType::ReleaseMemory
+    ));
+    assert_eq!(
+        mem.suggested_actions[0].target.as_deref(),
+        Some("com.android.chrome"),
+        "ReleaseMemory should target the offending package"
+    );
+}
+
+#[test]
+fn test_normal_memory_no_release() {
+    // A modest process below both thresholds must not trigger a trim.
+    let events = vec![make_process_resource("com.example.app", 256, 0)];
+    let ctx = make_context(events, make_summary());
+
+    let result = DecisionRouter::default().evaluate(&ctx);
+    let batch = result.intent_batch;
+    assert!(
+        !batch
+            .intents
+            .iter()
+            .any(|i| i.rationale_tags.contains(&"memory_pressure".to_string())),
+        "a modest memory footprint must not trigger ReleaseMemory"
     );
 }
 

@@ -28,3 +28,4 @@ stage2_boot_emulator
 stage3_build_install
 stage4_grant_and_start
 stage5_generate_events
+stage6_pull_and_replay

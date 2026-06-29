@@ -106,3 +106,37 @@ stage5_generate_events() {
   log "事件制造完成,等待 app 写盘"
   sleep 3
 }
+
+SAMPLE="data/traces/android_real_device_sample.redacted.jsonl"
+
+stage6_pull_and_replay() {
+  banner "阶段 6:取数据 + 回放"
+  local trace="data/traces/emulator-e2e-$TS.jsonl"
+  # run-as 拉已脱敏 trace(debug build 可 run-as)
+  adb shell run-as "$PKG" cat files/traces/actions.jsonl > "$trace" 2>>"$RUN_LOG" || true
+  local raw_rows=0
+  [ -s "$trace" ] && raw_rows="$(grep -c '"rawEvent"' "$trace" 2>/dev/null || echo 0)"
+  log "采集到 rawEvent 行数: $raw_rows"
+
+  if [ "$raw_rows" -gt 0 ]; then
+    DATA_SOURCE="REAL"
+    RAW_ROWS="$raw_rows"
+  else
+    banner "[FALLBACK] 本次未从模拟器真实采集,改用预置样本"
+    cp "$SAMPLE" "data/traces/emulator-e2e-$TS.FALLBACK.jsonl"
+    trace="data/traces/emulator-e2e-$TS.FALLBACK.jsonl"
+    DATA_SOURCE="FALLBACK"
+    RAW_ROWS=0
+  fi
+  TRACE_FILE="$trace"
+
+  local ndjson="data/evaluation/emulator-e2e-$TS.ndjson"
+  local auditlog="data/evaluation/emulator-e2e-$TS.audit"
+  log "运行 aios-cli replay ..."
+  cargo run -q -p aios-cli -- replay "$trace" --output "$ndjson" --audit "$auditlog" \
+    >>"$RUN_LOG" 2>&1 || die "replay 失败(replay 是装备类,失败即停)"
+  # 完整 audit_hash 只稳定出现在 NDJSON summary 里(stderr 日志带 ANSI 转义会割裂 sha256: 前缀);
+  # 保留 sha256: 前缀,与 golden test 钉死的格式一致。
+  AUDIT_HASH="$(grep -oE 'sha256:[0-9a-f]{64}' "$ndjson" 2>/dev/null | tail -1)"
+  log "replay 完成 audit_hash=${AUDIT_HASH:-未捕获} 数据源=$DATA_SOURCE"
+}

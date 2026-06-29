@@ -26,3 +26,4 @@ stage0_preflight
 stage1_provision_sdk
 stage2_boot_emulator
 stage3_build_install
+stage4_grant_and_start

@@ -69,3 +69,21 @@ stage3_build_install() {
   adb install -r -g "$APK" >>"$RUN_LOG" 2>&1 || die "APK 安装失败"
   log "已安装 $PKG"
 }
+
+NOTIF_SVC="$PKG/.services.NotificationCollectorService"
+
+stage4_grant_and_start() {
+  banner "阶段 4:授权 + 启动采集"
+  # Usage Access(appops)
+  adb shell appops set "$PKG" GET_USAGE_STATS allow >>"$RUN_LOG" 2>&1 || die "授 Usage 失败"
+  # POST_NOTIFICATIONS(运行时权限,Android 13+)
+  adb shell pm grant "$PKG" android.permission.POST_NOTIFICATIONS >>"$RUN_LOG" 2>&1 || true
+  # NotificationListener:加进 enabled 列表
+  adb shell cmd notification allow_listener "$NOTIF_SVC" >>"$RUN_LOG" 2>&1 || \
+    log "[warn] allow_listener 失败,通知源可能采不到"
+  # 启动前台采集服务
+  adb shell am start-foreground-service -n "$PKG/.services.CollectorForegroundService" \
+    -a com.dipecs.collector.action.START >>"$RUN_LOG" 2>&1 || die "启动采集服务失败"
+  sleep 3
+  log "权限已授,采集服务已启动"
+}

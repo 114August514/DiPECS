@@ -27,7 +27,7 @@
 use std::collections::HashMap;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
-use aios_action::DefaultActionExecutor;
+use aios_action::{AndroidAdapter, AndroidBridgeConfig, DefaultActionExecutor};
 use aios_agent::DecisionRouter;
 use aios_collector::{
     android_jsonl::AndroidJsonlTailer,
@@ -40,6 +40,7 @@ use aios_core::action_bus::ActionBus;
 use aios_core::action_lifecycle::ActionLifecycle;
 use aios_core::collector_ingress::RustCollectorIngress;
 use aios_core::context_builder::WindowAggregator;
+use aios_core::governance::ActionAdapter;
 use aios_core::policy_engine::PolicyEngine;
 use aios_core::privacy_airgap::DefaultPrivacyAirGap;
 use aios_spec::traits::PrivacySanitizer;
@@ -230,8 +231,21 @@ pub async fn run() -> anyhow::Result<()> {
     let sanitizer = DefaultPrivacyAirGap;
     let router = DecisionRouter::default();
     let policy = PolicyEngine::default();
-    let executor = DefaultActionExecutor::new();
-    let lifecycle = ActionLifecycle::new(&policy, &executor);
+    // Adapter selection at startup (not per-action): if the Android bridge is
+    // configured via env, route through the on-device AndroidAdapter; otherwise
+    // use the deterministic desktop stub. This is the minimal AdapterRegistry.
+    let adapter: Box<dyn ActionAdapter> = match AndroidBridgeConfig::from_env() {
+        Some(config) => {
+            tracing::info!(
+                host = %config.host,
+                port = config.port,
+                "Android action bridge enabled; routing through AndroidAdapter"
+            );
+            Box::new(AndroidAdapter::new(config))
+        },
+        None => Box::new(DefaultActionExecutor::new()),
+    };
+    let lifecycle = ActionLifecycle::new(&policy, adapter.as_ref());
     let mut trace_recorder = match runtime_trace_output {
         Some(path) => Some(RuntimeTraceRecorder::new(&path).map_err(|error| {
             anyhow::anyhow!(

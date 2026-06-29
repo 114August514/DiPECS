@@ -5,6 +5,7 @@
 
 #![deny(unsafe_op_in_unsafe_fn)]
 
+pub mod bridge;
 pub mod context;
 pub mod event;
 pub mod governance;
@@ -12,6 +13,7 @@ pub mod intent;
 pub mod sanitized;
 pub mod trace;
 
+pub use bridge::*;
 pub use context::*;
 pub use event::*;
 pub use governance::*;

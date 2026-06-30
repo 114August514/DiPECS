@@ -45,6 +45,7 @@ aios-cli 复用 collector/core/agent/action 做离线 replay
 | `intent.rs` | `IntentBatch`、`Intent`、`SuggestedAction`、`CapabilityLevel`、`DenialReason`。 |
 | `governance.rs` | `ActionProposal`、`ActionState`、`AuditRecord`、`ActionOutcome`、`PolicyActionDecision`。 |
 | `trace.rs` | Golden trace / replay validation 数据结构。 |
+| `bridge.rs` | Android localhost bridge 线协议（BridgeExecuteRequest、BridgeAuth、BridgeStatus 等），零依赖。 |
 
 `aios-spec` 不应包含业务逻辑、平台 API 或运行时状态。
 
@@ -56,6 +57,7 @@ aios-cli 复用 collector/core/agent/action 做离线 replay
 | `proc_reader.rs` | 扫描 `/proc`，生成进程资源事件。 |
 | `system_collector.rs` | 系统状态快照。 |
 | `binder_probe.rs` | Binder/eBPF 预留接口；当前为 stub，不产生真实事件。 |
+| `fanotify_monitor.rs` | Fanotify 文件系统监控接口；接口存在，当前未接入 daemon loop。 |
 | `collection_stats.rs` | 按 raw event kind 统计窗口内采集数量。 |
 
 ## `aios-core`
@@ -68,6 +70,8 @@ aios-cli 复用 collector/core/agent/action 做离线 replay
 | `policy_engine.rs` | 逐 action 策略裁决，不构造 `AuthorizedAction`。 |
 | `action_lifecycle.rs` | 唯一授权状态机，生成 `AuthorizedAction` 和 `AuditRecord`。 |
 | `governance/mod.rs` | 私有字段 `AuthorizedAction` 和 `ActionAdapter` trait。 |
+| `context_memory.rs` | `ModelMemoryStore`、`ProfileSummarizer`、`FeedbackEngine` — 从脱敏窗口和审计记录构建隐私保护模型记忆。 |
+| `text_analysis.rs` | 文本和文件路径分析（ScriptHint、SemanticHint、ExtensionCategory），不保留原文。 |
 | `action_bus.rs` | raw event / intent mpsc 通道封装。 |
 | `trace_engine.rs` | Golden trace 验证。 |
 
@@ -77,6 +81,7 @@ aios-cli 复用 collector/core/agent/action 做离线 replay
 | --- | --- |
 | `router.rs` | `DecisionRouter`、routing reason、circuit breaker、privacy sensitivity fallback。 |
 | `backends/rule_based.rs` | 当前默认本地规则后端。 |
+| `backends/local_evaluator.rs` | 无云 LLM 时的中高复杂度 fallback 评估后端。 |
 | `backends/fallback.rs` | 熔断后的 `Idle + NoOp` 安全后端。 |
 | `backends/cloud_llm/*` | 可选云端 LLM 后端、provider config、HTTP client、模型输出翻译。 |
 | `backends/prefetch_target.rs` | cloud output 到 Android prefetch target 的保守映射。 |
@@ -85,7 +90,8 @@ aios-cli 复用 collector/core/agent/action 做离线 replay
 
 | 文件 | 职责 |
 | --- | --- |
-| `lib.rs` | `DefaultActionExecutor`，默认 stub，按 env 转发 Android-safe action。 |
+| `lib.rs` | `DefaultActionExecutor`，纯确定性 stub，不访问网络或环境变量。 |
+| `android_adapter.rs` | `AndroidAdapter`，经 localhost socket 转发 Android-safe action（HMAC、TCP 请求/响应协议）。 |
 | `offline_adapter.rs` | replay / golden 使用的 deterministic adapter。 |
 
 `DefaultActionExecutor` 只接收 `AuthorizedAction`。它不能自行 seal action。

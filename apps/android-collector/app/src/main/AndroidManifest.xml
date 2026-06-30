@@ -47,6 +47,10 @@
             </intent-filter>
         </activity>
 
+        <activity android:name=".DashboardActivity" android:exported="false" />
+        <activity android:name=".SourcesActivity" android:exported="false" />
+        <activity android:name=".ConsoleActivity" android:exported="false" />
+
         <!-- ── System-level: transparent Activity for Zygote process prewarm ──
              Theme.NoDisplay = invisible to the user. Launched with FLAG_ACTIVITY_NEW_TASK
              by SystemActionExecutors.prewarmProcess(). -->

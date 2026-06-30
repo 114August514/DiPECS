@@ -11,7 +11,7 @@ object CollectorPreferences {
     const val MODE_MOCK = "mock"
     const val MODE_LLM = "llm"
     const val DEFAULT_ACTION_SOCKET_PORT = 46321
-    const val DEBUG_ACTION_SOCKET_TOKEN = "dipecs-dev-token"
+    const val DEBUG_ACTION_SOCKET_TOKEN = "dipecs-dev-emulator-shared-token-00000000"
 
     private const val LEGACY_PREFS_NAME = "dipecs_collector"
     private const val SECURE_PREFS_NAME = "dipecs_collector_secure"

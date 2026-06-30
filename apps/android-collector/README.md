@@ -102,6 +102,19 @@ Rows with `rawEvent: null` are skipped. Rows with a valid Rust `RawEvent`
 shape are wrapped as `CollectorEnvelope` with `SourceTier::PublicApi` and sent
 through the normal daemon pipeline.
 
+## Emulator Automation
+
+For Android Studio emulator validation on Windows, use the repository script:
+
+```powershell
+.\scripts\start-android-emulator.ps1
+```
+
+The script checks the Android SDK, installs the API 35 Google APIs x86_64 image
+if needed, creates the `dipecs_emu` AVD, starts the emulator, waits for boot,
+installs the debug APK, configures `adb forward tcp:46321 tcp:46321`, starts the
+app, and pings the action socket. Use `-Headless` for CI-style runs or
+`-SkipHealthCheck` when Rust CLI tooling is not available on Windows.
 ## Authorized Action Socket
 
 The localhost action socket requires an `auth_token` field in every payload.
@@ -114,14 +127,14 @@ chicken-and-egg problem. On first launch, if no token has been stored yet, the
 app uses this fixed development token:
 
 ```bash
-dipecs-dev-token
+dipecs-dev-emulator-shared-token-00000000
 ```
 
 The repository `.env.example` uses the same value:
 
 ```bash
 DIPECS_ANDROID_ACTION_BRIDGE_ENABLED=true
-DIPECS_ANDROID_ACTION_BRIDGE_TOKEN=dipecs-dev-token
+DIPECS_ANDROID_ACTION_BRIDGE_TOKEN=dipecs-dev-emulator-shared-token-00000000
 ```
 
 You can override the debug token before the first app launch with adb:
@@ -141,7 +154,7 @@ The CLI command is a ping/health-check and does not dispatch an action:
 
 ```bash
 cargo run -p aios-cli -- send-authorized-action \
-  --auth-token dipecs-dev-token \
+  --auth-token dipecs-dev-emulator-shared-token-00000000 \
   --host 127.0.0.1 \
   --port 46321
 ```
@@ -150,7 +163,7 @@ When `aios-action` forwards approved actions directly, set:
 
 ```bash
 DIPECS_ANDROID_ACTION_BRIDGE_ENABLED=true
-DIPECS_ANDROID_ACTION_BRIDGE_TOKEN=dipecs-dev-token
+DIPECS_ANDROID_ACTION_BRIDGE_TOKEN=dipecs-dev-emulator-shared-token-00000000
 ```
 
 Dispatched action payloads must include all of the following:

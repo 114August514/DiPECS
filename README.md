@@ -155,16 +155,25 @@ This CLI command is a health-check ping. Real prefetch dispatch is produced by
 `aios-action` after `ActionLifecycle` seals an `AuthorizedAction`; the Android
 side rejects unsigned, stale, or malformed action payloads.
 
+For Android Studio emulator validation on Windows, the end-to-end setup is
+scripted:
+
+```powershell
+.\scripts\start-android-emulator.ps1
+```
+
+It creates/starts the `dipecs_emu` API 35 emulator, installs the debug APK,
+forwards `tcp:46321`, starts the app, and pings the action socket.
 Enable direct forwarding from `aios-action` to Android:
 
 ```bash
 DIPECS_ANDROID_ACTION_BRIDGE_ENABLED=true
 DIPECS_ANDROID_ACTION_BRIDGE_HOST=127.0.0.1
 DIPECS_ANDROID_ACTION_BRIDGE_PORT=46321
-DIPECS_ANDROID_ACTION_BRIDGE_TOKEN=dipecs-dev-token
+DIPECS_ANDROID_ACTION_BRIDGE_TOKEN=dipecs-dev-emulator-shared-token-00000000
 ```
 
-Android Studio debug builds use `dipecs-dev-token` on first launch unless an
+Android Studio debug builds use `dipecs-dev-emulator-shared-token-00000000` on first launch unless an
 adb property overrides it:
 
 ```bash

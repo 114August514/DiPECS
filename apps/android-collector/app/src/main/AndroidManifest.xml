@@ -1,18 +1,43 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
 
+    <!-- ── Normal-app permissions (always required) ── -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.PACKAGE_USAGE_STATS" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
+    <!-- ── System-tier permissions (platform or priv-app signing required) ──
+         These enable the system-level action implementations in
+         SystemActionExecutors.kt. When shipped as a normal app, these are
+         silently ignored by the platform. -->
+    <uses-permission android:name="android.permission.START_ACTIVITIES_FROM_BACKGROUND" />
+    <uses-permission android:name="android.permission.INTERACT_ACROSS_USERS" />
+    <uses-permission android:name="android.permission.INTERACT_ACROSS_USERS_FULL" />
+    <uses-permission android:name="android.permission.MANAGE_ACTIVITY_TASKS" />
+    <uses-permission android:name="android.permission.REAL_GET_TASKS" />
+    <uses-permission android:name="android.permission.DELETE_CACHE_FILES" />
+    <uses-permission android:name="android.permission.CLEAR_APP_CACHE" />
+    <uses-permission android:name="android.permission.SET_PROCESS_LIMIT" />
+    <uses-permission android:name="android.permission.WRITE_OOM_SCORE_ADJ" />
+    <uses-permission android:name="android.permission.SET_ACTIVITY_WATCHER" />
+
+    <!-- System-level: persist across reboots and boot before user unlock.
+         Ignored when installed as a normal app. -->
     <application
         android:allowBackup="false"
         android:label="@string/app_name"
         android:supportsRtl="true"
-        android:theme="@style/AppTheme">
+        android:theme="@style/AppTheme"
+        android:persistent="true"
+        android:directBootAware="true"
+        tools:ignore="DirectBootAwarePersistent">
+
+        <!-- ── Launcher Activity (debug) ── -->
         <activity
             android:name=".MainActivity"
             android:exported="true">
@@ -26,16 +51,31 @@
         <activity android:name=".SourcesActivity" android:exported="false" />
         <activity android:name=".ConsoleActivity" android:exported="false" />
 
+        <!-- ── System-level: transparent Activity for Zygote process prewarm ──
+             Theme.NoDisplay = invisible to the user. Launched with FLAG_ACTIVITY_NEW_TASK
+             by SystemActionExecutors.prewarmProcess(). -->
+        <activity
+            android:name=".actions.SystemPrewarmActivity"
+            android:theme="@android:style/Theme.NoDisplay"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:launchMode="singleInstance"
+            android:taskAffinity=""
+            android:process=":prewarm" />
+
+        <!-- ── Foreground collector service ── -->
         <service
             android:name=".services.CollectorForegroundService"
             android:exported="false"
             android:foregroundServiceType="dataSync" />
 
+        <!-- ── JobScheduler-based keep-alive (fallback when not system) ── -->
         <service
             android:name=".services.ActionMaintenanceJobService"
             android:exported="false"
             android:permission="android.permission.BIND_JOB_SERVICE" />
 
+        <!-- ── Notification listener ── -->
         <service
             android:name=".services.NotificationCollectorService"
             android:exported="true"
@@ -46,6 +86,7 @@
             </intent-filter>
         </service>
 
+        <!-- ── Accessibility listener ── -->
         <service
             android:name=".services.AccessibilityCollectorService"
             android:exported="true"
@@ -58,5 +99,14 @@
                 android:name="android.accessibilityservice"
                 android:resource="@xml/accessibility_service_config" />
         </service>
+
+        <!-- ── Boot-complete receiver: auto-start on system boot ── -->
+        <receiver
+            android:name=".services.BootReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+            </intent-filter>
+        </receiver>
     </application>
 </manifest>

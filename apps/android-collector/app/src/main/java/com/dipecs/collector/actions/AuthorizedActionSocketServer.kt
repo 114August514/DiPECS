@@ -312,30 +312,26 @@ class AuthorizedActionSocketServer(
             is BridgeExecuteProtocol.Verification.Accepted -> {
                 failedAuthCount.set(0)
                 rejectUntilMs.set(0)
-                val dispatchResult = runCatching {
-                    ActionExecutorBridge.dispatchAuthorizedActionJson(
-                        context,
-                        verified.authorizedAction,
-                        reason = "bridge_execute",
-                    )
+                val actionObj = verified.authorizedAction.optJSONObject("action")
+                val actionType = actionObj
+                    ?.optString("action_type")
+                    ?.takeIf { it.isNotBlank() }
+                    ?: "NoOp"
+                val target = actionObj?.let { obj ->
+                    if (obj.has("target") && !obj.isNull("target")) obj.optString("target") else null
                 }
-                val dispatched = dispatchResult.getOrDefault(false)
-                if (dispatched) {
-                    val actionType = verified.authorizedAction
-                        .optJSONObject("action")
-                        ?.optString("action_type")
-                        ?.takeIf { it.isNotBlank() }
-                        ?: "unknown"
+                val result = executeSystemAction(actionType, target, "bridge_execute")
+                if (result.success) {
                     sendBridgeResponse(
                         client,
                         BridgeExecuteProtocol.STATUS_OK,
-                        summary = "android_dispatched:$actionType",
+                        summary = result.summary,
                         startedAtNs = startedAtNs,
                     )
                     EventRepository.recordInternal(
                         context,
                         "authorized_action_socket_execute_ok",
-                        "Bridge execute request dispatched",
+                        "Bridge execute request dispatched: $actionType → ${result.summary}",
                         JSONObject()
                             .put("port", port)
                             .put("actionType", actionType),
@@ -344,15 +340,15 @@ class AuthorizedActionSocketServer(
                     sendBridgeResponse(
                         client,
                         BridgeExecuteProtocol.STATUS_ERROR,
-                        error = dispatchResult.exceptionOrNull()?.message
-                            ?: "authorized action was not dispatched",
+                        summary = result.summary,
+                        error = result.error,
                         startedAtNs = startedAtNs,
                     )
                     EventRepository.recordInternal(
                         context,
                         "authorized_action_socket_dispatch_failed",
-                        dispatchResult.exceptionOrNull()?.message
-                            ?: "Bridge execute request was authorized but not dispatched",
+                        result.error
+                            ?: "Bridge execute request not dispatched: $actionType",
                         JSONObject().put("port", port),
                     )
                 }
@@ -376,6 +372,15 @@ class AuthorizedActionSocketServer(
             }
         }
     }
+
+    // ── System action dispatch ─────────────────────
+
+    private fun executeSystemAction(
+        actionType: String,
+        target: String?,
+        reason: String,
+    ): SystemActionExecutors.ActionResult =
+        ActionExecutorBridge.dispatch(context, actionType, target, reason)
 
     private fun sendPong(client: Socket) {
         runCatching {

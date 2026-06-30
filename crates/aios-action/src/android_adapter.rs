@@ -366,7 +366,8 @@ mod tests {
             assert!(
                 matches!(classify(&action), Route::Forward(_)),
                 "{:?} with target {:?} must forward",
-                action.action_type, action.target,
+                action.action_type,
+                action.target,
             );
         }
     }

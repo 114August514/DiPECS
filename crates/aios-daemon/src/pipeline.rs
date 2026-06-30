@@ -1,16 +1,18 @@
-//! 上下文窗口处理管线。
+//! Context window processing pipeline.
 //!
-//! 单个窗口的处理流程: DecisionRouter → ActionLifecycle → AuditRecords。
-
+//! A closed window flows through DecisionRouter, ActionLifecycle, audit, and
+//! model memory feedback.
 use std::fs::{File, OpenOptions};
 use std::io::Write;
 use std::path::Path;
+use std::thread::{self, JoinHandle};
 
-use aios_agent::DecisionRouter;
+use aios_agent::{DecisionRouter, ProfileSummarizer};
 use aios_collector::collection_stats::RawEventStats;
 use aios_core::action_lifecycle::ActionLifecycle;
-use aios_spec::CapabilityLevel;
+use aios_core::context_memory::{ModelMemoryConfig, ModelMemoryStore};
 use aios_spec::IngestedRawEvent;
+use aios_spec::{CapabilityLevel, RecentDecisionRecord};
 use serde_json::json;
 
 /// Append-only NDJSON recorder for daemon window processing.
@@ -37,13 +39,16 @@ impl RuntimeTraceRecorder {
     }
 }
 
-/// 处理一个上下文窗口: decision router → action lifecycle → audit records
+/// Processes one closed context window and feeds the result back into memory.
 pub(crate) fn process_window(
     window_ordinal: u32,
     ctx: &aios_spec::StructuredContext,
     router: &DecisionRouter,
     lifecycle: &ActionLifecycle,
     raw_stats: &RawEventStats,
+    memory: &mut ModelMemoryStore,
+    memory_config: &ModelMemoryConfig,
+    mut profile_summary_worker: Option<&mut ProfileSummaryWorker>,
     trace_recorder: Option<&mut RuntimeTraceRecorder>,
 ) {
     tracing::info!(
@@ -55,7 +60,12 @@ pub(crate) fn process_window(
         "window closed, sending to agent"
     );
 
-    let decision_result = router.evaluate(ctx);
+    if let Some(worker) = profile_summary_worker.as_deref_mut() {
+        worker.poll(memory);
+    }
+
+    let model_input = memory.model_input(ctx);
+    let decision_result = router.evaluate_model_input(&model_input);
     tracing::info!(
         route = ?decision_result.route,
         model = %decision_result.intent_batch.model,
@@ -74,6 +84,12 @@ pub(crate) fn process_window(
         ctx,
     );
 
+    memory.observe_window(ctx, &decision_result, &audit_records);
+    if let Some(worker) = profile_summary_worker.as_deref_mut() {
+        worker.poll(memory);
+        worker.maybe_start(memory);
+    }
+    memory.persist_if_configured(memory_config);
     let executed = audit_records
         .iter()
         .filter(|r| matches!(r.terminal, aios_spec::governance::ActionState::Succeeded))
@@ -139,6 +155,7 @@ pub(crate) fn process_window(
             "raw_event_total": raw_stats.total(),
             "raw_event_stats": raw_stats.summary_fields(),
             "context_summary": ctx.summary,
+            "behavior_profile": memory.behavior_profile(),
             "decision": {
                 "route": format!("{:?}", decision_result.route),
                 "model": decision_result.intent_batch.model,
@@ -155,6 +172,100 @@ pub(crate) fn process_window(
     }
 }
 
+/// Non-blocking profile compression worker.
+///
+/// The decision path keeps using local counters and the last completed summary.
+/// When the configured interval is reached, this worker snapshots sanitized
+/// memory and asks the LLM to compress it on a background thread.
+pub(crate) struct ProfileSummaryWorker {
+    summarizer: Option<ProfileSummarizer>,
+    interval_windows: u32,
+    pending: Option<JoinHandle<ProfileSummaryJobResult>>,
+    last_started_window: u32,
+}
+
+struct ProfileSummaryJobResult {
+    observed_windows: u32,
+    recent: Vec<RecentDecisionRecord>,
+    result: Result<String, String>,
+}
+
+impl ProfileSummaryWorker {
+    pub(crate) fn new(summarizer: Option<ProfileSummarizer>, interval_windows: u32) -> Self {
+        Self {
+            summarizer,
+            interval_windows,
+            pending: None,
+            last_started_window: 0,
+        }
+    }
+
+    pub(crate) fn poll(&mut self, memory: &mut ModelMemoryStore) {
+        let Some(handle) = self.pending.take() else {
+            return;
+        };
+        if !handle.is_finished() {
+            self.pending = Some(handle);
+            return;
+        }
+
+        match handle.join() {
+            Ok(job) => match job.result {
+                Ok(summary) => {
+                    tracing::info!(
+                        observed_windows = job.observed_windows,
+                        recent_windows = job.recent.len(),
+                        "profile summary refreshed"
+                    );
+                    memory.set_llm_summary(summary);
+                },
+                Err(error) => {
+                    tracing::warn!(
+                        observed_windows = job.observed_windows,
+                        recent_windows = job.recent.len(),
+                        error = %error,
+                        "profile summary refresh failed"
+                    );
+                },
+            },
+            Err(_) => {
+                tracing::warn!("profile summary worker panicked");
+            },
+        }
+    }
+
+    pub(crate) fn maybe_start(&mut self, memory: &ModelMemoryStore) {
+        let Some(summarizer) = self.summarizer.clone() else {
+            return;
+        };
+        if self.pending.is_some() || self.interval_windows == 0 {
+            return;
+        }
+        let windows = memory.observation_windows();
+        if windows == 0
+            || windows % self.interval_windows != 0
+            || windows == self.last_started_window
+        {
+            return;
+        }
+
+        let profile = memory.behavior_profile();
+        let recent = memory.recent_feedback();
+        self.last_started_window = windows;
+        self.pending = Some(thread::spawn(move || {
+            let result = summarizer.summarize(&profile, &recent);
+            ProfileSummaryJobResult {
+                observed_windows: windows,
+                recent,
+                result,
+            }
+        }));
+        tracing::info!(
+            observed_windows = windows,
+            "profile summary refresh started"
+        );
+    }
+}
 // ============================================================
 // Processing event dispatch
 // ============================================================

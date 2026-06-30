@@ -1,11 +1,11 @@
-//! 验证 DecisionRouter 的意图生成与路由逻辑
+//! Validates DecisionRouter intent generation and routing behavior
 
-use aios_agent::{DecisionRouter, RouterConfig};
+use aios_agent::{DecisionBackend, DecisionRouter, LocalEvaluatorBackend, RouterConfig};
 use aios_core::action_lifecycle::ActionLifecycle;
 use aios_core::policy_engine::PolicyEngine;
 use aios_spec::*;
 
-/// 构建最小 StructuredContext 的辅助函数
+/// Builds a minimal StructuredContext for tests.
 fn make_context(events: Vec<SanitizedEvent>, summary: ContextSummary) -> StructuredContext {
     StructuredContext {
         window_id: "test-window-1".into(),
@@ -101,7 +101,7 @@ fn make_system_status(battery_pct: Option<u8>) -> SanitizedEvent {
     }
 }
 
-// ===== 空窗口测试 =====
+// ===== Empty window tests =====
 
 #[test]
 fn test_empty_window_returns_idle() {
@@ -139,7 +139,7 @@ fn test_default_decision_router_returns_backend_result() {
     );
 }
 
-// ===== FileMention 检测 =====
+// ===== FileMention detection =====
 
 #[test]
 fn test_file_mention_triggers_open_app() {
@@ -166,7 +166,7 @@ fn test_file_mention_triggers_open_app() {
     ));
 }
 
-// ===== ActivityLaunch 检测 =====
+// ===== ActivityLaunch detection =====
 
 #[test]
 fn test_activity_launch_triggers_switch_to_app() {
@@ -245,7 +245,7 @@ fn test_app_transition_foreground_triggers_switch_to_app() {
     );
 }
 
-// ===== FileActivity 处理 =====
+// ===== FileActivity handling =====
 
 #[test]
 fn test_file_activity_generates_handle_file() {
@@ -298,7 +298,42 @@ fn test_multiple_file_activities_generate_multiple_intents() {
     assert_eq!(handle_count, 3);
 }
 
-// ===== 屏幕亮起检测 =====
+#[test]
+fn test_local_evaluator_generates_prefetch_intent_without_cloud() {
+    let events = vec![make_file_activity(ExtensionCategory::Document)];
+    let ctx = make_context(events, make_summary());
+
+    let result = LocalEvaluatorBackend.evaluate(&ctx);
+    assert!(matches!(result.route, DecisionRoute::LocalEvaluator));
+    assert_eq!(result.intent_batch.model, "local-evaluator-v0.1");
+    assert!(result.error.is_none());
+
+    let handle = result
+        .intent_batch
+        .intents
+        .iter()
+        .find(|intent| {
+            matches!(
+                intent.intent_type,
+                IntentType::HandleFile(ExtensionCategory::Document)
+            )
+        })
+        .expect("local evaluator should produce a HandleFile intent");
+
+    assert!(handle.confidence >= 0.78);
+    assert!(handle
+        .rationale_tags
+        .iter()
+        .any(|tag| tag == "local:file_activity"));
+    assert!(handle.suggested_actions.iter().any(|action| {
+        matches!(action.action_type, ActionType::PrefetchFile)
+            && action
+                .target
+                .as_deref()
+                .is_some_and(|target| target.starts_with("url:"))
+    }));
+}
+// ===== Screen-on detection =====
 
 #[test]
 fn test_screen_on_triggers_keepalive() {
@@ -327,7 +362,7 @@ fn test_screen_on_triggers_keepalive() {
     );
 }
 
-// ===== 低电量检测 =====
+// ===== Low battery detection =====
 
 #[test]
 fn test_low_battery_triggers_release_memory() {
@@ -371,7 +406,7 @@ fn test_normal_battery_no_release() {
     );
 }
 
-// ===== 组合信号 =====
+// ===== Combined signals =====
 
 #[test]
 fn test_combined_signals_all_detected() {
@@ -425,7 +460,7 @@ fn test_combined_signals_all_detected() {
     assert_eq!(handle_count, 1, "only 1 file_activity event");
 }
 
-// ===== 路由行为测试 =====
+// ===== Routing behavior tests =====
 
 #[test]
 fn test_router_config_defaults() {
@@ -437,7 +472,7 @@ fn test_router_config_defaults() {
 
 #[test]
 fn test_router_privacy_sensitivity_downgrades_to_rule_based() {
-    // Context with VerificationCode hint → should trigger privacy downgrade
+    // Context with VerificationCode hint should trigger privacy downgrade
     let events = vec![
         make_notification_event("com.bank", vec![SemanticHint::VerificationCode]),
         make_notification_event("com.bank", vec![SemanticHint::FinancialContext]),
@@ -460,7 +495,6 @@ fn test_router_privacy_sensitivity_downgrades_to_rule_based() {
 
 #[test]
 fn test_fallback_noop_returns_single_idle_intent() {
-    use aios_agent::DecisionBackend;
     use aios_agent::FallbackNoOpBackend;
 
     let ctx = make_context(vec![], make_summary());
@@ -482,7 +516,6 @@ fn test_fallback_noop_returns_single_idle_intent() {
 
 #[test]
 fn test_fallback_noop_passes_policy_engine() {
-    use aios_agent::DecisionBackend;
     use aios_agent::FallbackNoOpBackend;
     use aios_core::policy_engine::PolicyEngine;
 
@@ -550,7 +583,7 @@ fn test_circuit_state_resets_on_success() {
     let router = DecisionRouter::new(config);
     let ctx = make_context(vec![], make_summary());
 
-    // First call succeeds → circuit state cleared
+    // First call succeeds, so circuit state is cleared
     let r1 = router.evaluate(&ctx);
     assert!(r1.error.is_none());
 
@@ -560,11 +593,10 @@ fn test_circuit_state_resets_on_success() {
     assert!(matches!(r2.route, DecisionRoute::RuleBased));
 }
 
-// ===== Fallback 审计可见性 =====
+// ===== Fallback audit visibility =====
 
 #[test]
 fn test_fallback_noop_audit_record_is_visible() {
-    use aios_agent::DecisionBackend;
     use aios_agent::FallbackNoOpBackend;
     use aios_spec::governance::ActionState;
 

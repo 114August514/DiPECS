@@ -21,11 +21,15 @@ Implemented:
   write Rust-compatible `rawEvent` JSONL rows; optional sources remain available
   for interface screening.
 - `aios-collector` parses Android append-only JSONL into `CollectorEnvelope`
-  with `SourceTier::PublicApi`.
+  with `SourceTier::PublicApi`, and exposes Binder/eBPF and fanotify monitor
+  interfaces that safely degrade when privileged deployment is absent.
 - `aios-core` performs `PrivacyAirGap` sanitization, window aggregation,
-  policy checks, golden trace replay, and privacy leak regression tests.
+  privacy-preserving model memory, policy checks, golden trace replay, and
+  privacy leak regression tests.
 - `aios-agent` provides `DecisionRouter`, `RuleBasedBackend`,
-  `CloudLlmBackend`, and `FallbackNoOpBackend`.
+  `LocalEvaluatorBackend`, `CloudLlmBackend`, and `FallbackNoOpBackend`; cloud
+  prompts receive `ModelInput` with the current context, behavior profile, and
+  recent decision feedback.
 - `CloudLlmBackend` supports DeepSeek, Qwen/DashScope, and generic
   OpenAI-compatible endpoints.
 - `aios-action` keeps local replay fallback behavior and can forward
@@ -39,10 +43,9 @@ Implemented:
 Still in progress:
 
 - True-device validation for the Android-safe action subset.
-- LocalEvaluator backend.
 - True device validation for the Android APK and action bridge.
-- System-level collection routes such as fanotify, Binder/eBPF, and system image
-  deployment.
+- True privileged deployment for system-level collection routes: fanotify fd
+  attachment, Binder/eBPF program loading, and system image integration.
 
 ## Architecture
 
@@ -166,6 +169,16 @@ Enable cloud LLM routing:
 ```bash
 cp .env.example .env
 # Set DIPECS_CLOUD_LLM_ENABLED=true and the provider API key.
+```
+
+Enable model memory persistence and optional LLM habit summaries:
+
+```bash
+DIPECS_MODEL_MEMORY_PATH=data/runtime/model_memory.json
+DIPECS_MODEL_MEMORY_RECENT_WINDOWS=5
+DIPECS_MODEL_MEMORY_TOP_K=8
+DIPECS_PROFILE_SUMMARY_ENABLED=true
+DIPECS_PROFILE_SUMMARY_INTERVAL_WINDOWS=10
 ```
 
 ## Android Production Sources

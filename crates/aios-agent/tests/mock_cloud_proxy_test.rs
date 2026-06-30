@@ -1,11 +1,11 @@
-//! Validates DecisionRouter intent generation and routing behavior
+//! 验证 DecisionRouter 的意图生成与路由逻辑
 
 use aios_agent::{DecisionBackend, DecisionRouter, LocalEvaluatorBackend, RouterConfig};
 use aios_core::action_lifecycle::ActionLifecycle;
 use aios_core::policy_engine::PolicyEngine;
 use aios_spec::*;
 
-/// Builds a minimal StructuredContext for tests.
+/// 构建最小 StructuredContext 的辅助函数
 fn make_context(events: Vec<SanitizedEvent>, summary: ContextSummary) -> StructuredContext {
     StructuredContext {
         window_id: "test-window-1".into(),
@@ -83,6 +83,24 @@ fn make_screen_event(state: ScreenState) -> SanitizedEvent {
     }
 }
 
+fn make_process_resource(pkg: &str, vm_rss_mb: u32, vm_swap_mb: u32) -> SanitizedEvent {
+    SanitizedEvent {
+        event_id: "evt-proc".into(),
+        timestamp_ms: 5000,
+        event_type: SanitizedEventType::ProcessResource {
+            pid: 4321,
+            package_name: Some(pkg.into()),
+            vm_rss_mb,
+            vm_swap_mb,
+            thread_count: 32,
+            oom_score: 100,
+        },
+        source_tier: SourceTier::Daemon,
+        app_package: Some(pkg.into()),
+        uid: Some(10200),
+    }
+}
+
 fn make_system_status(battery_pct: Option<u8>) -> SanitizedEvent {
     SanitizedEvent {
         event_id: "evt-sys".into(),
@@ -101,7 +119,7 @@ fn make_system_status(battery_pct: Option<u8>) -> SanitizedEvent {
     }
 }
 
-// ===== Empty window tests =====
+// ===== 空窗口测试 =====
 
 #[test]
 fn test_empty_window_returns_idle() {
@@ -109,7 +127,7 @@ fn test_empty_window_returns_idle() {
     let result = DecisionRouter::default().evaluate(&ctx);
     let batch = result.intent_batch;
 
-    assert_eq!(batch.model, "rule-based-v0.2");
+    assert_eq!(batch.model, "rule-based-v0.3");
     assert_eq!(batch.intents.len(), 1);
     let intent = &batch.intents[0];
     assert!(matches!(intent.intent_type, IntentType::Idle));
@@ -127,7 +145,7 @@ fn test_default_decision_router_returns_backend_result() {
 
     assert!(matches!(result.route, DecisionRoute::RuleBased));
     assert_eq!(result.intent_batch.window_id, ctx.window_id);
-    assert_eq!(result.intent_batch.model, "rule-based-v0.2");
+    assert_eq!(result.intent_batch.model, "rule-based-v0.3");
     assert!(result.error.is_none());
     // Routing reason tag should be present
     assert!(
@@ -139,7 +157,7 @@ fn test_default_decision_router_returns_backend_result() {
     );
 }
 
-// ===== FileMention detection =====
+// ===== FileMention 检测 =====
 
 #[test]
 fn test_file_mention_triggers_open_app() {
@@ -160,16 +178,26 @@ fn test_file_mention_triggers_open_app() {
         .expect("should have OpenApp intent");
     assert!(open_app.confidence >= 0.70);
     assert_eq!(open_app.suggested_actions.len(), 1);
+    // KeepAlive after capability reconciliation: PreWarmProcess is outside the
+    // RuleBased capability, so the file-bearing app is kept warm instead.
     assert!(matches!(
         open_app.suggested_actions[0].action_type,
-        ActionType::PreWarmProcess
+        ActionType::KeepAlive
     ));
 }
 
-// ===== ActivityLaunch detection =====
+// ===== ActivityLaunch 检测 =====
 
+// ActivityLaunch is intentionally NOT actioned under the RuleBased route (the
+// rule was removed in Fix 2). Two reasons compound: the privacy air-gap nulls
+// `source_package` for binder transactions, so the launch target is unknowable
+// without collector-side uid→package resolution; and PreWarmProcess — its one
+// useful action — is outside the RuleBased capability. Even a synthetically
+// populated `source_package` (which never occurs after the air-gap) must
+// therefore yield no SwitchToApp / `app_launch_detected` intent. If this
+// fails, a dead, capability-denied rule was reintroduced.
 #[test]
-fn test_activity_launch_triggers_switch_to_app() {
+fn test_activity_launch_not_actioned_under_rule_based() {
     let mut summary = make_summary();
     summary.foreground_apps = vec!["com.android.chrome".into()];
     let events = vec![SanitizedEvent {
@@ -188,29 +216,19 @@ fn test_activity_launch_triggers_switch_to_app() {
 
     let result = DecisionRouter::default().evaluate(&ctx);
     let batch = result.intent_batch;
-    let switch = batch
-        .intents
-        .iter()
-        .find(|i| matches!(i.intent_type, IntentType::SwitchToApp(_)))
-        .expect("should have SwitchToApp intent");
-    assert!(switch.confidence >= 0.80);
-    assert_eq!(switch.suggested_actions.len(), 2);
-    assert!(switch
-        .suggested_actions
-        .iter()
-        .any(|a| matches!(a.action_type, ActionType::PreWarmProcess)));
-    assert!(switch
-        .suggested_actions
-        .iter()
-        .any(|a| matches!(a.action_type, ActionType::KeepAlive)));
-    assert!(switch.suggested_actions.iter().any(|a| {
-        matches!(a.action_type, ActionType::PreWarmProcess)
-            && a.target.as_deref() == Some("pkg:com.android.chrome")
-    }));
-    assert!(switch.suggested_actions.iter().any(|a| {
-        matches!(a.action_type, ActionType::KeepAlive)
-            && a.target.as_deref() == Some("work:collector_heartbeat")
-    }));
+    assert!(
+        !batch.intents.iter().any(|i| i
+            .rationale_tags
+            .contains(&"app_launch_detected".to_string())),
+        "ActivityLaunch must not be actioned under RuleBased"
+    );
+    assert!(
+        !batch
+            .intents
+            .iter()
+            .any(|i| matches!(i.intent_type, IntentType::SwitchToApp(_))),
+        "no SwitchToApp intent should come from an ActivityLaunch under RuleBased"
+    );
 }
 
 #[test]
@@ -245,58 +263,46 @@ fn test_app_transition_foreground_triggers_switch_to_app() {
     );
 }
 
-// ===== FileActivity handling =====
+// ===== FileActivity 处理 =====
 
 #[test]
-fn test_file_activity_generates_handle_file() {
-    let events = vec![make_file_activity(ExtensionCategory::Document)];
-    let ctx = make_context(events, make_summary());
-
-    let result = DecisionRouter::default().evaluate(&ctx);
-    let batch = result.intent_batch;
-    let handle = batch
-        .intents
-        .iter()
-        .find(|i| {
-            matches!(
-                i.intent_type,
-                IntentType::HandleFile(ExtensionCategory::Document)
-            )
-        })
-        .expect("should have HandleFile intent");
-    assert_eq!(handle.confidence, 0.75);
-    assert_eq!(handle.suggested_actions.len(), 1);
-    assert!(matches!(
-        handle.suggested_actions[0].action_type,
-        ActionType::PrefetchFile
-    ));
-    assert!(
-        handle.suggested_actions[0]
-            .target
-            .as_deref()
-            .is_some_and(|target| target.starts_with("url:")),
-        "PrefetchFile should emit an Android bridge prefetch target"
-    );
-}
-
-#[test]
-fn test_multiple_file_activities_generate_multiple_intents() {
+fn test_file_activity_not_actioned_under_rule_based() {
+    // After capability reconciliation, FileActivity yields no HandleFile intent
+    // under RuleBased: its only action (PrefetchFile) is a Cloud/LocalEvaluator
+    // tier action the RuleBased capability forbids. A lone file access therefore
+    // falls through to the idle NoOp, and the rule engine emits no
+    // capability-denied action.
     let events = vec![
         make_file_activity(ExtensionCategory::Document),
         make_file_activity(ExtensionCategory::Image),
-        make_file_activity(ExtensionCategory::Video),
     ];
     let ctx = make_context(events, make_summary());
 
     let result = DecisionRouter::default().evaluate(&ctx);
     let batch = result.intent_batch;
-    let handle_count = batch
-        .intents
-        .iter()
-        .filter(|i| matches!(i.intent_type, IntentType::HandleFile(_)))
-        .count();
-    assert_eq!(handle_count, 3);
+
+    assert!(
+        !batch
+            .intents
+            .iter()
+            .any(|i| matches!(i.intent_type, IntentType::HandleFile(_))),
+        "FileActivity must not produce a HandleFile intent under RuleBased"
+    );
+    assert!(
+        batch.intents.iter().all(|i| {
+            i.suggested_actions.iter().all(|a| {
+                !matches!(
+                    a.action_type,
+                    ActionType::PrefetchFile | ActionType::PreWarmProcess
+                )
+            })
+        }),
+        "RuleBased must not emit capability-denied actions, got {:?}",
+        batch.intents
+    );
 }
+
+// ===== 屏幕亮起检测 =====
 
 #[test]
 fn test_local_evaluator_generates_prefetch_intent_without_cloud() {
@@ -333,7 +339,6 @@ fn test_local_evaluator_generates_prefetch_intent_without_cloud() {
                 .is_some_and(|target| target.starts_with("url:"))
     }));
 }
-// ===== Screen-on detection =====
 
 #[test]
 fn test_screen_on_triggers_keepalive() {
@@ -362,7 +367,7 @@ fn test_screen_on_triggers_keepalive() {
     );
 }
 
-// ===== Low battery detection =====
+// ===== 低电量检测 =====
 
 #[test]
 fn test_low_battery_triggers_release_memory() {
@@ -406,7 +411,52 @@ fn test_normal_battery_no_release() {
     );
 }
 
-// ===== Combined signals =====
+// ===== 内存压力检测 =====
+
+#[test]
+fn test_memory_pressure_triggers_release_memory() {
+    // A heavy + swapped process is trimmed via ReleaseMemory targeting it.
+    let events = vec![make_process_resource("com.android.chrome", 1280, 192)];
+    let ctx = make_context(events, make_summary());
+
+    let result = DecisionRouter::default().evaluate(&ctx);
+    let batch = result.intent_batch;
+    let mem = batch
+        .intents
+        .iter()
+        .find(|i| i.rationale_tags.contains(&"memory_pressure".to_string()))
+        .expect("should have memory_pressure intent");
+    assert_eq!(mem.confidence, 0.65);
+    assert_eq!(mem.suggested_actions.len(), 1);
+    assert!(matches!(
+        mem.suggested_actions[0].action_type,
+        ActionType::ReleaseMemory
+    ));
+    assert_eq!(
+        mem.suggested_actions[0].target.as_deref(),
+        Some("com.android.chrome"),
+        "ReleaseMemory should target the offending package"
+    );
+}
+
+#[test]
+fn test_normal_memory_no_release() {
+    // A modest process below both thresholds must not trigger a trim.
+    let events = vec![make_process_resource("com.example.app", 256, 0)];
+    let ctx = make_context(events, make_summary());
+
+    let result = DecisionRouter::default().evaluate(&ctx);
+    let batch = result.intent_batch;
+    assert!(
+        !batch
+            .intents
+            .iter()
+            .any(|i| i.rationale_tags.contains(&"memory_pressure".to_string())),
+        "a modest memory footprint must not trigger ReleaseMemory"
+    );
+}
+
+// ===== 组合信号 =====
 
 #[test]
 fn test_combined_signals_all_detected() {
@@ -447,8 +497,8 @@ fn test_combined_signals_all_detected() {
         "should detect file mention"
     );
     assert!(
-        tags.contains(&"app_launch_detected"),
-        "should detect activity launch"
+        !tags.contains(&"app_launch_detected"),
+        "ActivityLaunch is no longer actioned under RuleBased (rule removed in Fix 2)"
     );
     assert!(tags.contains(&"screen_on"), "should detect screen on");
     assert!(tags.contains(&"low_battery"), "should detect low battery");
@@ -457,10 +507,16 @@ fn test_combined_signals_all_detected() {
         .iter()
         .filter(|i| matches!(i.intent_type, IntentType::HandleFile(_)))
         .count();
-    assert_eq!(handle_count, 1, "only 1 file_activity event");
+    // FileActivity is no longer actioned under RuleBased (PrefetchFile moved to
+    // the Cloud/LocalEvaluator tier), so the Image file access yields no
+    // HandleFile intent even though the other four signals still fire.
+    assert_eq!(
+        handle_count, 0,
+        "FileActivity is not actioned under RuleBased"
+    );
 }
 
-// ===== Routing behavior tests =====
+// ===== 路由行为测试 =====
 
 #[test]
 fn test_router_config_defaults() {
@@ -472,7 +528,7 @@ fn test_router_config_defaults() {
 
 #[test]
 fn test_router_privacy_sensitivity_downgrades_to_rule_based() {
-    // Context with VerificationCode hint should trigger privacy downgrade
+    // Context with VerificationCode hint → should trigger privacy downgrade
     let events = vec![
         make_notification_event("com.bank", vec![SemanticHint::VerificationCode]),
         make_notification_event("com.bank", vec![SemanticHint::FinancialContext]),
@@ -495,6 +551,7 @@ fn test_router_privacy_sensitivity_downgrades_to_rule_based() {
 
 #[test]
 fn test_fallback_noop_returns_single_idle_intent() {
+    use aios_agent::DecisionBackend;
     use aios_agent::FallbackNoOpBackend;
 
     let ctx = make_context(vec![], make_summary());
@@ -516,6 +573,7 @@ fn test_fallback_noop_returns_single_idle_intent() {
 
 #[test]
 fn test_fallback_noop_passes_policy_engine() {
+    use aios_agent::DecisionBackend;
     use aios_agent::FallbackNoOpBackend;
     use aios_core::policy_engine::PolicyEngine;
 
@@ -583,7 +641,7 @@ fn test_circuit_state_resets_on_success() {
     let router = DecisionRouter::new(config);
     let ctx = make_context(vec![], make_summary());
 
-    // First call succeeds, so circuit state is cleared
+    // First call succeeds → circuit state cleared
     let r1 = router.evaluate(&ctx);
     assert!(r1.error.is_none());
 
@@ -593,10 +651,11 @@ fn test_circuit_state_resets_on_success() {
     assert!(matches!(r2.route, DecisionRoute::RuleBased));
 }
 
-// ===== Fallback audit visibility =====
+// ===== Fallback 审计可见性 =====
 
 #[test]
 fn test_fallback_noop_audit_record_is_visible() {
+    use aios_agent::DecisionBackend;
     use aios_agent::FallbackNoOpBackend;
     use aios_spec::governance::ActionState;
 

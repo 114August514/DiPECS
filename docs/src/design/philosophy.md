@@ -1,5 +1,9 @@
 # 设计哲学
 
+> Status: Partially current  
+> Last verified: 2026-06-30  
+> 本页描述架构原则。当前可运行实现以 [当前实现总览](../current/overview.md)、[动作治理](../current/action-governance.md) 和源码为准。
+
 ## OS = 对象 + API
 
 DiPECS 重新定义了操作系统的基本对象：

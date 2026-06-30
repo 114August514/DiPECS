@@ -37,7 +37,7 @@
   "source_tiers": ["PublicApi", "Daemon", "PublicApi"],
   "expected_sanitized": [
     {
-      "event_id": "4b94314e-6dc6-465d-93b1-2552df9204b5",
+      "event_id": "8b6922ca-f131-4bff-bd63-18f3a2cf4228",
       "timestamp_ms": 1000,
       "event_type": {
         "AppTransition": {
@@ -51,7 +51,7 @@
       "uid": null
     },
     {
-      "event_id": "a33d0045-c2d8-4c52-be45-e6875c543aa3",
+      "event_id": "019caf5b-3923-46c1-9603-baa9b1f3c457",
       "timestamp_ms": 2000,
       "event_type": {
         "FileActivity": {
@@ -66,7 +66,7 @@
       "uid": 10042
     },
     {
-      "event_id": "d8cb57f3-056a-4036-aac4-3b077952be85",
+      "event_id": "631e383e-22ec-48c2-9945-96db318ed381",
       "timestamp_ms": 3000,
       "event_type": {
         "SystemStatus": {
@@ -84,28 +84,10 @@
     }
   ],
   "expected_intents": {
-    "window_id": "8d0ad777-783a-4068-a688-a9eb06e70508",
+    "window_id": "e12aeb3c-cd6a-4ea2-98a4-91f5b414a818",
     "intents": [
       {
-        "intent_id": "ce766c97-b28a-49b0-bde4-6609697d1f70",
-        "intent_type": {
-          "HandleFile": "Image"
-        },
-        "confidence": 0.75,
-        "risk_level": "Low",
-        "suggested_actions": [
-          {
-            "action_type": "PrefetchFile",
-            "target": "url:https://httpbin.org/image/png",
-            "urgency": "IdleTime"
-          }
-        ],
-        "rationale_tags": [
-          "Image"
-        ]
-      },
-      {
-        "intent_id": "bc5687bb-1eaf-4160-98c6-168456e7cc63",
+        "intent_id": "399fc515-2697-4b18-a354-256a28baf75b",
         "intent_type": {
           "SwitchToApp": "com.android.chrome"
         },
@@ -113,13 +95,8 @@
         "risk_level": "Low",
         "suggested_actions": [
           {
-            "action_type": "PreWarmProcess",
-            "target": "pkg:com.android.chrome",
-            "urgency": "Immediate"
-          },
-          {
             "action_type": "KeepAlive",
-            "target": "work:collector_heartbeat",
+            "target": "com.android.chrome",
             "urgency": "Immediate"
           }
         ],
@@ -128,7 +105,7 @@
         ]
       },
       {
-        "intent_id": "81479804-baa1-456b-ac40-5712fa8eeed0",
+        "intent_id": "6b431190-a79d-4de3-9c49-cde9de6b4709",
         "intent_type": "Idle",
         "confidence": 0.8,
         "risk_level": "Low",
@@ -145,12 +122,12 @@
       }
     ],
     "generated_at_ms": 3000,
-    "model": "rule-based-v0.2"
+    "model": "rule-based-v0.3"
   },
   "expected_actions": [
     {
       "action_type": "KeepAlive",
-      "target": "work:collector_heartbeat",
+      "target": "com.android.chrome",
       "executed_at_ms": 3000,
       "success": true,
       "error_reason": null

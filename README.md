@@ -42,8 +42,8 @@ Implemented:
 
 Still in progress:
 
-- True-device validation for the Android-safe action subset.
-- True device validation for the Android APK and action bridge.
+- Emulator-first Android action bridge smoke coverage in CI.
+- LocalEvaluator backend hardening.
 - True privileged deployment for system-level collection routes: fanotify fd
   attachment, Binder/eBPF program loading, and system image integration.
 

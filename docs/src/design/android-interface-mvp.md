@@ -1,5 +1,9 @@
 # Android 接口最小可运行边界
 
+> Status: Partially current  
+> Last verified: 2026-06-30  
+> 当前生产入口已经收敛为 append-only JSONL；JNI / local socket ingress 只作为历史讨论或后续替换路线。
+
 ## Current Production Decision
 
 `apps/android-collector` is no longer treated only as a Phase-1 screening app.
@@ -33,7 +37,7 @@ ingress.
 ```text
 Android API / Kotlin service
     -> apps/android-collector (采集能力来源)
-    -> aios-collector (JSONL / JNI / local socket ingress)
+    -> aios-collector (append-only JSONL ingress)
     -> CollectorEnvelope / RawEvent
     -> aios-core (PrivacyAirGap -> WindowAggregator)
     -> StructuredContext
@@ -114,7 +118,7 @@ MVP 只应依赖 Tier 0 公开接口。`AccessibilityService` 可以作为增强
 }
 ```
 
-这些 JSON 使用 Rust `serde` 对枚举的默认外部标签格式。后续无论入口是 JNI、stdin 回放, 还是本地 socket, 都应该先保持这个格式, 避免 Android 层和 Rust 层各自定义一套 schema。
+这些 JSON 使用 Rust `serde` 对枚举的默认外部标签格式。当前生产入口是 JSONL tail；如果未来替换为 JNI 或 socket，也应保持这一 schema，避免 Android 层和 Rust 层各自定义一套格式。
 
 Android 回调到 Rust 事件的最小映射如下:
 

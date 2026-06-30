@@ -13,6 +13,9 @@ use std::path::PathBuf;
 
 use aios_cli::replay::{self, Stage};
 
+/// Pinned canonical-audit hash for `data/traces/sample_replay.jsonl` replayed
+/// through `Stage::Execute` with the default 10s window. See module docs.
+const GOLDEN_HASH: &str = "sha256:40203842a9785ee80f36113272ffb3eb762e48b636dbbb8cc02fd3836413916c";
 fn sample_trace_path() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../data/traces/sample_replay.jsonl")
 }
@@ -41,6 +44,13 @@ fn sample_trace_audit_hash_is_well_formed_and_reported() {
         "canonical replay hash must be a sha256 digest, got {}",
         outcome.audit_hash
     );
+    assert_eq!(
+        outcome.audit_hash,
+        GOLDEN_HASH,
+        "canonical replay hash drifted from the pinned golden. \
+         If this change is intentional, update GOLDEN_HASH in {}.",
+        file!()
+    );
 
     // Counters anchor what the hash is hashing — if these drift the hash will
     // too, but a counter mismatch is a much clearer diagnostic.
@@ -49,7 +59,7 @@ fn sample_trace_audit_hash_is_well_formed_and_reported() {
     assert_eq!(outcome.summary.lines_skipped_no_raw_event, 1);
     assert_eq!(outcome.summary.lines_parse_error, 0);
     assert_eq!(outcome.summary.windows_closed, 2);
-    assert_eq!(outcome.summary.audit_hash, outcome.audit_hash);
+    assert_eq!(outcome.summary.audit_hash, GOLDEN_HASH);
 }
 
 #[test]

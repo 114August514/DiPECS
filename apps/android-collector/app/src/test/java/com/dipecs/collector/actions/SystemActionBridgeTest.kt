@@ -19,8 +19,8 @@ class SystemActionBridgeTest {
 
         val hmac = hmacSha256Hex(key, action)
 
-        assertEquals(64, hmac.length, "SHA-256 HMAC hex is 64 chars")
-        assertTrue(hmac.all { it in '0'..'9' || it in 'a'..'f' }, "HMAC must be lowercase hex: $hmac")
+        assertEquals("SHA-256 HMAC hex is 64 chars", 64, hmac.length)
+        assertTrue("HMAC must be lowercase hex: $hmac", hmac.all { it in '0'..'9' || it in 'a'..'f' })
     }
 
     @Test
@@ -79,8 +79,8 @@ class SystemActionBridgeTest {
         // Re-verify the HMAC.
         val recomputed = hmacSha256Hex(key, envelope.getString("action"))
         assertTrue(
-            constantTimeEquals(hmac.lowercase(), recomputed),
             "HMAC must match after round-trip: $hmac vs $recomputed",
+            constantTimeEquals(hmac.lowercase(), recomputed),
         )
     }
 
@@ -94,8 +94,8 @@ class SystemActionBridgeTest {
         assertNotEquals(hmac, tamperedHmac)
         val recomputed = hmacSha256Hex(key, actionRaw)
         assertFalse(
-            constantTimeEquals(tamperedHmac, recomputed),
             "tampered HMAC must not equal recomputed",
+            constantTimeEquals(tamperedHmac, recomputed),
         )
     }
 
@@ -117,7 +117,7 @@ class SystemActionBridgeTest {
             put("latency_us", 4242)
         }
         val json = response.toString()
-        assertTrue(json.contains("\"status\":\"ok\""), "status must be ok: $json")
+        assertTrue("status must be ok: $json", json.contains("\"status\":\"ok\""))
         assertTrue(json.contains("\"summary\":\"prewarm:com.example\""))
         assertTrue(json.contains("\"latency_us\":4242"))
 

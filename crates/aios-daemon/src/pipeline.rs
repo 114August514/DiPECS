@@ -39,17 +39,22 @@ impl RuntimeTraceRecorder {
     }
 }
 
+/// Mutable dependencies shared while processing a closed context window.
+pub(crate) struct WindowProcessingDeps<'a> {
+    pub(crate) router: &'a DecisionRouter,
+    pub(crate) lifecycle: &'a ActionLifecycle<'a>,
+    pub(crate) memory: &'a mut ModelMemoryStore,
+    pub(crate) memory_config: &'a ModelMemoryConfig,
+    pub(crate) profile_summary_worker: Option<&'a mut ProfileSummaryWorker>,
+    pub(crate) trace_recorder: Option<&'a mut RuntimeTraceRecorder>,
+}
+
 /// Processes one closed context window and feeds the result back into memory.
 pub(crate) fn process_window(
     window_ordinal: u32,
     ctx: &aios_spec::StructuredContext,
-    router: &DecisionRouter,
-    lifecycle: &ActionLifecycle,
     raw_stats: &RawEventStats,
-    memory: &mut ModelMemoryStore,
-    memory_config: &ModelMemoryConfig,
-    mut profile_summary_worker: Option<&mut ProfileSummaryWorker>,
-    trace_recorder: Option<&mut RuntimeTraceRecorder>,
+    deps: &mut WindowProcessingDeps<'_>,
 ) {
     tracing::info!(
         window_id = %ctx.window_id,
@@ -60,12 +65,12 @@ pub(crate) fn process_window(
         "window closed, sending to agent"
     );
 
-    if let Some(worker) = profile_summary_worker.as_deref_mut() {
-        worker.poll(memory);
+    if let Some(worker) = &mut deps.profile_summary_worker {
+        worker.poll(deps.memory);
     }
 
-    let model_input = memory.model_input(ctx);
-    let decision_result = router.evaluate_model_input(&model_input);
+    let model_input = deps.memory.model_input(ctx);
+    let decision_result = deps.router.evaluate_model_input(&model_input);
     tracing::info!(
         route = ?decision_result.route,
         model = %decision_result.intent_batch.model,
@@ -75,7 +80,7 @@ pub(crate) fn process_window(
     );
 
     let capability = CapabilityLevel::for_route(decision_result.route);
-    let audit_records = lifecycle.run(
+    let audit_records = deps.lifecycle.run(
         window_ordinal,
         &decision_result.intent_batch,
         decision_result.route,
@@ -84,12 +89,13 @@ pub(crate) fn process_window(
         ctx,
     );
 
-    memory.observe_window(ctx, &decision_result, &audit_records);
-    if let Some(worker) = profile_summary_worker.as_deref_mut() {
-        worker.poll(memory);
-        worker.maybe_start(memory);
+    deps.memory
+        .observe_window(ctx, &decision_result, &audit_records);
+    if let Some(worker) = &mut deps.profile_summary_worker {
+        worker.poll(deps.memory);
+        worker.maybe_start(deps.memory);
     }
-    memory.persist_if_configured(memory_config);
+    deps.memory.persist_if_configured(deps.memory_config);
     let executed = audit_records
         .iter()
         .filter(|r| matches!(r.terminal, aios_spec::governance::ActionState::Succeeded))
@@ -143,7 +149,7 @@ pub(crate) fn process_window(
         "window processed"
     );
 
-    if let Some(recorder) = trace_recorder {
+    if let Some(recorder) = &mut deps.trace_recorder {
         let record = json!({
             "stage": "daemon_window",
             "window_ordinal": window_ordinal,
@@ -155,7 +161,7 @@ pub(crate) fn process_window(
             "raw_event_total": raw_stats.total(),
             "raw_event_stats": raw_stats.summary_fields(),
             "context_summary": ctx.summary,
-            "behavior_profile": memory.behavior_profile(),
+            "behavior_profile": deps.memory.behavior_profile(),
             "decision": {
                 "route": format!("{:?}", decision_result.route),
                 "model": decision_result.intent_batch.model,
@@ -243,7 +249,7 @@ impl ProfileSummaryWorker {
         }
         let windows = memory.observation_windows();
         if windows == 0
-            || windows % self.interval_windows != 0
+            || !windows.is_multiple_of(self.interval_windows)
             || windows == self.last_started_window
         {
             return;

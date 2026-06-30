@@ -331,19 +331,19 @@ impl ModelMemoryStore {
             .unwrap_or_else(|| top_counts(&self.prewarm_hit_counts, self.top_limit));
         let prewarm_misses = top_scores(&self.prewarm_miss_momentum, self.top_limit)
             .unwrap_or_else(|| top_counts(&self.prewarm_miss_counts, self.top_limit));
-        let local_summary = render_summary(
-            self.observation_windows,
-            self.momentum_decay_milli,
-            self.prewarm_effect_windows,
-            &frequent_foreground_apps,
-            &frequent_notifying_apps,
-            &frequent_semantic_hints,
-            &action_successes,
-            &action_denials,
-            &action_failures,
-            &prewarm_hits,
-            &prewarm_misses,
-        );
+        let local_summary = render_summary(SummaryRenderInput {
+            windows: self.observation_windows,
+            momentum_decay_milli: self.momentum_decay_milli,
+            prewarm_effect_windows: self.prewarm_effect_windows,
+            foreground: &frequent_foreground_apps,
+            notifying: &frequent_notifying_apps,
+            hints: &frequent_semantic_hints,
+            successes: &action_successes,
+            denials: &action_denials,
+            failures: &action_failures,
+            prewarm_hits: &prewarm_hits,
+            prewarm_misses: &prewarm_misses,
+        });
         let summary = match &self.llm_summary {
             Some(llm) => format!("llm_summary={llm}; local_counters={local_summary}"),
             None => local_summary,
@@ -624,29 +624,34 @@ fn semantic_hint_from_debug(name: &str) -> Option<SemanticHint> {
     }
 }
 
-fn render_summary(
+struct SummaryRenderInput<'a> {
     windows: u32,
     momentum_decay_milli: u16,
     prewarm_effect_windows: u8,
-    foreground: &[(String, u32)],
-    notifying: &[(String, u32)],
-    hints: &[(SemanticHint, u32)],
-    successes: &[(String, u32)],
-    denials: &[(String, u32)],
-    failures: &[(String, u32)],
-    prewarm_hits: &[(String, u32)],
-    prewarm_misses: &[(String, u32)],
-) -> String {
+    foreground: &'a [(String, u32)],
+    notifying: &'a [(String, u32)],
+    hints: &'a [(SemanticHint, u32)],
+    successes: &'a [(String, u32)],
+    denials: &'a [(String, u32)],
+    failures: &'a [(String, u32)],
+    prewarm_hits: &'a [(String, u32)],
+    prewarm_misses: &'a [(String, u32)],
+}
+
+fn render_summary(input: SummaryRenderInput<'_>) -> String {
     format!(
-        "observed_windows={windows}; momentum_decay_milli={momentum_decay_milli}; prewarm_effect_window={prewarm_effect_windows}; foreground_apps={}; notifying_apps={}; semantic_hints={}; successful_actions={}; denied_actions={}; failed_actions={}; prewarm_effect_hits={}; prewarm_effect_misses={}",
-        render_pairs(foreground),
-        render_pairs(notifying),
-        render_hint_pairs(hints),
-        render_pairs(successes),
-        render_pairs(denials),
-        render_pairs(failures),
-        render_pairs(prewarm_hits),
-        render_pairs(prewarm_misses),
+        "observed_windows={}; momentum_decay_milli={}; prewarm_effect_window={}; foreground_apps={}; notifying_apps={}; semantic_hints={}; successful_actions={}; denied_actions={}; failed_actions={}; prewarm_effect_hits={}; prewarm_effect_misses={}",
+        input.windows,
+        input.momentum_decay_milli,
+        input.prewarm_effect_windows,
+        render_pairs(input.foreground),
+        render_pairs(input.notifying),
+        render_hint_pairs(input.hints),
+        render_pairs(input.successes),
+        render_pairs(input.denials),
+        render_pairs(input.failures),
+        render_pairs(input.prewarm_hits),
+        render_pairs(input.prewarm_misses),
     )
 }
 fn render_pairs(values: &[(String, u32)]) -> String {

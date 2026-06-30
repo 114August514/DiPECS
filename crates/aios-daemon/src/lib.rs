@@ -50,6 +50,7 @@ pub mod pipeline;
 
 use pipeline::{
     should_stop_processing, ProcessingEvent, ProfileSummaryWorker, RuntimeTraceRecorder,
+    WindowProcessingDeps,
 };
 
 /// System state collection interval, in seconds.
@@ -282,13 +283,15 @@ pub async fn run() -> anyhow::Result<()> {
                 pipeline::process_window(
                     window_ordinal,
                     &ctx,
-                    &router,
-                    &lifecycle,
                     &window_stats,
-                    &mut model_memory,
-                    &model_memory_config,
-                    Some(&mut profile_summary_worker),
-                    trace_recorder.as_mut(),
+                    &mut WindowProcessingDeps {
+                        router: &router,
+                        lifecycle: &lifecycle,
+                        memory: &mut model_memory,
+                        memory_config: &model_memory_config,
+                        profile_summary_worker: Some(&mut profile_summary_worker),
+                        trace_recorder: trace_recorder.as_mut(),
+                    },
                 );
             }
             break;
@@ -314,13 +317,15 @@ pub async fn run() -> anyhow::Result<()> {
                 pipeline::process_window(
                     window_ordinal,
                     &ctx,
-                    &router,
-                    &lifecycle,
                     &window_stats,
-                    &mut model_memory,
-                    &model_memory_config,
-                    Some(&mut profile_summary_worker),
-                    trace_recorder.as_mut(),
+                    &mut WindowProcessingDeps {
+                        router: &router,
+                        lifecycle: &lifecycle,
+                        memory: &mut model_memory,
+                        memory_config: &model_memory_config,
+                        profile_summary_worker: Some(&mut profile_summary_worker),
+                        trace_recorder: trace_recorder.as_mut(),
+                    },
                 );
                 window_ordinal += 1;
             }

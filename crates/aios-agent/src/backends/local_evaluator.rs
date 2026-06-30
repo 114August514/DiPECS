@@ -101,14 +101,11 @@ impl LocalEvaluatorBackend {
                 },
                 SanitizedEventType::InterAppInteraction {
                     source_package,
-                    interaction_type,
+                    interaction_type:
+                        aios_spec::InteractionType::ActivityLaunch
+                        | aios_spec::InteractionType::ShareIntent,
                     ..
-                } if matches!(
-                    interaction_type,
-                    aios_spec::InteractionType::ActivityLaunch
-                        | aios_spec::InteractionType::ShareIntent
-                ) =>
-                {
+                } => {
                     let target = source_package
                         .clone()
                         .unwrap_or_else(|| "own:resources".to_string());

@@ -6,7 +6,7 @@ use std::path::PathBuf;
 
 use aios_cli::android_bridge;
 use aios_cli::replay::{self, Stage};
-use anyhow::{Context, Result};
+use anyhow::{bail, Context, Result};
 use clap::{Parser, Subcommand};
 use tracing::info;
 
@@ -61,6 +61,34 @@ enum Command {
         /// Shared auth token required by the Android action socket.
         #[arg(long)]
         auth_token: Option<String>,
+    },
+    /// Send a real authorized action to the Android action bridge for testing.
+    /// Constructs the full payload with HMAC signature and freshness window.
+    SendAction {
+        /// Target host. Defaults to Android loopback.
+        #[arg(long, default_value = "127.0.0.1")]
+        host: String,
+
+        /// Target port. Must match the Android collector socket port.
+        #[arg(long, default_value_t = DEFAULT_ANDROID_ACTION_BRIDGE_PORT)]
+        port: u16,
+
+        /// Shared auth token required by the Android action socket.
+        #[arg(long)]
+        auth_token: String,
+
+        /// Action type: NoOp, PrefetchFile, KeepAlive, ReleaseMemory, PreWarmProcess.
+        #[arg(long, default_value = "NoOp")]
+        action_type: String,
+
+        /// Action target (e.g. url:https://..., cache:prefetch, work:collector_heartbeat).
+        /// Pass an empty string for no target.
+        #[arg(long, default_value = "")]
+        target: String,
+
+        /// Action urgency: Immediate, IdleTime, Deferred.
+        #[arg(long, default_value = "Immediate")]
+        urgency: String,
     },
 }
 
@@ -141,13 +169,32 @@ fn main() -> Result<()> {
             );
             Ok(())
         },
-        Command::SendAuthorizedAction {
+        Command::SendAction {
             host,
             port,
             auth_token,
+            action_type,
+            target,
+            urgency,
         } => {
-            android_bridge::send_ping(&host, port, auth_token.as_deref().unwrap_or(""))?;
-            tracing::info!(host = %host, port, "ping sent to Android action bridge");
+            // Validate action_type is known.
+            let valid_types = ["NoOp", "PrefetchFile", "KeepAlive", "ReleaseMemory", "PreWarmProcess"];
+            if !valid_types.contains(&action_type.as_str()) {
+                bail!(
+                    "unknown action_type '{}'. Valid types: {}",
+                    action_type,
+                    valid_types.join(", ")
+                );
+            }
+            android_bridge::send_action(&host, port, &auth_token, &action_type, &target, &urgency)?;
+            tracing::info!(
+                host = %host,
+                port,
+                action_type = %action_type,
+                target = %target,
+                urgency = %urgency,
+                "authorized action sent to Android bridge"
+            );
             Ok(())
         },
     }

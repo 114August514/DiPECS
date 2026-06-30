@@ -16,9 +16,7 @@ use aios_core::policy_engine::PolicyEngine;
 use aios_core::privacy_airgap::DefaultPrivacyAirGap;
 use aios_spec::governance::ActionState;
 use aios_spec::traits::PrivacySanitizer;
-use aios_spec::{
-    CapabilityLevel, ContextSummary, SanitizedEventType, SemanticHint,
-};
+use aios_spec::{CapabilityLevel, ContextSummary, SanitizedEventType, SemanticHint};
 
 // ── JSONL fixture lines ──────────────────────────────────────────
 
@@ -60,11 +58,11 @@ fn run_pipeline(jsonl_lines: &[&str], window_secs: u64) -> PipelineResult {
             Ok(None) => {
                 result.skipped_null_raw += 1;
                 continue;
-            }
+            },
             Err(_) => {
                 result.parse_errors += 1;
                 continue;
-            }
+            },
         };
         let captured_at_ms = envelope.captured_at_ms;
         last_timestamp_ms = last_timestamp_ms.max(captured_at_ms);
@@ -75,18 +73,11 @@ fn run_pipeline(jsonl_lines: &[&str], window_secs: u64) -> PipelineResult {
         result.events_ingested += 1;
 
         // Open or rotate window based on trace timestamps.
-        let agg = aggregator.get_or_insert_with(|| {
-            WindowAggregator::new(window_secs, captured_at_ms)
-        });
+        let agg =
+            aggregator.get_or_insert_with(|| WindowAggregator::new(window_secs, captured_at_ms));
         if agg.is_expired(captured_at_ms) {
             if let Some(ctx) = agg.close(captured_at_ms) {
-                process_one_window(
-                    window_ordinal,
-                    &ctx,
-                    &router,
-                    &lifecycle,
-                    &mut result,
-                );
+                process_one_window(window_ordinal, &ctx, &router, &lifecycle, &mut result);
                 window_ordinal += 1;
             }
         }
@@ -140,11 +131,14 @@ fn process_one_window(
             ActionState::RejectedInvalidSchema
             | ActionState::DeniedByCapability
             | ActionState::DeniedByPolicy => result.actions_denied += 1,
-            _ => {}
+            _ => {},
         }
     }
 
-    if audit_records.iter().any(|r| matches!(r.terminal, ActionState::Succeeded)) {
+    if audit_records
+        .iter()
+        .any(|r| matches!(r.terminal, ActionState::Succeeded))
+    {
         result.windows_with_actions += 1;
     }
 
@@ -186,7 +180,9 @@ fn single_app_transition_produces_context_with_foreground_app() {
 
     let summary = &result.window_summaries[0];
     assert!(
-        summary.foreground_apps.contains(&"com.android.chrome".to_string()),
+        summary
+            .foreground_apps
+            .contains(&"com.android.chrome".to_string()),
         "foreground_apps should contain chrome, got {:?}",
         summary.foreground_apps
     );
@@ -204,7 +200,7 @@ fn notification_with_file_mention_preserves_semantic_hint_after_sanitization() {
                 "expected FileMention hint, got {:?}",
                 semantic_hints
             );
-        }
+        },
         other => panic!("expected Notification, got {:?}", other),
     }
 
@@ -228,13 +224,16 @@ fn verification_code_notification_sets_correct_semantic_hint() {
                 "expected VerificationCode hint, got {:?}",
                 semantic_hints
             );
-        }
+        },
         other => panic!("expected Notification, got {:?}", other),
     }
 
     // Raw verification code must be scrubbed.
     let context_debug = format!("{:?}", result.window_summaries);
-    assert!(!context_debug.contains("654321"), "PII leaked through sanitizer");
+    assert!(
+        !context_debug.contains("654321"),
+        "PII leaked through sanitizer"
+    );
 }
 
 #[test]
@@ -243,7 +242,10 @@ fn low_battery_triggers_release_memory_intent_and_action() {
 
     assert!(result.windows_closed >= 1);
     // The rule-based backend should generate at least one intent.
-    assert!(result.intents_total >= 1, "expected intents from low battery context");
+    assert!(
+        result.intents_total >= 1,
+        "expected intents from low battery context"
+    );
 
     // At least one ReleaseMemory or KeepAlive action should be authorized.
     let succeeded_actions: Vec<_> = result
@@ -272,8 +274,12 @@ fn multi_event_window_aggregates_correctly() {
     assert_eq!(result.sanitized_events.len(), 3);
 
     let summary = &result.window_summaries[0];
-    assert!(summary.foreground_apps.contains(&"com.android.chrome".to_string()));
-    assert!(summary.notified_apps.contains(&"com.ss.android.lark".to_string()));
+    assert!(summary
+        .foreground_apps
+        .contains(&"com.android.chrome".to_string()));
+    assert!(summary
+        .notified_apps
+        .contains(&"com.ss.android.lark".to_string()));
 }
 
 #[test]
@@ -288,15 +294,19 @@ fn window_boundary_splits_events_correctly() {
 }
 
 #[test]
-fn notification_interaction_produces_context_signal() {
+fn notification_interaction_sanitizes_to_notification_type() {
+    // NotificationInteraction raw events map to SanitizedEventType::Notification
+    // after sanitization, not a separate variant.
     let result = run_pipeline(&[NOTIFICATION_INTERACTION_LINE], 10);
 
     assert_eq!(result.events_ingested, 1);
     assert_eq!(result.sanitized_events.len(), 1);
 
     match &result.sanitized_events[0].event_type {
-        SanitizedEventType::NotificationInteraction { .. } => {}
-        other => panic!("expected NotificationInteraction, got {:?}", other),
+        SanitizedEventType::Notification { source_package, .. } => {
+            assert_eq!(source_package, "com.ss.android.lark");
+        },
+        other => panic!("expected Notification, got {:?}", other),
     }
 }
 

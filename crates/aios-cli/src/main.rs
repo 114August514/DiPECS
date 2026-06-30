@@ -178,7 +178,13 @@ fn main() -> Result<()> {
             urgency,
         } => {
             // Validate action_type is known.
-            let valid_types = ["NoOp", "PrefetchFile", "KeepAlive", "ReleaseMemory", "PreWarmProcess"];
+            let valid_types = [
+                "NoOp",
+                "PrefetchFile",
+                "KeepAlive",
+                "ReleaseMemory",
+                "PreWarmProcess",
+            ];
             if !valid_types.contains(&action_type.as_str()) {
                 bail!(
                     "unknown action_type '{}'. Valid types: {}",
@@ -195,6 +201,15 @@ fn main() -> Result<()> {
                 urgency = %urgency,
                 "authorized action sent to Android bridge"
             );
+            Ok(())
+        },
+        Command::SendAuthorizedAction {
+            host,
+            port,
+            auth_token,
+        } => {
+            android_bridge::send_ping(&host, port, auth_token.as_deref().unwrap_or(""))?;
+            tracing::info!(host = %host, port, "ping sent to Android action bridge");
             Ok(())
         },
     }

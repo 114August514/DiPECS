@@ -3,7 +3,6 @@ use std::net::{Shutdown, TcpStream};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use anyhow::{bail, Context, Result};
-use serde::Serialize;
 use serde_json::json;
 use sha2::{Digest, Sha256};
 
@@ -105,7 +104,14 @@ pub fn send_action(
         .context("system clock before epoch")?
         .as_millis() as i64;
     let expires_at_ms = issued_at_ms + ACTION_PAYLOAD_TTL_MS;
-    let signature = action_signature(auth_token, issued_at_ms, expires_at_ms, action_type, target, urgency);
+    let signature = action_signature(
+        auth_token,
+        issued_at_ms,
+        expires_at_ms,
+        action_type,
+        target,
+        urgency,
+    );
 
     let target_value: serde_json::Value = if target.is_empty() {
         serde_json::Value::Null
@@ -175,10 +181,12 @@ pub fn send_action(
                 if !buf.is_empty() {
                     break;
                 }
-                return Err(e).with_context(|| format!("reading bridge response from {host}:{port}"));
+                return Err(e)
+                    .with_context(|| format!("reading bridge response from {host}:{port}"));
             },
             Err(e) => {
-                return Err(e).with_context(|| format!("reading bridge response from {host}:{port}"));
+                return Err(e)
+                    .with_context(|| format!("reading bridge response from {host}:{port}"));
             },
         }
     }
@@ -243,7 +251,7 @@ mod tests {
     use std::net::{Shutdown, TcpListener};
     use std::thread;
 
-    use super::{action_signature, send_action, send_ping};
+    use super::{action_signature, send_ping};
 
     #[test]
     fn ping_payload_is_valid_json() {
@@ -315,8 +323,22 @@ mod tests {
 
     #[test]
     fn action_signature_is_deterministic() {
-        let a = action_signature("token", 1000, 2000, "PrefetchFile", "url:https://x.test/f", "Immediate");
-        let b = action_signature("token", 1000, 2000, "PrefetchFile", "url:https://x.test/f", "Immediate");
+        let a = action_signature(
+            "token",
+            1000,
+            2000,
+            "PrefetchFile",
+            "url:https://x.test/f",
+            "Immediate",
+        );
+        let b = action_signature(
+            "token",
+            1000,
+            2000,
+            "PrefetchFile",
+            "url:https://x.test/f",
+            "Immediate",
+        );
         assert_eq!(a, b);
     }
 
@@ -329,15 +351,29 @@ mod tests {
 
     #[test]
     fn action_signature_changes_with_different_target() {
-        let a = action_signature("token", 1000, 2000, "PrefetchFile", "url:https://a.test", "Immediate");
-        let b = action_signature("token", 1000, 2000, "PrefetchFile", "url:https://b.test", "Immediate");
+        let a = action_signature(
+            "token",
+            1000,
+            2000,
+            "PrefetchFile",
+            "url:https://a.test",
+            "Immediate",
+        );
+        let b = action_signature(
+            "token",
+            1000,
+            2000,
+            "PrefetchFile",
+            "url:https://b.test",
+            "Immediate",
+        );
         assert_ne!(a, b);
     }
 
     #[test]
     fn send_action_constructs_valid_json_payload() {
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
-        let port = listener.local_addr().unwrap().port();
+        let _port = listener.local_addr().unwrap().port();
 
         let received = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
         let received_clone = received.clone();

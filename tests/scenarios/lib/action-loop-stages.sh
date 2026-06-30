@@ -40,11 +40,14 @@ classify_action_state() {
 redaction_leak_sample() {
   local trace="$1"
   [ -s "$trace" ] || return 0
+  # 末尾 `|| true`:这是取样器(输出即信号,空=干净),其退出码不应中止脚本。零匹配时
+  # grep 返回 1,叠加 pipefail 会让本函数返回非 0,在调用处 `leak="$(...)"` 触发 set -e
+  # 静默退出(干净 trace 恰是常态)。head 提前关管也可能 SIGPIPE,一并由 `|| true` 兜住。
   {
     LC_ALL=C grep -aoE '"(raw_title|raw_text|notification_key)":"[^"]+"' "$trace" 2>/dev/null
     LC_ALL=C grep -aoE '"(group_key|key|tag|payload|responseBody|sourceText|sourceContentDescription|textItems|windowTitle|text|target|cachePath)":[^,}]*' "$trace" 2>/dev/null \
       | LC_ALL=C grep -av ':null$'
-  } | head -3
+  } | head -3 || true
 }
 
 # 钉定 ANDROID_SERIAL,杜绝多设备下动作打错设备(review Medium)。#36 不自己起模拟器,
@@ -125,7 +128,16 @@ stage2_autostart_service() {
 }
 
 stage3_get_token() {
-  banner "阶段 3:获取动作 socket token(人工)"
+  banner "阶段 3:获取动作 socket token"
+  # 非交互覆盖:若调用方已 export ACTION_TOKEN(如自动化/CI、或 debug build 的固定
+  # 开发 token),直接用,免去人工抠 UI。否则提示人工粘贴。注意 stage2 的
+  # `adb shell` 会吸干本管线 stdin,故自动化场景必须走本 env 覆盖而非管道喂 token。
+  if [ -n "${ACTION_TOKEN:-}" ]; then
+    ACTION_TOKEN="$(printf '%s' "$ACTION_TOKEN" | tr -d '[:space:]')"
+    [ -n "$ACTION_TOKEN" ] || die "ACTION_TOKEN 为空"
+    log "沿用预置 ACTION_TOKEN(${#ACTION_TOKEN} 字符,非交互)"
+    return 0
+  fi
   printf '\n>>> 请在模拟器 app 里点 "Copy Action Socket Token"(或在状态区查看完整 token)。\n'
   printf '>>> token 是 64 位十六进制。粘贴到这里后回车:\n'
   read -r ACTION_TOKEN
@@ -147,7 +159,7 @@ stage5_send_action() {
   banner "阶段 5:双轨发动作(A=daemon真发走完整Rust链 / B=验证通道取证)"
   log "轨道A:运行 dipecsd --no-daemon --android-trace-jsonl $SAMPLE(bridge 转发开)..."
   # 轨道A:daemon 消费样本走完整管线;AppTransition 产 KeepAlive(work:),经真实
-  # Rust 签名链(try_forward_to_android_bridge)转发到 127.0.0.1:46321(已 forward
+  # AndroidAdapter 转发链(AndroidAdapter::forward)转发到 127.0.0.1:46321(已 forward
   # 到设备 app socket)。--no-daemon 跑一轮就够产出窗口;timeout 兜底防它常驻不退。
   DIPECS_ANDROID_ACTION_BRIDGE_ENABLED=1 \
   DIPECS_ANDROID_ACTION_BRIDGE_TOKEN="$ACTION_TOKEN" \
@@ -201,6 +213,10 @@ stage5_send_action() {
 
 stage6_verify_execution() {
   banner "阶段 6:拉 app 私有 trace,三态判定动作执行"
+  # 给 JobScheduler 时间真正执行已排的 keep_alive job 再拉 trace:scheduled→executed
+  # 约 2.5s 异步延迟,拉太早会停在 SCHEDULED 中间态。等一会儿让常态取到 EXECUTED 终态
+  # ——这不是造假,是给异步系统完成的时间;仍如实记录最终观测到的三态。可配 EXEC_SETTLE_SECS=0 关闭。
+  sleep "${EXEC_SETTLE_SECS:-5}"
   local trace="data/traces/action-loop-e2e-$TS.jsonl"
   # run-as 拉已脱敏 trace(debug build 可 run-as);文件即 EventStore 的 files/traces/actions.jsonl
   adb shell run-as "$PKG" cat files/traces/actions.jsonl > "$trace" 2>>"$RUN_LOG" || true
@@ -258,7 +274,7 @@ write_validation_record() {
     echo "- 运行时间: $TS"
     echo "- 数据来源: **[$DATA_SOURCE]**"
     echo "- 转发动作: KeepAlive(work:collector_heartbeat)"
-    echo "- 轨道A daemon 转发到 bridge(走完整 Rust 签名链): $([ "${FORWARDED:-0}" = 1 ] && echo 是 || echo 否)"
+    echo "- 轨道A daemon 转发到 bridge(走完整 AndroidAdapter 转发链): $([ "${FORWARDED:-0}" = 1 ] && echo 是 || echo 否)"
     echo "- 轨道B 取证发送器已发出(验证通道,绕 adb 竞态): $([ "${FORENSIC_SENT:-0}" = 1 ] && echo 是 || echo 否)"
     echo "- 动作执行审计数(keep_alive_job_executed): ${EXEC_ROWS:-0}"
     echo "- 动作排程审计数(keep_alive_scheduled): ${SCHED_ROWS:-0}"
@@ -267,13 +283,13 @@ write_validation_record() {
     echo
     echo "## 链路说明"
     echo
-    echo "daemon 决策 → AuthorizedAction 签名(HMAC-SHA256)→ localhost socket"
-    echo "→ adb forward → Android app 校验(token/HMAC/TTL)→ 排程 → JobService 执行 → 审计落盘。"
+    echo "daemon 决策 → AuthorizedAction → execute 信封(canonical HMAC-SHA256 + freshness window)"
+    echo "→ localhost socket → adb forward → Android app 校验(HMAC/freshness)→ 排程 → JobService 执行 → 审计落盘。"
     echo "PrefetchFile 经 RuleBased 路由被 DeniedByCapability 拦截,体现治理边界。"
     echo
     echo "## 双轨发送与 adb forward 失真(诚实说明)"
     echo
-    echo "- **轨道A(daemon 真发)**走完整 Rust 签名链(\`try_forward_to_android_bridge\`)。"
+    echo "- **轨道A(daemon 真发)**走完整 Rust 转发链(\`AndroidAdapter::forward\`)。"
     echo "  但经 \`adb forward\` 转发时,adb 用户态 TCP 代理在转发数据与转发 FIN 之间存在"
     echo "  调度间隙:发送端 write 后立即关连接,FIN 追上尚未推送到设备的数据,Android 侧"
     echo "  \`accept\` 后首次 read 即 EOF,读到空 payload,记 \`authorized_action_socket_empty\`。"

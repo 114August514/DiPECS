@@ -113,8 +113,9 @@ For Android Studio emulator validation on Windows, use the repository script:
 The script checks the Android SDK, installs the API 35 Google APIs x86_64 image
 if needed, creates the `dipecs_emu` AVD, starts the emulator, waits for boot,
 installs the debug APK, configures `adb forward tcp:46321 tcp:46321`, starts the
-app, and pings the action socket. Use `-Headless` for CI-style runs or
-`-SkipHealthCheck` when Rust CLI tooling is not available on Windows.
+app, starts the debug collector through an adb-only debug activity, and pings
+the action socket with a built-in TCP health check. Use `-Headless` for
+CI-style runs or `-SkipHealthCheck` when you only need APK install/forwarding.
 ## Authorized Action Socket
 
 The localhost action socket requires an `auth_token` field in every payload.

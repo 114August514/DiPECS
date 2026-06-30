@@ -163,7 +163,7 @@ scripted:
 ```
 
 It creates/starts the `dipecs_emu` API 35 emulator, installs the debug APK,
-forwards `tcp:46321`, starts the app, and pings the action socket.
+forwards `tcp:46321`, starts the app and debug collector, and pings the action socket with a built-in TCP health check.
 Enable direct forwarding from `aios-action` to Android:
 
 ```bash

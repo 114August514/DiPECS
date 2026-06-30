@@ -5,7 +5,6 @@ import com.dipecs.collector.storage.CollectorPreferences
 import com.dipecs.collector.storage.EventRepository
 import java.io.IOException
 import java.io.InputStreamReader
-import java.io.OutputStreamWriter
 import java.net.InetAddress
 import java.net.ServerSocket
 import java.net.Socket
@@ -267,9 +266,12 @@ class AuthorizedActionSocketServer(
 
     private fun sendPong(client: Socket) {
         runCatching {
-            val writer = OutputStreamWriter(client.getOutputStream(), Charsets.UTF_8)
-            writer.write("""{"status":"ok","message":"pong"}""")
-            writer.flush()
+            val payload = """{"status":"ok","message":"pong"}"""
+                .toByteArray(Charsets.UTF_8)
+            val output = client.getOutputStream()
+            output.write(payload)
+            output.flush()
+            client.shutdownOutput()
         }.onFailure { error ->
             EventRepository.recordInternal(
                 context,
@@ -293,6 +295,10 @@ class AuthorizedActionSocketServer(
             payload.append(buffer, 0, read)
             if (payload.length > MAX_PAYLOAD_CHARS) {
                 throw PayloadTooLargeException()
+            }
+            val text = payload.toString().trim()
+            if (text.isNotEmpty() && runCatching { JSONObject(text) }.isSuccess) {
+                return text
             }
         }
     }

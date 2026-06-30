@@ -67,12 +67,40 @@ function Invoke-Adb([string]$Adb, [string]$Serial, [string[]]$Arguments, [switch
     $args += $Arguments
     return Invoke-Tool -FilePath $Adb -Arguments $args -AllowFailure:$AllowFailure
 }
+function Invoke-ActionSocketPing([string]$HostName, [int]$Port, [string]$Token) {
+    $payload = @{ message_type = "ping"; auth_token = $Token } | ConvertTo-Json -Compress
+    $client = [System.Net.Sockets.TcpClient]::new()
+    $client.ReceiveTimeout = 5000
+    $client.SendTimeout = 5000
+    try {
+        $client.Connect($HostName, $Port)
+        $stream = $client.GetStream()
+        $bytes = [System.Text.Encoding]::UTF8.GetBytes($payload)
+        $stream.Write($bytes, 0, $bytes.Length)
+        $stream.Flush()
+        $client.Client.Shutdown([System.Net.Sockets.SocketShutdown]::Send)
+
+        $buffer = New-Object byte[] 4096
+        $read = $stream.Read($buffer, 0, $buffer.Length)
+        if ($read -le 0) {
+            Fail "Android action bridge returned an empty response."
+        }
+        $response = [System.Text.Encoding]::UTF8.GetString($buffer, 0, $read)
+        $json = $response | ConvertFrom-Json
+        if ($json.status -ne "ok") {
+            Fail "Android action bridge returned unexpected response: $response"
+        }
+        Write-Host "  bridge response: $response"
+    } finally {
+        $client.Close()
+    }
+}
 
 function Get-FirstEmulatorSerial([string]$Adb) {
     $devices = Get-AdbDevices $Adb
-    $emulators = $devices | Where-Object { $_ -match "^emulator-\d+\tdevice$" }
+    $emulators = @($devices | Where-Object { $_ -match "^emulator-\d+\tdevice$" })
     if ($emulators.Count -gt 0) {
-        return (($emulators[0] -split "\t")[0])
+        return (($emulators[0] -split "\s+")[0])
     }
     return $null
 }
@@ -183,18 +211,14 @@ Write-Host "  If a token is already stored, clear app data: adb shell pm clear c
 
 Write-Step "7. Start app and health-check socket"
 Invoke-Adb $Adb $serial @("shell", "am", "start", "-n", "com.dipecs.collector/.MainActivity") | Out-Null
+Invoke-Adb $Adb $serial @("shell", "pm", "grant", "com.dipecs.collector", "android.permission.POST_NOTIFICATIONS") -AllowFailure | Out-Null
+Invoke-Adb $Adb $serial @("shell", "am", "start", "-n", "com.dipecs.collector/.debug.DebugCollectorControlActivity") | Out-Null
 Start-Sleep -Seconds 3
 
 if (-not $SkipHealthCheck) {
-    Push-Location (Join-Path $PSScriptRoot "..")
-    try {
-        cargo run -p aios-cli -- send-authorized-action --auth-token $Token --host 127.0.0.1 --port $Port
-        if ($LASTEXITCODE -ne 0) { Fail "aios-cli Android bridge ping failed with exit code $LASTEXITCODE." }
-    } finally {
-        Pop-Location
-    }
+    Invoke-ActionSocketPing "127.0.0.1" $Port $Token
 } else {
-    Write-Host "  Skipping aios-cli health check."
+    Write-Host "  Skipping action socket health check."
 }
 
 Write-Step "Done"

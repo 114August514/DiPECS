@@ -5,6 +5,65 @@ log()    { printf '[%s] %s\n' "$(date +%H:%M:%S)" "$*" | tee -a "$RUN_LOG"; }
 die()    { printf '\n[FAIL] %s\n' "$*" | tee -a "$RUN_LOG" >&2; exit 1; }
 banner() { printf '\n=== %s ===\n' "$*" | tee -a "$RUN_LOG"; }
 
+# --- 纯逻辑助手(无副作用:不碰 adb、不写日志、不 die)---------------------
+# 抽成独立函数有两个原因:一是修掉 review 指出的判定缺陷,二是让这些判定能被
+# stages-selftest.sh 喂 fixture 直接断言 —— 原先逻辑内联在 stage 里没法测。
+
+# 真实采集量 = rawEvent 非空的行数。
+# notification_listener_connected 引导行是 "rawEvent":null,绝不能算进采集量,否则
+# "只有引导行"的空采集会被数成 1、在阶段 6 被误判 REAL(三态设计要防的假阳性)。
+# ':{"' 要求 { 后紧跟一个 key,与 Android EventStore.stats() 的 keys.hasNext() 同口径;
+# grep -c ... || true 保证零匹配时仍输出单行 "0"(原 || echo 0 会产双行触发 integer expected)。
+count_real_raw_events() {
+  local trace="$1"
+  [ -s "$trace" ] || { echo 0; return 0; }
+  grep -c '"rawEvent":{"' "$trace" 2>/dev/null || true
+}
+
+# 数据来源标签。FALLBACK 原样;REAL 再按是否采到通知事件细分 REAL / REAL(部分源)。
+# 与模式(auto/manual)无关 —— 原实现 A && B="auto" && C || D 无括号,manual 下 B 为假
+# 直接短路到 D,使 manual 的 REAL 永远被打成"部分源"。这里用 if 显式判定,杜绝优先级坑。
+classify_data_tag() {
+  local source="$1" trace="$2"
+  case "$source" in
+    REAL)
+      if grep -q '"NotificationPosted"' "$trace" 2>/dev/null; then
+        echo "REAL"
+      else
+        echo "REAL(部分源)"
+      fi
+      ;;
+    *) echo "$source" ;;
+  esac
+}
+
+# 脱敏闸门取样:返回最多 3 条"未脱敏"证据;返回空串即视为干净。是否 die 由调用方决定
+# (保持本函数无副作用、可测)。覆盖 EventStore 的全部敏感键,而非只 3 个 string 键:
+#   - SENSITIVE_STRING_KEYS(脱敏后应为 ""):非空字符串即泄漏
+#   - SENSITIVE_NULL_KEYS  (脱敏后应为 null):值不是 null 即泄漏
+# 一律 LC_ALL=C + grep -a 按字节扫,避免 UTF-8 locale 下多字节原文(如 …)漏检。
+redaction_leak_sample() {
+  local trace="$1"
+  [ -s "$trace" ] || return 0
+  {
+    LC_ALL=C grep -aoE '"(raw_title|raw_text|notification_key)":"[^"]+"' "$trace" 2>/dev/null
+    LC_ALL=C grep -aoE '"(group_key|key|tag|payload|responseBody|sourceText|sourceContentDescription|textItems|windowTitle|text|target|cachePath)":[^,}]*' "$trace" 2>/dev/null \
+      | LC_ALL=C grep -av ':null$'
+  } | head -3
+}
+
+# 在所有在线模拟器里按 AVD 名定位本脚本的目标序列号(emulator console 的 avd name)。
+# 命中则 echo 序列号并返回 0;无匹配返回 1。用于钉定 ANDROID_SERIAL,杜绝多设备下
+# pm clear / run-as 误伤别的设备(review Medium)。
+emulator_serial_for_avd() {
+  local s name
+  for s in $(adb devices | awk '/^emulator-[0-9]+\tdevice$/ {print $1}'); do
+    name="$(adb -s "$s" emu avd name 2>/dev/null | head -1 | tr -d '\r')"
+    [ "$name" = "$AVD_NAME" ] && { echo "$s"; return 0; }
+  done
+  return 1
+}
+
 stage0_preflight() {
   banner "阶段 0:环境自检"
   [ -d "$ANDROID_HOME" ] || die "ANDROID_HOME 不存在: $ANDROID_HOME"
@@ -39,19 +98,42 @@ stage1_provision_sdk() {
 
 stage2_boot_emulator() {
   banner "阶段 2:起模拟器"
-  if adb devices | grep -q "emulator-.*device"; then
-    log "已有模拟器在线,复用"; return 0
+  # 复用已在线的目标 AVD(按 avd name 精确匹配,不是"随便一台 emulator-*")。
+  if pin_serial; then
+    log "已有模拟器在线($ANDROID_SERIAL),复用"; return 0
   fi
+  # 记录启动前已在线的模拟器,启动后用差集认出"新冒出来的那台就是我们起的",
+  # 这样即便机器上已有别的模拟器,wait-for-device / getprop 也只打我们这台,不歧义。
+  local before
+  before="$(adb devices | awk '/^emulator-[0-9]+\t/ {print $1}' | sort)"
   log "后台启动模拟器 $AVD_NAME ..."
   "$ANDROID_HOME/emulator/emulator" -avd "$AVD_NAME" \
     -no-window -no-audio -no-snapshot -gpu swiftshader_indirect \
     >>"$RUN_LOG" 2>&1 &
-  adb wait-for-device
-  local t=0
-  until [ "$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')" = "1" ]; do
-    sleep 2; t=$((t+2)); [ "$t" -ge 180 ] && die "模拟器启动超时(180s)"
+  local t=0 new=""
+  until [ -n "$new" ]; do
+    sleep 1; t=$((t+1)); [ "$t" -ge 60 ] && die "新模拟器 60s 内未注册到 adb"
+    local now
+    now="$(adb devices | awk '/^emulator-[0-9]+\t/ {print $1}' | sort)"
+    new="$(comm -13 <(printf '%s\n' "$before") <(printf '%s\n' "$now") | head -1)"
   done
-  log "模拟器开机完成(${t}s)"
+  # 钉定序列号:此后所有 adb(pm clear / run-as / cmd notification)经 ANDROID_SERIAL
+  # 自动只打这一台,杜绝多设备下误伤别的设备数据(review Medium)。
+  export ANDROID_SERIAL="$new"
+  log "新模拟器序列号 $ANDROID_SERIAL,等待开机完成 ..."
+  adb wait-for-device
+  until [ "$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')" = "1" ]; do
+    sleep 2; t=$((t+2)); [ "$t" -ge 240 ] && die "模拟器启动超时(240s)"
+  done
+  log "模拟器开机完成(${t}s,序列号 $ANDROID_SERIAL)"
+}
+
+# 把目标 AVD 的序列号钉进 ANDROID_SERIAL(adb 全程据此定向)。命中返回 0,否则 1。
+pin_serial() {
+  local serial
+  serial="$(emulator_serial_for_avd)" || return 1
+  [ -n "$serial" ] || return 1
+  export ANDROID_SERIAL="$serial"
 }
 
 APK="apps/android-collector/app/build/outputs/apk/debug/app-debug.apk"
@@ -87,8 +169,10 @@ stage4_grant_and_start() {
   # 先清 app 数据,杜绝跨轮旧 trace 累积。adb install -r 会保留 app 私有目录,
   # 若不清,上一轮(甚至旧 APK)写的 actions.jsonl 会留存,阶段 6 run-as 拉出的
   # 是历史累积而非本轮采集 —— 一次真实事故里正是它让旧 APK 的未脱敏原文混进结果、
-  # 被误判为本轮 REAL。pm clear 同时会清掉权限,故必须在下面重新授权之前执行。
-  adb shell pm clear "$PKG" >>"$RUN_LOG" 2>&1 || log "[warn] pm clear 失败,trace 可能含上轮残留"
+  # 被误判为本轮 REAL。既然清不掉就等于带着事故根因继续跑,这里必须 die 而非告警
+  # (原实现仅 warn 后继续,与本段自陈的根因自相矛盾)。pm clear 同时会清掉权限,
+  # 故必须在下面重新授权之前执行。
+  adb shell pm clear "$PKG" >>"$RUN_LOG" 2>&1 || die "pm clear 失败,无法保证本轮 trace 不含上轮残留(拒绝带病继续)"
   # Usage Access(appops)
   adb shell appops set "$PKG" GET_USAGE_STATS allow >>"$RUN_LOG" 2>&1 || die "授 Usage 失败"
   # POST_NOTIFICATIONS(运行时权限,Android 13+)
@@ -137,22 +221,22 @@ stage6_pull_and_replay() {
   local trace="data/traces/emulator-e2e-$TS.jsonl"
   # run-as 拉已脱敏 trace(debug build 可 run-as)
   adb shell run-as "$PKG" cat files/traces/actions.jsonl > "$trace" 2>>"$RUN_LOG" || true
-  local raw_rows=0
-  [ -s "$trace" ] && raw_rows="$(grep -c '"rawEvent"' "$trace" 2>/dev/null || echo 0)"
-  log "采集到 rawEvent 行数: $raw_rows"
+  # 真实采集量只数 rawEvent 非空行;listener 引导行的 "rawEvent":null 不算(详见
+  # count_real_raw_events)。原 grep -c '"rawEvent"' 把引导行也数进去,会把"仅引导行"
+  # 的空采集误判成 REAL —— 这正是三态设计要防的假阳性。
+  local raw_rows
+  raw_rows="$(count_real_raw_events "$trace")"
+  log "采集到 rawEvent(非空)行数: $raw_rows"
 
   # 脱敏闸门:trace 进 git 的前提是写盘即脱敏(EventStore.sanitizeForTrace 把
-  # raw_title/raw_text/notification_key 清空)。若拉出的 trace 仍含非空敏感原文,
-  # 说明装的不是当前源码编译的 APK(或脱敏回归),这是会泄漏隐私的严重事故 ——
+  # SENSITIVE_STRING_KEYS 清成 ""、SENSITIVE_NULL_KEYS 清成 null)。若拉出的 trace 仍含
+  # 未脱敏值,说明装的不是当前源码编译的 APK(或脱敏回归),这是会泄漏隐私的严重事故 ——
   # 立即停下,绝不让原文进 replay 或 git。宁可整轮失败也不冒充"已脱敏"。
-  if [ -s "$trace" ]; then
-    local leak
-    # LC_ALL=C + grep -a:把输入当字节流。否则 UTF-8 locale 下 [^"]+ 对含多字节字符
-    # (如省略号 …)的原文行可能匹配失败,导致泄漏漏检 —— 闸门必须按字节扫,不留死角。
-    leak="$(LC_ALL=C grep -aoE '"(raw_title|raw_text|notification_key)":"[^"]+"' "$trace" 2>/dev/null \
-      | LC_ALL=C grep -av '":""' | head -3 || true)"
-    [ -n "$leak" ] && die "脱敏闸门拦截:trace 含未脱敏原文(疑似旧 APK 或脱敏回归):$leak"
-  fi
+  # redaction_leak_sample 覆盖全部 15 个敏感键(原闸门只扫 3 个 string 键,窄于它声称
+  # 守护的不变量),且按字节扫不留 locale 死角。
+  local leak
+  leak="$(redaction_leak_sample "$trace")"
+  [ -n "$leak" ] && die "脱敏闸门拦截:trace 含未脱敏值(疑似旧 APK 或脱敏回归):$leak"
 
   if [ "$raw_rows" -gt 0 ]; then
     DATA_SOURCE="REAL"
@@ -180,10 +264,10 @@ stage6_pull_and_replay() {
 write_validation_record() {
   banner "写验证记录"
   local rec="data/evaluation/emulator-e2e-$TS.md"
-  local tag="$DATA_SOURCE"
-  [ "$DATA_SOURCE" = "REAL" ] && [ "$MODE" = "auto" ] && \
-    grep -q '"NotificationPosted"' "$TRACE_FILE" 2>/dev/null || \
-    { [ "$DATA_SOURCE" = "REAL" ] && tag="REAL(部分源)"; }
+  # tag 判定收敛到 classify_data_tag(REAL 按是否采到通知细分,与 auto/manual 无关),
+  # 杜绝原 A && B && C || D 无括号短路 —— 那会让 manual 的 REAL 永远被打成"部分源"。
+  local tag
+  tag="$(classify_data_tag "$DATA_SOURCE" "$TRACE_FILE")"
   {
     echo "# 模拟器端到端验证记录 [$DATA_SOURCE]"
     echo

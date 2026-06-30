@@ -33,14 +33,20 @@ DIPECS_ANDROID_ACTION_BRIDGE_TOKEN=<token>
 
 ## Socket 安全边界
 
-Android socket 只监听 `127.0.0.1`，payload 必须包含：
+Android socket 只监听 `127.0.0.1`。CLI ping payload 只用于 health-check，
+必须包含 `auth_token`，不会派发动作。
 
-- `auth_token`
+`aios-action` 的真实 dispatch 使用 execute envelope：
+
+- `message_type: "execute"`
 - `issued_at_ms`
 - `expires_at_ms`
-- `action_signature`
+- `action`，内容是 serialized `AuthorizedAction` 字符串。
+- `auth.hmac_sha256`
 
-`action_signature` 是 HMAC-SHA256，覆盖 action type、target、urgency 和 freshness window。Android 侧还限制 payload 大小、读超时、失败退避、最大 client 数和 action TTL。
+`auth.hmac_sha256` 是 HMAC-SHA256，覆盖 freshness window 和 length-prefixed
+action JSON。Android 侧还限制 payload 大小、读超时、失败退避、最大 client
+数和 envelope TTL，并返回 JSON status 给 Rust。
 
 CLI 的 `send-authorized-action` 当前只是 ping/health-check，不派发动作。
 

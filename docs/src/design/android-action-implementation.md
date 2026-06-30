@@ -16,8 +16,9 @@ Deferred items for v0.2:
 
 | 文件 | 职责 |
 | --- | --- |
-| `crates/aios-action/src/lib.rs` | `DefaultActionExecutor`、Android bridge env、target 白名单、HMAC payload。 |
-| `apps/android-collector/.../actions/AuthorizedActionSocketServer.kt` | localhost socket、token、TTL、HMAC、rate limit。 |
+| `crates/aios-action/src/android_adapter.rs` | `AndroidAdapter`、bridge 配置、target 路由、execute envelope、HMAC 与 response 映射。 |
+| `crates/aios-action/src/lib.rs` | `DefaultActionExecutor` 本地 stub 与 adapter re-export。 |
+| `apps/android-collector/.../actions/AuthorizedActionSocketServer.kt` | localhost socket、token、TTL、execute envelope、HMAC、rate limit。 |
 | `apps/android-collector/.../actions/ActionExecutorBridge.kt` | action type 分发。 |
 | `apps/android-collector/.../actions/AccessibleContentPrefetcher.kt` | `PrefetchFile` 实现。 |
 | `apps/android-collector/.../actions/ActionMaintenanceScheduler.kt` | `KeepAlive` 实现。 |
@@ -34,33 +35,37 @@ DIPECS_ANDROID_ACTION_BRIDGE_PORT=46321
 DIPECS_ANDROID_ACTION_BRIDGE_TOKEN=<token-from-android-app>
 ```
 
-未启用时，`DefaultActionExecutor` 只返回本地 stub outcome。
+未装配 `AndroidAdapter` 时，`DefaultActionExecutor` 只返回本地 stub outcome。
 
-## Payload 字段
+## Execute Envelope
 
-`aios-action` 序列化 `AuthorizedAction` 后追加：
+`aios-action` 序列化 `AuthorizedAction` 后，把 JSON 字符串放入 execute
+envelope：
 
 ```json
 {
-  "auth_token": "...",
+  "message_type": "execute",
   "issued_at_ms": 0,
   "expires_at_ms": 0,
-  "action_signature": "hex-hmac-sha256"
+  "action": "{\"action\":{...}}",
+  "auth": {
+    "hmac_sha256": "hex-hmac-sha256"
+  }
 }
 ```
 
 签名输入是 length-prefixed canonical string：
 
 ```text
-dipecs.android.action.v1
+dipecs.android.bridge.execute.v1
 issued_at_ms:<issued>
 expires_at_ms:<expires>
-action_type:<len>:<ActionType>
-target:<len>:<target>
-urgency:<len>:<Urgency>
+action:<utf8-byte-len>:<serialized AuthorizedAction JSON>
 ```
 
-Android 侧用相同规则验证 HMAC。
+Android 侧用相同规则验证 HMAC、freshness window 和 action JSON。dispatch 后
+返回 JSON status；Rust 只把 `status: "ok"` 映射为 forwarded outcome，并把
+Android 返回的 `summary` / `latency_us` 写入 `ActionOutcome`。
 
 ## Action dispatch
 

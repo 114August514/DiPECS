@@ -144,13 +144,14 @@ object SystemActionExecutors {
     }
 
     private fun parsePackageTarget(target: String): String {
-        val raw = target.removePrefix("pkg:")
-            .removePrefix("notif:")
-            .removePrefix("own:")
-        return raw.substringBefore(":").substringBefore("/").ifBlank {
-            // own:resources or empty defaults to self
-            "com.dipecs.collector"
+        if (target.startsWith("own:")) {
+            return "com.dipecs.collector"
         }
+        return target.removePrefix("pkg:")
+            .removePrefix("notif:")
+            .substringBefore(":")
+            .substringBefore("/")
+            .ifBlank { "com.dipecs.collector" }
     }
 
     // ──────────────────────────────────────────────────

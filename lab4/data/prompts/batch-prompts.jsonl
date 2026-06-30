@@ -1,30 +1,3 @@
-{"id":"batch-os-001","category":"os","prompt":"解释进程和线程在 CPU 推理任务中的区别。","max_tokens":96}
-{"id":"batch-os-002","category":"os","prompt":"为什么线程数超过物理核心数后，推理速度可能不再提升？","max_tokens":96}
-{"id":"batch-os-003","category":"os","prompt":"解释上下文切换对延迟测试的影响。","max_tokens":96}
-{"id":"batch-os-004","category":"os","prompt":"解释页缓存为什么会让第二次模型加载更快。","max_tokens":96}
-{"id":"batch-os-005","category":"os","prompt":"什么是 mmap？它和普通 read 有什么不同？","max_tokens":96}
-{"id":"batch-os-006","category":"os","prompt":"为什么内存不足时大模型推理可能突然变慢？","max_tokens":96}
-{"id":"batch-os-007","category":"os","prompt":"解释 KV cache 为什么会随上下文窗口增大而占用更多内存。","max_tokens":96}
-{"id":"batch-os-008","category":"os","prompt":"为什么模型量化能降低内存带宽压力？","max_tokens":96}
-{"id":"batch-os-009","category":"os","prompt":"解释顺序读取和随机读取对模型文件加载的影响。","max_tokens":96}
-{"id":"batch-os-010","category":"os","prompt":"为什么日志逐条同步写入会增加推理服务延迟？","max_tokens":96}
-{"id":"batch-rpc-001","category":"rpc","prompt":"RPC 分布式推理会引入哪些网络开销？","max_tokens":96}
-{"id":"batch-rpc-002","category":"rpc","prompt":"为什么小 prompt 不一定适合分布式推理？","max_tokens":96}
-{"id":"batch-rpc-003","category":"rpc","prompt":"解释带宽、延迟和抖动对 RPC 推理的影响。","max_tokens":96}
-{"id":"batch-rpc-004","category":"rpc","prompt":"异构节点为什么可能造成同步等待？","max_tokens":96}
-{"id":"batch-rpc-005","category":"rpc","prompt":"如何设计单机推理和 RPC 推理的公平对比实验？","max_tokens":96}
-{"id":"batch-ceph-001","category":"ceph","prompt":"Ceph 中 Monitor 和 OSD 分别负责什么？","max_tokens":96}
-{"id":"batch-ceph-002","category":"ceph","prompt":"Ceph 副本数提高可靠性的同时会带来哪些写入成本？","max_tokens":96}
-{"id":"batch-ceph-003","category":"ceph","prompt":"CephFS 和对象存储在推理工作流中各有什么特点？","max_tokens":96}
-{"id":"batch-ceph-004","category":"ceph","prompt":"为什么小对象读写可能更容易受元数据开销影响？","max_tokens":96}
-{"id":"batch-ceph-005","category":"ceph","prompt":"多节点同时写推理日志时应如何避免命名冲突？","max_tokens":96}
-{"id":"batch-extra-001","category":"os","prompt":"解释为什么 CPU 缓存未命中会导致推理速度下降。","max_tokens":96}
-{"id":"batch-extra-002","category":"os","prompt":"NUMA 架构对多线程推理有什么影响？","max_tokens":96}
-{"id":"batch-extra-003","category":"rpc","prompt":"如何量化 RPC 推理中的序列化开销？","max_tokens":96}
-{"id":"batch-extra-004","category":"rpc","prompt":"解释 gRPC 和 llama.cpp 自定义 RPC 协议的差异。","max_tokens":96}
-{"id":"batch-extra-005","category":"ceph","prompt":"Ceph CRUSH 算法如何决定数据放置位置？","max_tokens":96}
-{"id":"batch-extra-006","category":"os","prompt":"为什么大页内存（HugePages）可以加速模型加载？","max_tokens":96}
-{"id":"batch-extra-007","category":"rpc","prompt":"RPC 推理中如何处理节点故障和断连重连？","max_tokens":96}
-{"id":"batch-extra-008","category":"os","prompt":"解释 CPU 亲和性（affinity）设置对推理任务的影响。","max_tokens":96}
-{"id":"batch-extra-009","category":"ceph","prompt":"Ceph 的 PG（Placement Group）数量如何影响性能？","max_tokens":96}
-{"id":"batch-extra-010","category":"os","prompt":"为什么推理服务的日志异步写入比同步写入更好？","max_tokens":96}
+version https://git-lfs.github.com/spec/v1
+oid sha256:aab4a517a2cd0e64ade813410246a115be1eeb73b7e9d0b6e657fdabc032b35b
+size 3810

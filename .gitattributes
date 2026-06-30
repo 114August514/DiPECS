@@ -1,3 +1,7 @@
+# 默认：所有被 Git 识别为文本的文件统一使用 LF，避免 CRLF 混入库。
+# 下面的具体规则（LFS、gradlew.bat 等）会覆盖本行。
+* text=auto eol=lf
+
 # --- [ 1. 静态参考资料 (References) ] ---
 *.pdf filter=lfs diff=lfs merge=lfs -text
 # --- [ 2. 轨迹数据 (Traces) ] ---

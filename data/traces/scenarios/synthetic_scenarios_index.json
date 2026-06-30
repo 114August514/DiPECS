@@ -1,0 +1,120 @@
+{
+  "scenarios": [
+    {
+      "scenario": "rich-workflow",
+      "synthetic": true,
+      "seed": 20260630,
+      "rows": 2000,
+      "output": "data/traces/rich-workflow.jsonl",
+      "eventTypeCounts": {
+        "app_transition": 500,
+        "context_heartbeat": 300,
+        "keep_alive_job_executed": 11,
+        "keep_alive_scheduled": 13,
+        "notification_interaction": 100,
+        "notification_posted": 600,
+        "own_resources_prewarmed": 13,
+        "prefetch_started": 13,
+        "prefetch_succeeded": 19,
+        "release_memory_completed": 20,
+        "screen_state": 200,
+        "user_visible_action_posted": 11,
+        "view_clicked": 59,
+        "view_focused": 48,
+        "view_selected": 53,
+        "window_state_changed": 40
+      },
+      "description": "Realistic multi-app session with semantic notifications"
+    },
+    {
+      "scenario": "low-battery",
+      "synthetic": true,
+      "seed": 20260630,
+      "rows": 600,
+      "output": "data/traces/low-battery.jsonl",
+      "eventTypeCounts": {
+        "app_transition": 120,
+        "context_heartbeat": 240,
+        "keep_alive_job_executed": 8,
+        "keep_alive_scheduled": 12,
+        "notification_interaction": 60,
+        "notification_posted": 60,
+        "own_resources_prewarmed": 5,
+        "prefetch_started": 6,
+        "prefetch_succeeded": 7,
+        "release_memory_completed": 8,
+        "screen_state": 60,
+        "user_visible_action_posted": 14
+      },
+      "description": "Battery drain triggering ReleaseMemory/KeepAlive"
+    },
+    {
+      "scenario": "privacy-sensitive",
+      "synthetic": true,
+      "seed": 20260630,
+      "rows": 400,
+      "output": "data/traces/privacy-sensitive.jsonl",
+      "eventTypeCounts": {
+        "app_transition": 67,
+        "context_heartbeat": 33,
+        "notification_posted": 300
+      },
+      "description": "Verification/financial notifications → local-only routing"
+    },
+    {
+      "scenario": "morning-routine",
+      "synthetic": true,
+      "seed": 20260630,
+      "rows": 1200,
+      "output": "data/traces/morning-routine.jsonl",
+      "eventTypeCounts": {
+        "app_transition": 420,
+        "context_heartbeat": 240,
+        "keep_alive_job_executed": 6,
+        "keep_alive_scheduled": 9,
+        "notification_interaction": 60,
+        "notification_posted": 240,
+        "own_resources_prewarmed": 10,
+        "prefetch_started": 9,
+        "prefetch_succeeded": 6,
+        "release_memory_completed": 11,
+        "screen_state": 60,
+        "user_visible_action_posted": 9,
+        "view_clicked": 35,
+        "view_focused": 28,
+        "view_selected": 27,
+        "window_state_changed": 30
+      },
+      "description": "Repeated daily pattern for model memory testing"
+    },
+    {
+      "scenario": "circuit-breaker",
+      "synthetic": true,
+      "seed": 20260630,
+      "rows": 300,
+      "output": "data/traces/circuit-breaker.jsonl",
+      "eventTypeCounts": {
+        "app_transition": 50,
+        "context_heartbeat": 50,
+        "notification_interaction": 50,
+        "notification_posted": 150
+      },
+      "description": "Rapid notifications → cloud fallback path"
+    },
+    {
+      "scenario": "multi-app-switching",
+      "synthetic": true,
+      "seed": 20260630,
+      "rows": 1000,
+      "output": "data/traces/multi-app-switching.jsonl",
+      "eventTypeCounts": {
+        "app_transition": 625,
+        "context_heartbeat": 125,
+        "notification_posted": 125,
+        "screen_state": 125
+      },
+      "description": "Frequent foreground/background transitions"
+    }
+  ],
+  "seed": 20260630
+}

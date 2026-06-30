@@ -307,10 +307,11 @@ object SystemActionExecutors {
         for (app in packages) {
             val cleared = try {
                 // deleteApplicationCacheFiles is hidden API — use reflection.
+                val observerClass = Class.forName("android.content.pm.IPackageDataObserver")
                 val deleteMethod = PackageManager::class.java.getDeclaredMethod(
                     "deleteApplicationCacheFiles",
-                    String::class.java,
-                    android.content.pm.IPackageDataObserver::class.java,
+                    java.lang.String::class.java,
+                    observerClass,
                 )
                 deleteMethod.invoke(pm, app.packageName, null)
                 true

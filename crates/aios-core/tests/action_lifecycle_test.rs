@@ -389,6 +389,26 @@ fn deterministic_coord_excludes_runtime_volatiles() {
 }
 
 #[test]
+fn audit_record_includes_source_tier_from_context() {
+    let mut ctx = ctx_with_apps(&[]);
+    ctx.summary.source_tier = SourceTier::Daemon;
+
+    let policy = PolicyEngine::default();
+    let lifecycle = ActionLifecycle::new(&policy, &OkAdapter);
+    let records = lifecycle.run(
+        0,
+        &batch_with_single(noop_intent()),
+        DecisionRoute::RuleBased,
+        None,
+        &CapabilityLevel::for_route(DecisionRoute::RuleBased),
+        &ctx,
+    );
+
+    assert_eq!(records.len(), 1);
+    assert_eq!(records[0].source_tier, SourceTier::Daemon);
+}
+
+#[test]
 fn audit_record_includes_route_and_backend_error() {
     let policy = PolicyEngine::default();
     let lifecycle = ActionLifecycle::new(&policy, &OkAdapter);

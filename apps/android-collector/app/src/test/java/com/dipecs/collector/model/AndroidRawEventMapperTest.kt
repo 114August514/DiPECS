@@ -73,6 +73,9 @@ class AndroidRawEventMapperTest {
                 isScreenOn = true,
                 ringerMode = "vibrate",
                 doNotDisturbMode = null,
+                locationType = "Commute",
+                headphoneConnected = true,
+                bluetoothConnected = true,
             ),
         )
 
@@ -82,8 +85,8 @@ class AndroidRawEventMapperTest {
         assertTrue(event.getBoolean("is_charging"))
         assertEquals("Wifi", event.getString("network"))
         assertEquals("Vibrate", event.getString("ringer_mode"))
-        assertEquals("Unknown", event.getString("location_type"))
-        assertFalse(event.getBoolean("headphone_connected"))
-        assertFalse(event.getBoolean("bluetooth_connected"))
+        assertEquals("Commute", event.getString("location_type"))
+        assertTrue(event.getBoolean("headphone_connected"))
+        assertTrue(event.getBoolean("bluetooth_connected"))
     }
 }

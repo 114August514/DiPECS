@@ -78,12 +78,12 @@ object ActionExecutorBridge {
         payload: JSONObject,
         reason: String = "authorized_action_json",
     ): Boolean {
-        val action = payload.optJSONObject("action")
-        if (action == null) {
+        val parsed = parseAuthorizedAction(payload)
+        if (parsed == null) {
             EventRepository.recordInternal(
                 context,
                 "action_dispatch_rejected",
-                "AuthorizedAction JSON missing action object",
+                "AuthorizedAction JSON missing action object or action_type",
                 JSONObject()
                     .put("reason", reason)
                     .put("payloadBytes", payload.toString().toByteArray(Charsets.UTF_8).size),
@@ -91,20 +91,19 @@ object ActionExecutorBridge {
             return false
         }
 
-        val actionType = action.optString("action_type").takeIf { it.isNotBlank() }
-        val target = action.takeIf { it.has("target") && !it.isNull("target") }?.optString("target")
-        if (actionType == null) {
-            EventRepository.recordInternal(
-                context,
-                "action_dispatch_rejected",
-                "AuthorizedAction JSON missing action_type",
-                JSONObject()
-                    .put("reason", reason)
-                    .put("payloadBytes", payload.toString().toByteArray(Charsets.UTF_8).size),
-            )
-            return false
-        }
-
-        return dispatch(context, actionType, target, reason)
+        return dispatch(context, parsed.actionType, parsed.target, reason)
     }
+
+    internal fun parseAuthorizedAction(payload: JSONObject): ParsedAction? {
+        val action = payload.optJSONObject("action") ?: return null
+        val actionType = action.optString("action_type").takeIf { it.isNotBlank() }
+            ?: return null
+        val target = action.takeIf { it.has("target") && !it.isNull("target") }?.optString("target")
+        return ParsedAction(actionType, target)
+    }
+
+    internal data class ParsedAction(
+        val actionType: String,
+        val target: String?,
+    )
 }

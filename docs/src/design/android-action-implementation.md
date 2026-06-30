@@ -3,6 +3,12 @@
 > 日期: 2026-06-06  
 > 范围: 基于 [Android 动作能力边界](android-action-boundary.md) 的结论，进一步细化每类动作在 DiPECS 中如何具体实现。
 
+> Status update: 2026-06-30. Deferred items have been triaged for v0.2:
+> `SuggestedAction.params` remains deferred until an action needs structured arguments beyond `target`;
+> SAF URI prefetch is implemented through `uri:content://...` targets;
+> `DipecsCollectorApp` is won't-do for v0.2 because the current services and repositories do not need process-wide lifecycle hooks;
+> WorkManager remains later work, with foreground service and bounded single-thread executors accepted for the current prototype.
+
 ## 目标
 
 这份文档不再讨论“能不能做”，而是讨论“如果要做，具体怎么做”。

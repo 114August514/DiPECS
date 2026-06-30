@@ -127,7 +127,7 @@ Android API / system source
 | --- | --- | --- | --- | --- |
 | Phase 1 | Android App 用户态 | UsageStats、NotificationListener、DeviceContext、可选 Accessibility | JSONL trace + Rust 可解析入口样本 | 验证公开 API 能看到什么 |
 | Phase 2a | Android public API production bridge | 已提升的 UsageStats、NotificationListener、DeviceContext | append-only `rawEvent` JSONL -> `CollectorEnvelope` | 生产接入 Rust daemon/core |
-| Phase 2 | App-Rust collector 接口 | JSONL、JNI 或本地 socket | `RawEvent` stream | 打通 apps 到 Rust core 的闭环 |
+| Phase 2 | App-Rust collector 接口 | JSONL file tailing | `RawEvent` stream | Complete for v0.2; JNI/local-socket direct ingress is explicitly deferred, not required for this release |
 | Phase 3 | daemon / collector | `/proc`、Binder probe、system collector | `RawEvent` stream | 增强系统态观测能力 |
 | Phase 4 | system image / privileged service | 更稳定的系统服务接口 | `RawEvent` stream | 降低采集延迟与权限摩擦 |
 
@@ -303,7 +303,7 @@ CloudLlmBackend → LocalEvaluatorBackend → RuleBasedBackend → FallbackNoOp
 - 涉及的模块：
   - `crates/aios-spec/`：新增或稳定 envelope、decision route、authorized action 等协议类型。
   - `apps/android-collector/`：继续作为 Android 公共 API 采集端，保留 app 侧 trace preview；已提升数据源通过 `rawEvent` JSONL 进入生产 Rust ingress，未建模数据源才继续作为接口筛选工具。
-  - App-Rust collector 接口：负责把 apps 侧事件交给 `aios-collector`，可以先用 JSONL，后续替换为 JNI 或本地 socket。
+  - App-Rust collector 接口：负责把 apps 侧事件交给 `aios-collector`。v0.2 决议：以 append-only JSONL tailing 作为完成路径；JNI 或本地 socket 直连只在后续出现低延迟生产需求时重新立项。
   - `crates/aios-core/`：强化 `PrivacyAirGap`、`WindowAggregator`、`PolicyEngine` 的边界语义。
   - `crates/aios-agent/`：从单一 `MockCloudProxy` 演进为 `DecisionRouter` + 多后端。
   - `crates/aios-action/` / action executor：只接收授权动作，并记录执行结果。

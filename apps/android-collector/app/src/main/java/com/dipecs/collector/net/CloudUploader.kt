@@ -169,7 +169,7 @@ object CloudUploader {
         }
     }
 
-    private fun validateUploadEndpoint(endpoint: String): URL {
+    internal fun validateUploadEndpoint(endpoint: String): URL {
         val url = URL(endpoint)
         require(url.protocol == "https") { "Upload endpoint must use HTTPS" }
         val host = url.host?.lowercase().orEmpty()

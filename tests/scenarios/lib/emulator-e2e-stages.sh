@@ -7,7 +7,7 @@ banner() { printf '\n=== %s ===\n' "$*" | tee -a "$RUN_LOG"; }
 
 # --- 纯逻辑助手(无副作用:不碰 adb、不写日志、不 die)---------------------
 # 抽成独立函数有两个原因:一是修掉 review 指出的判定缺陷,二是让这些判定能被
-# stages-selftest.sh 喂 fixture 直接断言 —— 原先逻辑内联在 stage 里没法测。
+# emulator-e2e-selftest.sh 喂 fixture 直接断言 —— 原先逻辑内联在 stage 里没法测。
 
 # 真实采集量 = rawEvent 非空的行数。
 # notification_listener_connected 引导行是 "rawEvent":null,绝不能算进采集量,否则

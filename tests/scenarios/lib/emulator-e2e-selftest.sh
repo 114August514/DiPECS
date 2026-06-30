@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # emulator-e2e 纯逻辑自测:不依赖 adb / 模拟器 / cargo,只对 stage 里抽出的判定函数
 # (count_real_raw_events / classify_data_tag / redaction_leak_sample)喂 fixture 断言。
-# 跑法:bash tests/scenarios/lib/stages-selftest.sh  (退出码 0=全过)
+# 跑法:bash tests/scenarios/lib/emulator-e2e-selftest.sh  (退出码 0=全过)
 #
 # 这些用例正是 review 三个缺陷的回归锚点:
 #   - 空采集(仅引导行)不得被数成 ≥1 → 不得误判 REAL

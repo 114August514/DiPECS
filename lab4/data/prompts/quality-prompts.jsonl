@@ -1,5 +1,3 @@
-{"id":"quality-zh-001","category":"zh-qa","prompt":"用中文简要解释大语言模型本地推理和云端推理各自的优缺点。","max_tokens":256}
-{"id":"quality-summary-001","category":"summary","prompt":"请将下面这段话概括为三点：操作系统通过进程调度、虚拟内存、文件系统和网络协议栈为大模型推理提供运行环境。不同系统参数会改变吞吐、延迟和资源占用，因此性能测试需要同时记录命令、硬件和环境。","max_tokens":192}
-{"id":"quality-code-001","category":"code","prompt":"解释下面 Rust 函数的作用，并指出它为什么返回 Result：fn read_config(path: &std::path::Path) -> anyhow::Result<String> { Ok(std::fs::read_to_string(path)?) }","max_tokens":256}
-{"id":"quality-reason-001","category":"reasoning","prompt":"如果单机推理每秒 20 tokens，RPC 分布式推理每秒 16 tokens，请给出三个可能导致 RPC 更慢的系统原因。","max_tokens":256}
-{"id":"quality-os-001","category":"os","prompt":"从操作系统角度解释 mmap、页缓存和缺页异常如何影响 GGUF 模型加载时间。","max_tokens":320}
+version https://git-lfs.github.com/spec/v1
+oid sha256:4574716823a53671d622d6f3185c1055b9bc8df1a1dc4bc56b8d451e023be527
+size 1141

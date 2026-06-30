@@ -16,6 +16,8 @@ const SYSTEM_LOW_BATTERY_LINE: &str = r#"{"eventId":"evt-3","timestampMs":3000,"
 const ACCESSIBILITY_NO_RAW_LINE: &str = r#"{"eventId":"evt-4","timestampMs":4000,"source":"AccessibilityCollectorService","eventType":"accessibility_text","rawEvent":null,"rawPayload":{}}"#;
 
 const PARSE_ERROR_LINE: &str = "{not valid json";
+const ANDROID_REAL_DEVICE_SAMPLE: &str =
+    include_str!("../../../data/traces/android_real_device_sample.redacted.jsonl");
 
 fn fixture(lines: &[&str]) -> String {
     lines.join("\n") + "\n"
@@ -173,4 +175,30 @@ fn summary_record_is_always_last() {
 
     let last = records.last().expect("at least the summary record");
     assert_eq!(last["stage"].as_str(), Some("summary"));
+}
+
+#[test]
+fn redacted_android_real_device_sample_replays_as_public_api_ingress() {
+    let (records, summary) = run_replay(ANDROID_REAL_DEVICE_SAMPLE, Stage::Policy);
+
+    assert_eq!(summary.lines_total, 5);
+    assert_eq!(summary.lines_skipped_no_raw_event, 1);
+    assert_eq!(summary.lines_parse_error, 0);
+    assert_eq!(summary.events_ingested, 4);
+
+    let ingests = records_by_stage(&records, "ingest");
+    let kinds: Vec<&str> = ingests
+        .iter()
+        .map(|r| r["raw_event_kind"].as_str().unwrap())
+        .collect();
+    assert!(kinds.contains(&"AppTransition"));
+    assert!(kinds.contains(&"NotificationPosted"));
+    assert!(kinds.contains(&"NotificationInteraction"));
+    assert!(kinds.contains(&"SystemState"));
+
+    let serialized = serde_json::to_string(&records).unwrap();
+    assert!(
+        !serialized.contains("sourceText") && !serialized.contains("sourceContentDescription"),
+        "screening-only accessibility payload must not enter replay output: {serialized}"
+    );
 }

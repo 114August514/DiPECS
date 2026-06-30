@@ -52,7 +52,7 @@ fun MainActivity.addAuthorizedActionCard(root: LinearLayout) {
                     this,
                     "authorized_action_rejected",
                     error.message ?: "Invalid AuthorizedAction JSON",
-                    JSONObject().put("payload", payload.take(2048)),
+                    JSONObject().put("payloadBytes", payload.toByteArray(Charsets.UTF_8).size),
                 )
                 false
             }

@@ -36,8 +36,7 @@ use aios_spec::DenialReason;
 /// Pinned audit hash for `data/traces/denial.jsonl` replayed through
 /// `Stage::Policy` with the default 10s window. See module docs.
 const RECONCILED_AUDIT_HASH: &str =
-    "sha256:adaa68cb2b5af17d7c9338e6c35b98fa2b38ef060e7f78d376604c75f548f3fa";
-
+    "sha256:18b76f5012fa1d7fae1b20132312454c11565f426d2bc165a02ccd07f3c78996";
 fn denial_trace_path() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../data/traces/denial.jsonl")
 }
@@ -77,10 +76,6 @@ fn reconciled_trace_flows_without_capability_denials() {
     assert_eq!(summary.lines_parse_error, 0);
     assert_eq!(summary.lines_skipped_no_raw_event, 0);
 
-    // The canonical-audit fingerprint over every per-stage record is also
-    // pinned: any drift anywhere in the pipeline (sanitize, context, decision,
-    // policy, execute records) trips this even if the counters above stay
-    // numerically equivalent.
     assert_eq!(
         summary.audit_hash, RECONCILED_AUDIT_HASH,
         "audit_hash drifted; if intentional update RECONCILED_AUDIT_HASH"

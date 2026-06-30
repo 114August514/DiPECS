@@ -1,0 +1,387 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>DiPECS Trace Dashboard</title>
+  <style>
+    :root {
+      color-scheme: light;
+      font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #f6f7f9;
+      color: #111827;
+    }
+    body {
+      margin: 0;
+    }
+    header {
+      padding: 24px 28px 16px;
+      border-bottom: 1px solid #d8dee8;
+      background: #ffffff;
+    }
+    h1 {
+      margin: 0 0 6px;
+      font-size: 24px;
+      letter-spacing: 0;
+    }
+    main {
+      max-width: 1180px;
+      margin: 0 auto;
+      padding: 22px;
+    }
+    section {
+      margin-bottom: 18px;
+      padding: 18px;
+      border: 1px solid #d8dee8;
+      border-radius: 8px;
+      background: #ffffff;
+    }
+    h2 {
+      margin: 0 0 14px;
+      font-size: 17px;
+      letter-spacing: 0;
+    }
+    .hint {
+      margin: 0;
+      color: #4b5563;
+      font-size: 14px;
+      line-height: 1.5;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 12px;
+    }
+    .metric {
+      padding: 12px;
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+      background: #fbfcfe;
+    }
+    .metric strong {
+      display: block;
+      margin-bottom: 6px;
+      font-size: 13px;
+      color: #4b5563;
+    }
+    .metric span {
+      font-size: 22px;
+      font-weight: 700;
+    }
+    label {
+      display: block;
+      margin: 10px 0 6px;
+      font-weight: 650;
+      font-size: 14px;
+    }
+    input[type="file"] {
+      width: 100%;
+      padding: 10px;
+      border: 1px solid #cbd5e1;
+      border-radius: 8px;
+      background: #ffffff;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+    }
+    th, td {
+      padding: 9px 10px;
+      border-bottom: 1px solid #e5e7eb;
+      text-align: left;
+      vertical-align: top;
+    }
+    th {
+      color: #374151;
+      background: #f9fafb;
+    }
+    code {
+      font-family: "Roboto Mono", Consolas, monospace;
+      font-size: 12px;
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+    }
+    .ok {
+      color: #166534;
+      font-weight: 700;
+    }
+    .warn {
+      color: #9a3412;
+      font-weight: 700;
+    }
+    .danger {
+      color: #991b1b;
+      font-weight: 700;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>DiPECS Trace Dashboard</h1>
+    <p class="hint">本地只读查看器。默认只展示事件类型、package、rawEvent kind、replay stage 和 audit 摘要, 不展示通知正文、accessibility 文本、token 或 payload。</p>
+  </header>
+  <main>
+    <section>
+      <h2>加载文件</h2>
+      <label for="traceInput">Android sanitized JSONL trace</label>
+      <input id="traceInput" type="file" accept=".jsonl,.ndjson,.txt">
+      <label for="replayInput">Replay / audit NDJSON</label>
+      <input id="replayInput" type="file" accept=".jsonl,.ndjson,.txt">
+    </section>
+
+    <section>
+      <h2>Trace 摘要</h2>
+      <div id="traceMetrics" class="grid"></div>
+    </section>
+
+    <section>
+      <h2>Trace 行</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>time</th>
+            <th>source</th>
+            <th>event</th>
+            <th>package</th>
+            <th>rawEvent</th>
+            <th>diagnostic</th>
+          </tr>
+        </thead>
+        <tbody id="traceRows"></tbody>
+      </table>
+    </section>
+
+    <section>
+      <h2>Replay / Audit 摘要</h2>
+      <div id="replayMetrics" class="grid"></div>
+    </section>
+
+    <section>
+      <h2>Replay / Audit 行</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>stage</th>
+            <th>kind</th>
+            <th>decision</th>
+            <th>summary</th>
+          </tr>
+        </thead>
+        <tbody id="replayRows"></tbody>
+      </table>
+    </section>
+  </main>
+
+  <script>
+    const sensitiveKeys = new Set([
+      "text",
+      "raw_text",
+      "raw_title",
+      "sourceText",
+      "sourceContentDescription",
+      "textItems",
+      "payload",
+      "auth_token",
+      "token",
+      "cachePath",
+      "target"
+    ]);
+
+    document.getElementById("traceInput").addEventListener("change", event => {
+      loadFile(event.target.files[0], renderTrace);
+    });
+    document.getElementById("replayInput").addEventListener("change", event => {
+      loadFile(event.target.files[0], renderReplay);
+    });
+
+    function loadFile(file, callback) {
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = () => callback(parseNdjson(String(reader.result || "")));
+      reader.readAsText(file);
+    }
+
+    function parseNdjson(text) {
+      return text.split(/\r?\n/)
+        .map(line => line.trim())
+        .filter(Boolean)
+        .map((line, index) => {
+          try {
+            return { index: index + 1, ok: true, value: JSON.parse(line) };
+          } catch (error) {
+            return { index: index + 1, ok: false, error: error.message };
+          }
+        });
+    }
+
+    function renderTrace(records) {
+      const valid = records.filter(record => record.ok).map(record => record.value);
+      const rawKinds = valid.map(rawEventKind).filter(Boolean);
+      const rawNull = valid.length - rawKinds.length;
+      const parseErrors = records.filter(record => !record.ok).length;
+
+      renderMetrics("traceMetrics", [
+        ["rows", records.length],
+        ["valid JSON", valid.length],
+        ["parse errors", parseErrors],
+        ["rawEvent rows", rawKinds.length],
+        ["rawEvent null", rawNull],
+        ["rawEvent rate", percent(rawKinds.length, valid.length)]
+      ]);
+
+      const rows = records.slice(0, 200).map(record => {
+        if (!record.ok) {
+          return row([
+            record.index,
+            "-",
+            "-",
+            "-",
+            "-",
+            "-",
+            `<span class="danger">${escapeHtml(record.error)}</span>`
+          ]);
+        }
+        const value = record.value;
+        return row([
+          record.index,
+          formatTime(value.timestampMs),
+          safeText(value.source),
+          safeText(value.eventType),
+          safeText(value.packageName),
+          rawEventKind(value) || '<span class="warn">null</span>',
+          traceDiagnostic(value)
+        ]);
+      }).join("");
+      document.getElementById("traceRows").innerHTML = rows || emptyRow(7);
+    }
+
+    function renderReplay(records) {
+      const valid = records.filter(record => record.ok).map(record => record.value);
+      const stages = countBy(valid.map(value => value.stage || "unknown"));
+      const summary = valid.find(value => value.stage === "summary");
+      const parseErrors = records.filter(record => !record.ok).length;
+
+      renderMetrics("replayMetrics", [
+        ["rows", records.length],
+        ["valid JSON", valid.length],
+        ["parse errors", parseErrors],
+        ["stages", Object.keys(stages).length],
+        ["ingested", summary?.events_ingested ?? "-"],
+        ["authorized", summary?.actions_authorized ?? "-"]
+      ]);
+
+      const rows = records.slice(0, 200).map(record => {
+        if (!record.ok) {
+          return row([record.index, "-", "-", "-", `<span class="danger">${escapeHtml(record.error)}</span>`]);
+        }
+        const value = record.value;
+        return row([
+          record.index,
+          safeText(value.stage),
+          replayKind(value),
+          replayDecision(value),
+          `<code>${escapeHtml(JSON.stringify(redactedSummary(value)))}</code>`
+        ]);
+      }).join("");
+      document.getElementById("replayRows").innerHTML = rows || emptyRow(5);
+    }
+
+    function renderMetrics(id, metrics) {
+      document.getElementById(id).innerHTML = metrics.map(([label, value]) => `
+        <div class="metric"><strong>${escapeHtml(label)}</strong><span>${escapeHtml(String(value))}</span></div>
+      `).join("");
+    }
+
+    function rawEventKind(value) {
+      if (!value || !value.rawEvent || typeof value.rawEvent !== "object") return null;
+      return Object.keys(value.rawEvent)[0] || null;
+    }
+
+    function traceDiagnostic(value) {
+      const kind = rawEventKind(value);
+      if (!kind) return '<span class="warn">screening only</span>';
+      if (containsSensitiveKey(value)) return '<span class="danger">sensitive key present, value hidden</span>';
+      return '<span class="ok">production candidate</span>';
+    }
+
+    function replayKind(value) {
+      return safeText(value.raw_event_kind || value.action_type || value.route || value.stage || "-");
+    }
+
+    function replayDecision(value) {
+      if (typeof value.approved === "boolean") {
+        return value.approved ? '<span class="ok">approved</span>' : '<span class="warn">denied</span>';
+      }
+      if (value.terminal) return safeText(value.terminal);
+      return "-";
+    }
+
+    function redactedSummary(value) {
+      if (!value || typeof value !== "object") return value;
+      const output = {};
+      for (const key of ["stage", "raw_event_kind", "source_tier", "route", "approved", "reason", "terminal", "events_ingested", "lines_parse_error", "lines_skipped_no_raw_event"]) {
+        if (Object.prototype.hasOwnProperty.call(value, key)) {
+          output[key] = value[key];
+        }
+      }
+      return output;
+    }
+
+    function containsSensitiveKey(value) {
+      if (!value || typeof value !== "object") return false;
+      for (const key of Object.keys(value)) {
+        if (sensitiveKeys.has(key)) return true;
+        if (containsSensitiveKey(value[key])) return true;
+      }
+      return false;
+    }
+
+    function countBy(values) {
+      return values.reduce((acc, value) => {
+        acc[value] = (acc[value] || 0) + 1;
+        return acc;
+      }, {});
+    }
+
+    function percent(part, total) {
+      if (!total) return "0%";
+      return `${Math.round((part / total) * 100)}%`;
+    }
+
+    function formatTime(ms) {
+      if (!ms) return "-";
+      return new Date(Number(ms)).toISOString();
+    }
+
+    function safeText(value) {
+      if (value === null || value === undefined || value === "") return "-";
+      return escapeHtml(String(value));
+    }
+
+    function row(values) {
+      return `<tr>${values.map(value => `<td>${value}</td>`).join("")}</tr>`;
+    }
+
+    function emptyRow(cols) {
+      return `<tr><td colspan="${cols}">No data loaded.</td></tr>`;
+    }
+
+    function escapeHtml(value) {
+      return String(value)
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&#039;");
+    }
+
+    renderMetrics("traceMetrics", [["rows", 0], ["rawEvent rows", 0], ["rawEvent rate", "0%"]]);
+    renderMetrics("replayMetrics", [["rows", 0], ["stages", 0], ["authorized", "-"]]);
+    document.getElementById("traceRows").innerHTML = emptyRow(7);
+    document.getElementById("replayRows").innerHTML = emptyRow(5);
+  </script>
+</body>
+</html>

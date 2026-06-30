@@ -108,10 +108,6 @@ impl RuleBasedBackend {
                 intent_type: IntentType::OpenApp(from_app.clone()),
                 confidence: 0.70,
                 risk_level: RiskLevel::Low,
-                // KeepAlive, not PreWarmProcess: the file-bearing app already
-                // exists (it raised the notification), and the RuleBased
-                // capability forbids PreWarmProcess. Keeping it warm makes the
-                // imminent open fast without a capability-denied pre-warm.
                 suggested_actions: vec![SuggestedAction {
                     action_type: ActionType::KeepAlive,
                     target: Some(from_app),
@@ -121,14 +117,6 @@ impl RuleBasedBackend {
             });
         }
 
-        // Generic notification engagement: an app raised or updated a
-        // notification without a file mention. The process usually already
-        // exists (it posted the notification) and the user may open it soon,
-        // so keep it warm. KeepAlive is deliberate — the RuleBased capability
-        // authorizes KeepAlive but denies PreWarmProcess, so a pre-warm here
-        // would be dropped by policy. Distinguishing a tap from a dismiss
-        // needs the interaction action preserved through the air-gap, which it
-        // currently is not (future refinement).
         if !has_file_mention {
             if let Some(app) = notified_apps.first().cloned() {
                 intents.push(Intent {
@@ -152,10 +140,6 @@ impl RuleBasedBackend {
                 intent_type: IntentType::SwitchToApp(target.clone()),
                 confidence: 0.80,
                 risk_level: RiskLevel::Low,
-                // KeepAlive only: PreWarmProcess is outside the RuleBased
-                // capability and was previously emitted just to be denied. The
-                // app is already foregrounded, so keeping it alive is the
-                // meaningful (and authorized) action.
                 suggested_actions: vec![SuggestedAction {
                     action_type: ActionType::KeepAlive,
                     target: Some(target),
@@ -173,7 +157,7 @@ impl RuleBasedBackend {
                 risk_level: RiskLevel::Low,
                 suggested_actions: vec![SuggestedAction {
                     action_type: ActionType::KeepAlive,
-                    target: summary.foreground_apps.first().cloned(),
+                    target: Some("work:collector_heartbeat".into()),
                     urgency: ActionUrgency::IdleTime,
                 }],
                 rationale_tags: vec!["screen_on".into()],
@@ -188,7 +172,7 @@ impl RuleBasedBackend {
                 risk_level: RiskLevel::Low,
                 suggested_actions: vec![SuggestedAction {
                     action_type: ActionType::ReleaseMemory,
-                    target: None,
+                    target: Some("cache:prefetch".into()),
                     urgency: ActionUrgency::Immediate,
                 }],
                 rationale_tags: vec!["low_battery".into()],

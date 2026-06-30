@@ -551,6 +551,46 @@ fn test_target_in_context_approved() {
 }
 
 #[test]
+fn test_android_safe_prefixed_targets_approved() {
+    let engine = PolicyEngine::default();
+    let capability = CapabilityLevel::for_route(DecisionRoute::CloudLlm);
+    let ctx = ctx_with_packages(&["com.known"]);
+    let intent = make_intent(
+        "i1",
+        IntentType::Idle,
+        0.8,
+        RiskLevel::Low,
+        vec![
+            make_action(
+                ActionType::PreWarmProcess,
+                Some("pkg:com.known"),
+                ActionUrgency::Immediate,
+            ),
+            make_action(
+                ActionType::PreWarmProcess,
+                Some("own:resources"),
+                ActionUrgency::Immediate,
+            ),
+            make_action(
+                ActionType::KeepAlive,
+                Some("work:collector_heartbeat"),
+                ActionUrgency::Immediate,
+            ),
+            make_action(
+                ActionType::ReleaseMemory,
+                Some("cache:prefetch"),
+                ActionUrgency::Immediate,
+            ),
+        ],
+    );
+    let batch = make_batch(vec![intent]);
+    let decisions = engine.evaluate_batch_with_context(&batch, &capability, &ctx);
+
+    assert_eq!(decisions.len(), 4);
+    assert!(decisions.iter().all(is_approved));
+}
+
+#[test]
 fn test_target_not_in_context_denied() {
     let engine = PolicyEngine::default();
     let capability = CapabilityLevel::for_route(DecisionRoute::CloudLlm);

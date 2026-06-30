@@ -6,12 +6,32 @@ import org.junit.Test
 
 class AccessibleContentPrefetcherTest {
     @Test
-    fun parseUrlTargetAcceptsHttpUrl() {
+    fun parseUrlTargetAcceptsHttpsUrl() {
         val target = AccessibleContentPrefetcher.PrefetchTarget.parse("url:https://example.test/feed.json")
 
         assertEquals("url", target.kind)
         assertEquals("https://example.test/feed.json", target.value)
         assertTrue(target.cacheFileName().endsWith(".json"))
+    }
+
+    @Test(expected = IllegalArgumentException::class)
+    fun parseUrlTargetRejectsHttpUrl() {
+        AccessibleContentPrefetcher.PrefetchTarget.parse("url:http://example.test/feed.json")
+    }
+
+    @Test(expected = IllegalArgumentException::class)
+    fun parseUrlTargetRejectsLocalhost() {
+        AccessibleContentPrefetcher.PrefetchTarget.parse("url:https://localhost/feed.json")
+    }
+
+    @Test(expected = IllegalArgumentException::class)
+    fun parseUrlTargetRejectsLoopbackAddress() {
+        AccessibleContentPrefetcher.PrefetchTarget.parse("url:https://127.0.0.1/feed.json")
+    }
+
+    @Test(expected = IllegalArgumentException::class)
+    fun parseUrlTargetRejectsPrivateAddress() {
+        AccessibleContentPrefetcher.PrefetchTarget.parse("url:https://192.168.1.10/feed.json")
     }
 
     @Test(expected = IllegalStateException::class)

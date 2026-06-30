@@ -10,8 +10,8 @@ use aios_core::policy_engine::PolicyEngine;
 use aios_spec::context::ContextSummary;
 use aios_spec::governance::ActionState;
 use aios_spec::intent::{
-    ActionType, ActionUrgency, CapabilityLevel, Intent, IntentBatch, IntentType, RiskLevel,
-    SuggestedAction,
+    ActionType, ActionUrgency, CapabilityLevel, DecisionRoute, Intent, IntentBatch, IntentType,
+    RiskLevel, SuggestedAction,
 };
 use aios_spec::{SourceTier, StructuredContext};
 
@@ -97,6 +97,8 @@ fn default_executor_noop_succeeds() {
     let records = lifecycle.run(
         0,
         &batch_with_single(noop_intent()),
+        DecisionRoute::RuleBased,
+        None,
         &permissive_capability(),
         &empty_context(),
     );
@@ -139,6 +141,8 @@ fn offline_adapter_covers_all_action_types() {
         let records = lifecycle.run(
             0,
             &batch_with_single(intent),
+            DecisionRoute::RuleBased,
+            None,
             &permissive_capability(),
             &context_with_apps(&["com.example.app"]),
         );
@@ -179,12 +183,16 @@ fn offline_adapter_outcome_is_deterministic() {
     let a = lifecycle.run(
         0,
         &batch_with_single(intent.clone()),
+        DecisionRoute::RuleBased,
+        None,
         &permissive_capability(),
         &empty_context(),
     );
     let b = lifecycle.run(
         0,
         &batch_with_single(intent),
+        DecisionRoute::RuleBased,
+        None,
         &permissive_capability(),
         &empty_context(),
     );

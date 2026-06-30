@@ -24,16 +24,13 @@ class AndroidRawEventMapperTest {
     }
 
     @Test
-    fun notificationPostedMatchesRustRawEventJson() {
+    fun notificationPostedUsesPrivacyPreservingRawEventJson() {
         val rawEvent = AndroidRawEventMapper.notificationPosted(
             timestampMs = 2000L,
             packageName = "com.ss.android.lark",
             category = "msg",
             channelId = "lark_im_message",
-            rawTitle = "张三",
-            rawText = "发来一个文件",
             isOngoing = false,
-            groupKey = "group-1",
             hasPicture = true,
         )
 
@@ -42,26 +39,25 @@ class AndroidRawEventMapperTest {
         assertEquals("com.ss.android.lark", event.getString("package_name"))
         assertEquals("msg", event.getString("category"))
         assertEquals("lark_im_message", event.getString("channel_id"))
-        assertEquals("张三", event.getString("raw_title"))
-        assertEquals("发来一个文件", event.getString("raw_text"))
+        assertEquals("", event.getString("raw_title"))
+        assertEquals("", event.getString("raw_text"))
         assertFalse(event.getBoolean("is_ongoing"))
-        assertEquals("group-1", event.getString("group_key"))
+        assertTrue(event.isNull("group_key"))
         assertTrue(event.getBoolean("has_picture"))
     }
 
     @Test
-    fun notificationInteractionMatchesRustRawEventJson() {
+    fun notificationInteractionDoesNotPersistNotificationKey() {
         val rawEvent = AndroidRawEventMapper.notificationInteraction(
             timestampMs = 2500L,
             packageName = "com.ss.android.lark",
-            notificationKey = "0|com.ss.android.lark|42|null|10086",
             action = "Tapped",
         )
 
         val event = rawEvent.getJSONObject("NotificationInteraction")
         assertEquals(2500L, event.getLong("timestamp_ms"))
         assertEquals("com.ss.android.lark", event.getString("package_name"))
-        assertEquals("0|com.ss.android.lark|42|null|10086", event.getString("notification_key"))
+        assertEquals("", event.getString("notification_key"))
         assertEquals("Tapped", event.getString("action"))
     }
 

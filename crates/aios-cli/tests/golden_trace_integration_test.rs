@@ -36,7 +36,7 @@ use aios_spec::traits::{PrivacySanitizer, TraceValidator};
 use aios_spec::{
     AppTransition, AppTransitionRawEvent, CapabilityLevel, ExecutedAction, FsAccessEvent,
     FsAccessType, GoldenTrace, IntentBatch, LocationType, NetworkType, RawEvent, RingerMode,
-    SanitizedEvent, SystemStateEvent,
+    SanitizedEvent, SourceTier, SystemStateEvent,
 };
 
 fn golden_path() -> PathBuf {
@@ -103,7 +103,14 @@ fn drive_pipeline() -> (Vec<SanitizedEvent>, IntentBatch, Vec<ExecutedAction>) {
     let policy = PolicyEngine::default();
     let executor = DefaultActionExecutor::new();
     let lifecycle = ActionLifecycle::new(&policy, &executor);
-    let audit_records = lifecycle.run(0, &decision.intent_batch, &capability, &ctx);
+    let audit_records = lifecycle.run(
+        0,
+        &decision.intent_batch,
+        decision.route,
+        decision.error.clone(),
+        &capability,
+        &ctx,
+    );
 
     let mut executed: Vec<ExecutedAction> = Vec::new();
     for record in &audit_records {
@@ -180,7 +187,7 @@ fn replay_matches_golden_sample() {
     assert_eq!(
         executed.len(),
         2,
-        "exactly 2 actions survive policy: KeepAlive(com.android.chrome) + ReleaseMemory(None)"
+        "exactly 2 actions survive policy: KeepAlive(work:collector_heartbeat) + ReleaseMemory(cache:prefetch)"
     );
 }
 
@@ -320,6 +327,7 @@ fn regen_golden_sample() {
         window_start_ms: 1_000,
         window_end_ms: 3_000,
         raw_events: fixture_raw_events(),
+        source_tiers: vec![SourceTier::PublicApi; 3],
         expected_sanitized: sanitized,
         expected_intents: intents,
         expected_actions: executed,

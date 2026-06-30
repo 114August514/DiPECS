@@ -1,6 +1,7 @@
 package com.dipecs.collector.actions
 
 import android.content.Context
+import com.dipecs.collector.storage.CollectorPreferences
 import com.dipecs.collector.storage.EventRepository
 import java.io.IOException
 import java.io.InputStreamReader
@@ -11,11 +12,16 @@ import java.net.Socket
 import java.net.SocketException
 import java.net.SocketTimeoutException
 import java.security.MessageDigest
+import java.util.concurrent.ArrayBlockingQueue
 import java.util.concurrent.Executors
+import java.util.concurrent.RejectedExecutionException
+import java.util.concurrent.ThreadPoolExecutor
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicLong
+import javax.crypto.Mac
+import javax.crypto.spec.SecretKeySpec
 import org.json.JSONObject
 
 class AuthorizedActionSocketServer(
@@ -27,7 +33,13 @@ class AuthorizedActionSocketServer(
     private val failedAuthCount = AtomicInteger(0)
     private val rejectUntilMs = AtomicLong(0)
     private val acceptExecutor = Executors.newSingleThreadExecutor()
-    private val clientExecutor = Executors.newCachedThreadPool()
+    private val clientExecutor = ThreadPoolExecutor(
+        MAX_CLIENT_THREADS,
+        MAX_CLIENT_THREADS,
+        30L,
+        TimeUnit.SECONDS,
+        ArrayBlockingQueue(MAX_PENDING_CLIENTS),
+    )
     @Volatile
     private var serverSocket: ServerSocket? = null
 
@@ -40,6 +52,11 @@ class AuthorizedActionSocketServer(
             try {
                 val socket = ServerSocket(port, 16, InetAddress.getByName(LOOPBACK_HOST))
                 serverSocket = socket
+                CollectorPreferences.setActionSocketStatus(
+                    context,
+                    listening = true,
+                    status = "listening on $LOOPBACK_HOST:$port",
+                )
                 EventRepository.recordInternal(
                     context,
                     "authorized_action_socket_started",
@@ -59,12 +76,27 @@ class AuthorizedActionSocketServer(
                         }
                         throw error
                     }
-                    clientExecutor.execute {
-                        client.use { handleClient(it) }
+                    try {
+                        clientExecutor.execute {
+                            client.use { handleClient(it) }
+                        }
+                    } catch (_: RejectedExecutionException) {
+                        client.close()
+                        EventRepository.recordInternal(
+                            context,
+                            "authorized_action_socket_busy",
+                            "AuthorizedAction socket client queue is full",
+                            JSONObject().put("port", port),
+                        )
                     }
                 }
             } catch (error: Throwable) {
                 if (running.get()) {
+                    CollectorPreferences.setActionSocketStatus(
+                        context,
+                        listening = false,
+                        status = error.message ?: error.javaClass.simpleName,
+                    )
                     EventRepository.recordInternal(
                         context,
                         "authorized_action_socket_failed",
@@ -78,6 +110,11 @@ class AuthorizedActionSocketServer(
                 serverSocket?.close()
                 serverSocket = null
                 running.set(false)
+                CollectorPreferences.setActionSocketStatus(
+                    context,
+                    listening = false,
+                    status = "stopped",
+                )
             }
         }
     }
@@ -88,6 +125,11 @@ class AuthorizedActionSocketServer(
         }
         runCatching { serverSocket?.close() }
         clientExecutor.shutdownNow()
+        CollectorPreferences.setActionSocketStatus(
+            context,
+            listening = false,
+            status = "stopped",
+        )
         EventRepository.recordInternal(
             context,
             "authorized_action_socket_stopped",
@@ -176,6 +218,26 @@ class AuthorizedActionSocketServer(
                     )
                     return@onSuccess
                 }
+                if (!hasFreshActionWindow(json)) {
+                    recordAuthFailure()
+                    EventRepository.recordInternal(
+                        context,
+                        "authorized_action_socket_stale",
+                        "AuthorizedAction socket payload missing or expired freshness window",
+                        JSONObject().put("port", port),
+                    )
+                    return@onSuccess
+                }
+                if (!hasValidActionSignature(json)) {
+                    recordAuthFailure()
+                    EventRepository.recordInternal(
+                        context,
+                        "authorized_action_socket_bad_signature",
+                        "AuthorizedAction socket payload signature failed",
+                        JSONObject().put("port", port),
+                    )
+                    return@onSuccess
+                }
                 val dispatched = ActionExecutorBridge.dispatchAuthorizedActionJson(
                     context,
                     json,
@@ -197,7 +259,7 @@ class AuthorizedActionSocketServer(
                     "authorized_action_socket_invalid_json",
                     error.message ?: "Invalid AuthorizedAction JSON",
                     JSONObject()
-                        .put("payload", payload.take(2048))
+                        .put("payloadBytes", payload.toByteArray(Charsets.UTF_8).size)
                         .put("port", port),
                 )
             }
@@ -241,6 +303,69 @@ class AuthorizedActionSocketServer(
         return constantTimeEquals(supplied, authToken)
     }
 
+    private fun hasFreshActionWindow(payload: JSONObject): Boolean {
+        if (!payload.has("action") || payload.isNull("action")) {
+            return false
+        }
+        val issuedAtMs = payload.optLong(ISSUED_AT_FIELD, 0L)
+        val expiresAtMs = payload.optLong(EXPIRES_AT_FIELD, 0L)
+        if (issuedAtMs <= 0L || expiresAtMs <= 0L || expiresAtMs <= issuedAtMs) {
+            return false
+        }
+        if (expiresAtMs - issuedAtMs > MAX_ACTION_TTL_MS) {
+            return false
+        }
+        val now = System.currentTimeMillis()
+        return now + CLOCK_SKEW_MS >= issuedAtMs && now - CLOCK_SKEW_MS <= expiresAtMs
+    }
+
+    private fun hasValidActionSignature(payload: JSONObject): Boolean {
+        val supplied = payload.optString(ACTION_SIGNATURE_FIELD).takeIf { it.isNotBlank() }
+            ?: return false
+        val issuedAtMs = payload.optLong(ISSUED_AT_FIELD, 0L)
+        val expiresAtMs = payload.optLong(EXPIRES_AT_FIELD, 0L)
+        val action = payload.optJSONObject("action") ?: return false
+        val actionType = action.optString("action_type").takeIf { it.isNotBlank() }
+            ?: return false
+        val target = if (action.has("target") && !action.isNull("target")) {
+            action.optString("target")
+        } else {
+            ""
+        }
+        val urgency = action.optString("urgency").takeIf { it.isNotBlank() }
+            ?: return false
+        val canonical = canonicalActionSignatureInput(
+            issuedAtMs = issuedAtMs,
+            expiresAtMs = expiresAtMs,
+            actionType = actionType,
+            target = target,
+            urgency = urgency,
+        )
+        val expected = hmacSha256Hex(authToken, canonical)
+        return constantTimeEquals(supplied.lowercase(), expected)
+    }
+
+    private fun canonicalActionSignatureInput(
+        issuedAtMs: Long,
+        expiresAtMs: Long,
+        actionType: String,
+        target: String,
+        urgency: String,
+    ): String =
+        "dipecs.android.action.v1\n" +
+            "issued_at_ms:$issuedAtMs\n" +
+            "expires_at_ms:$expiresAtMs\n" +
+            "action_type:${actionType.length}:$actionType\n" +
+            "target:${target.length}:$target\n" +
+            "urgency:${urgency.length}:$urgency"
+
+    private fun hmacSha256Hex(key: String, message: String): String {
+        val mac = Mac.getInstance("HmacSHA256")
+        mac.init(SecretKeySpec(key.toByteArray(Charsets.UTF_8), "HmacSHA256"))
+        return mac.doFinal(message.toByteArray(Charsets.UTF_8))
+            .joinToString(separator = "") { byte -> "%02x".format(byte) }
+    }
+
     private fun constantTimeEquals(left: String, right: String): Boolean {
         val leftBytes = left.toByteArray(Charsets.UTF_8)
         val rightBytes = right.toByteArray(Charsets.UTF_8)
@@ -262,9 +387,16 @@ class AuthorizedActionSocketServer(
     companion object {
         const val LOOPBACK_HOST = "127.0.0.1"
         const val AUTH_TOKEN_FIELD = "auth_token"
+        private const val ISSUED_AT_FIELD = "issued_at_ms"
+        private const val EXPIRES_AT_FIELD = "expires_at_ms"
+        private const val ACTION_SIGNATURE_FIELD = "action_signature"
         private const val MAX_PAYLOAD_CHARS = 64 * 1024
         private const val READ_BUFFER_CHARS = 4096
+        private const val MAX_CLIENT_THREADS = 4
+        private const val MAX_PENDING_CLIENTS = 16
         private const val MAX_AUTH_FAILURES_BEFORE_BACKOFF = 5
+        private val MAX_ACTION_TTL_MS = TimeUnit.MINUTES.toMillis(5)
+        private val CLOCK_SKEW_MS = TimeUnit.SECONDS.toMillis(30)
         private val SOCKET_READ_TIMEOUT_MS = TimeUnit.SECONDS.toMillis(5)
         private val AUTH_BACKOFF_MS = TimeUnit.SECONDS.toMillis(30)
     }

@@ -2,6 +2,7 @@ package com.dipecs.collector
 
 import android.Manifest
 import android.app.Activity
+import android.app.AlertDialog
 import android.content.ClipData
 import android.content.ClipDescription
 import android.content.ClipboardManager
@@ -26,6 +27,7 @@ import android.widget.ScrollView
 import android.widget.Spinner
 import android.widget.TextView
 import com.dipecs.collector.actions.ActionExecutorBridge
+import com.dipecs.collector.actions.AccessibleContentPrefetcher
 import com.dipecs.collector.net.CloudUploader
 import com.dipecs.collector.services.CollectorForegroundService
 import com.dipecs.collector.storage.CollectorPreferences
@@ -45,6 +47,7 @@ class MainActivity : Activity() {
     private lateinit var prefetchTargetInput: EditText
     private lateinit var actionSocketPortInput: EditText
     private lateinit var modeSpinner: Spinner
+    private lateinit var uploadEnabledCheck: CheckBox
     private lateinit var usageCheck: CheckBox
     private lateinit var notificationCheck: CheckBox
     private lateinit var accessibilityCheck: CheckBox
@@ -152,6 +155,7 @@ class MainActivity : Activity() {
         root.addView(prefetchCard())
         root.addView(actionSocketCard())
         addAuthorizedActionCard(root)
+        root.addView(privacyCard())
         root.addView(controlCard())
 
         traceStatusView = TextView(this).apply {
@@ -199,6 +203,17 @@ class MainActivity : Activity() {
         }
         content.addView(sectionLabel("Upload mode"))
         content.addView(modeSpinner)
+        uploadEnabledCheck = sourceCheckBox(
+            "Enable periodic upload",
+            CollectorPreferences.isUploadEnabled(this),
+        )
+        content.addView(uploadEnabledCheck)
+        content.addView(TextView(this).apply {
+            text = "Manual upload is still available for validation. Periodic upload stays off unless this is enabled."
+            textSize = 12f
+            setTextColor(Color.rgb(75, 85, 99))
+            setPadding(0, 4, 0, 8)
+        })
 
         endpointInput = EditText(this).apply {
             hint = "https://example.test/collector"
@@ -241,19 +256,32 @@ class MainActivity : Activity() {
             toast("Upload queued")
         })
         content.addView(rowButton("Export JSONL Trace") {
-            val target = EventStore(this).exportToExternalFiles()
-            toast("Exported to ${target.absolutePath}")
-            refreshStatus()
+            confirmExportTrace()
         })
         content.addView(rowButton("Clear Trace") {
-            EventStore(this).clear()
-            toast("Trace cleared")
-            refreshStatus()
+            confirmClearTrace()
         })
         content.addView(rowButton("Refresh Preview") {
             refreshStatus()
         })
         return card("Run controls", content)
+    }
+
+    private fun privacyCard(): View {
+        val content = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+        }
+        content.addView(TextView(this).apply {
+            text = buildString {
+                appendLine("Local trace rows are sanitized before they are stored or exported.")
+                appendLine("Notification title/text, accessibility text, socket payloads, cache paths, and action targets are redacted.")
+                appendLine("Only rows with non-null rawEvent are production Rust ingress candidates.")
+                append("AccessibilityService is a screening source and stays disabled by default.")
+            }
+            textSize = 13f
+            setTextColor(Color.rgb(75, 85, 99))
+        })
+        return card("Privacy boundary", content)
     }
 
     private fun prefetchCard(): View {
@@ -269,7 +297,7 @@ class MainActivity : Activity() {
         content.addView(sectionLabel("Prefetch target"))
         content.addView(prefetchTargetInput)
         content.addView(TextView(this).apply {
-            text = "Supports url:http(s) and persisted uri:content:// targets. Prefetched content is stored in app cache."
+            text = "Supports url:https:// and persisted uri:content:// targets. Prefetched content is stored in app cache with a 24h TTL."
             textSize = 12f
             setTextColor(Color.rgb(75, 85, 99))
             setPadding(0, 8, 0, 10)
@@ -305,6 +333,46 @@ class MainActivity : Activity() {
                 prefetchTarget = target,
             )
             toast("Service prefetch queued")
+        })
+        content.addView(rowButton("Release Own Prefetch Cache") {
+            ActionExecutorBridge.dispatch(
+                this@MainActivity,
+                ActionExecutorBridge.ACTION_TYPE_RELEASE_MEMORY,
+                "cache:prefetch",
+                reason = "manual",
+            )
+            toast("ReleaseMemory queued")
+            refreshStatus()
+        })
+        content.addView(rowButton("Schedule KeepAlive Job") {
+            ActionExecutorBridge.dispatch(
+                this@MainActivity,
+                ActionExecutorBridge.ACTION_TYPE_KEEP_ALIVE,
+                "work:collector_heartbeat",
+                reason = "manual",
+            )
+            toast("KeepAlive job scheduled")
+            refreshStatus()
+        })
+        content.addView(rowButton("Warm Own Resources") {
+            ActionExecutorBridge.dispatch(
+                this@MainActivity,
+                ActionExecutorBridge.ACTION_TYPE_PREWARM_PROCESS,
+                "own:resources",
+                reason = "manual",
+            )
+            toast("Own resources warmed")
+            refreshStatus()
+        })
+        content.addView(rowButton("Post User-Visible Hint") {
+            ActionExecutorBridge.dispatch(
+                this@MainActivity,
+                ActionExecutorBridge.ACTION_TYPE_PREWARM_PROCESS,
+                "notif:review_action",
+                reason = "manual",
+            )
+            toast("Action hint requested")
+            refreshStatus()
         })
         content.addView(rowButton("Pick Document URI") {
             val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
@@ -402,6 +470,7 @@ class MainActivity : Activity() {
         apiKeyInput.setText(CollectorPreferences.apiKey(this))
         prefetchTargetInput.setText(CollectorPreferences.prefetchTarget(this))
         actionSocketPortInput.setText(CollectorPreferences.actionSocketPort(this).toString())
+        uploadEnabledCheck.isChecked = CollectorPreferences.isUploadEnabled(this)
         val mode = CollectorPreferences.uploadMode(this)
         modeSpinner.setSelection(if (mode == CollectorPreferences.MODE_LLM) 1 else 0)
         usageCheck.isChecked = CollectorPreferences.isUsageEnabled(this)
@@ -413,6 +482,7 @@ class MainActivity : Activity() {
     private fun savePreferences(showToast: Boolean = true) {
         CollectorPreferences.setEndpoint(this, endpointInput.text.toString())
         CollectorPreferences.setApiKey(this, apiKeyInput.text.toString())
+        CollectorPreferences.setUploadEnabled(this, uploadEnabledCheck.isChecked)
         CollectorPreferences.setPrefetchTarget(this, prefetchTargetInput.text.toString())
         if (!saveActionSocketPort()) {
             return
@@ -436,6 +506,15 @@ class MainActivity : Activity() {
             appendLine("Accessibility service: ${mark(PermissionStatus.hasAccessibilityAccess(this@MainActivity))}")
             appendLine("Post notifications: ${mark(PermissionStatus.hasPostNotifications(this@MainActivity))}")
             appendLine()
+            appendLine("Runtime:")
+            appendLine("  Collector service: ${runtimeMark(CollectorPreferences.isCollectorRunning(this@MainActivity))}")
+            appendLine("  Last start: ${formatTimestamp(CollectorPreferences.collectorLastStartedMs(this@MainActivity))}")
+            appendLine("  Last stop: ${formatTimestamp(CollectorPreferences.collectorLastStoppedMs(this@MainActivity))}")
+            appendLine("  Last DeviceContext heartbeat: ${formatTimestamp(CollectorPreferences.lastHeartbeatMs(this@MainActivity))}")
+            appendLine("  Action socket: ${runtimeMark(CollectorPreferences.isActionSocketListening(this@MainActivity))}")
+            appendLine("  Socket status: ${CollectorPreferences.actionSocketStatus(this@MainActivity)}")
+            appendLine("  Socket status time: ${formatTimestamp(CollectorPreferences.actionSocketStatusMs(this@MainActivity))}")
+            appendLine()
             appendLine("Enabled sources:")
             appendLine("  UsageStatsManager: ${toggleMark(CollectorPreferences.isUsageEnabled(this@MainActivity))}")
             appendLine("  NotificationListener: ${toggleMark(CollectorPreferences.isNotificationEnabled(this@MainActivity))}")
@@ -444,17 +523,67 @@ class MainActivity : Activity() {
         }
 
         val store = EventStore(this)
+        val stats = store.stats()
         traceStatusView.text = buildString {
             appendLine("Trace file: ${store.traceFile.absolutePath}")
-            appendLine("Trace events: ${store.lineCount()}")
-            appendLine("Upload endpoint: ${CollectorPreferences.endpoint(this@MainActivity).ifBlank { "(not set)" }}")
+            appendLine("Trace events: ${stats.totalRows}")
+            appendLine("Trace size: ${formatBytes(stats.fileSizeBytes)}")
+            appendLine("Latest event: ${formatTimestamp(stats.latestTimestampMs)}")
+            appendLine("Production rawEvent rows: ${stats.rawEventRows}/${stats.totalRows}")
+            appendLine("Screening/rawEvent-null rows: ${stats.rawEventNullRows}")
+            appendLine("Schema status: ${schemaStatus(stats)}")
+            appendLine("Latest rawEvent kind: ${stats.latestRawEventKind ?: "(none)"}")
+            appendLine("Parse errors: ${stats.parseErrors}")
+            appendLine("Latest parse error: ${stats.latestParseError ?: "(none)"}")
+            appendLine("Sources: ${formatCounts(stats.sourceCounts)}")
+            appendLine("Event types: ${formatCounts(stats.eventTypeCounts)}")
+            appendLine("rawEvent kinds: ${formatCounts(stats.rawEventKindCounts)}")
+            appendLine("Last export: ${formatLastExport()}")
+            appendLine("Upload endpoint: ${redactEndpoint(CollectorPreferences.endpoint(this@MainActivity))}")
             appendLine("Upload mode: ${CollectorPreferences.uploadMode(this@MainActivity)}")
-            appendLine("Prefetch target: ${CollectorPreferences.prefetchTarget(this@MainActivity).ifBlank { "(not set)" }}")
+            appendLine("Periodic upload: ${toggleMark(CollectorPreferences.isUploadEnabled(this@MainActivity))}")
+            appendLine("Prefetch target: ${redactTarget(CollectorPreferences.prefetchTarget(this@MainActivity))}")
             appendLine("Action socket: 127.0.0.1:${CollectorPreferences.actionSocketPort(this@MainActivity)}")
             appendLine("Action socket token: ${redactSecret(CollectorPreferences.actionSocketToken(this@MainActivity))}")
             appendLine()
+            appendLine("Developer commands:")
+            append(buildDeveloperCommands())
+            appendLine()
         }
         eventPreviewView.text = formatRecentEvents(store)
+    }
+
+    private fun confirmExportTrace() {
+        val stats = EventStore(this).stats()
+        AlertDialog.Builder(this)
+            .setTitle("Export sanitized trace?")
+            .setMessage(
+                "This writes a sanitized JSONL copy to external app files. " +
+                    "Rows: ${stats.totalRows}, rawEvent rows: ${stats.rawEventRows}. " +
+                    "Review the file before sharing it outside the device.",
+            )
+            .setPositiveButton("Export") { _, _ ->
+                val target = EventStore(this).exportToExternalFiles()
+                CollectorPreferences.setLastExport(this, target.absolutePath, System.currentTimeMillis())
+                toast("Exported to ${target.absolutePath}")
+                refreshStatus()
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
+    private fun confirmClearTrace() {
+        AlertDialog.Builder(this)
+            .setTitle("Clear local trace?")
+            .setMessage("This removes the local JSONL trace and prefetch cache from app-private storage. Export first if you need a sanitized copy.")
+            .setPositiveButton("Clear") { _, _ ->
+                EventStore(this).clear()
+                val deletedCacheFiles = AccessibleContentPrefetcher.clearCache(this)
+                toast("Trace cleared; prefetch cache files deleted: $deletedCacheFiles")
+                refreshStatus()
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
     }
 
     private fun formatRecentEvents(store: EventStore): String {
@@ -510,12 +639,95 @@ class MainActivity : Activity() {
 
     private fun toggleMark(enabled: Boolean): String = if (enabled) "enabled" else "disabled"
 
+    private fun runtimeMark(enabled: Boolean): String = if (enabled) "running" else "stopped"
+
     private fun redactSecret(secret: String): String =
         if (secret.isBlank()) {
             "(not set)"
         } else {
             "configured (...${secret.takeLast(6)})"
         }
+
+    private fun redactTarget(target: String): String {
+        if (target.isBlank()) {
+            return "(not set)"
+        }
+        return when {
+            target.startsWith("url:https://") -> {
+                val host = runCatching { java.net.URL(target.removePrefix("url:")).host }.getOrNull()
+                "url:https://${host ?: "..."}/..."
+            }
+            target.startsWith("uri:content://") -> {
+                val uri = android.net.Uri.parse(target.removePrefix("uri:"))
+                "uri:content://${uri.authority ?: "..."}/..."
+            }
+            else -> "configured (...${target.takeLast(6)})"
+        }
+    }
+
+    private fun redactEndpoint(endpoint: String): String {
+        if (endpoint.isBlank()) {
+            return "(not set)"
+        }
+        val url = runCatching { java.net.URL(endpoint) }.getOrNull()
+            ?: return "configured (...${endpoint.takeLast(6)})"
+        val port = if (url.port > 0) ":${url.port}" else ""
+        return "${url.protocol}://${url.host}$port/..."
+    }
+
+    private fun formatTimestamp(timestampMs: Long?): String {
+        if (timestampMs == null || timestampMs <= 0L) {
+            return "(none)"
+        }
+        return SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US).format(Date(timestampMs))
+    }
+
+    private fun formatLastExport(): String {
+        val path = CollectorPreferences.lastExportPath(this)
+        if (path.isBlank()) {
+            return "(none)"
+        }
+        return "$path at ${formatTimestamp(CollectorPreferences.lastExportMs(this))}"
+    }
+
+    private fun schemaStatus(stats: com.dipecs.collector.storage.TraceStats): String =
+        when {
+            stats.parseErrors > 0 -> "check JSON parse errors before replay"
+            stats.totalRows == 0 -> "waiting for device events"
+            stats.rawEventRows == 0 -> "screening only; no Rust production rows yet"
+            stats.rawEventNullRows > 0 -> "mixed production and screening rows"
+            else -> "production replay candidate"
+        }
+
+    private fun buildDeveloperCommands(): String {
+        val port = CollectorPreferences.actionSocketPort(this)
+        val deviceExportPath = "/sdcard/Android/data/$packageName/files/traces/actions.jsonl"
+        val localTrace = "data/traces/android_real_device_sample.redacted.jsonl"
+        return buildString {
+            appendLine("adb pull $deviceExportPath $localTrace")
+            appendLine("cargo run -p aios-cli -- replay $localTrace --stages policy --audit data/evaluation/android_real_device.audit.ndjson")
+            appendLine("cargo run -p aios-daemon --bin dipecsd -- --no-daemon --android-trace-jsonl $localTrace --trace-output data/evaluation/android_real_device.runtime.ndjson")
+            appendLine("adb forward tcp:$port tcp:$port")
+            append("cargo run -p aios-cli -- send-authorized-action --auth-token <copied-token> --host 127.0.0.1 --port $port")
+        }
+    }
+
+    private fun formatBytes(bytes: Long): String =
+        when {
+            bytes >= 1024L * 1024L -> String.format(Locale.US, "%.1f MiB", bytes / 1024.0 / 1024.0)
+            bytes >= 1024L -> String.format(Locale.US, "%.1f KiB", bytes / 1024.0)
+            else -> "$bytes B"
+        }
+
+    private fun formatCounts(counts: Map<String, Int>): String {
+        if (counts.isEmpty()) {
+            return "(none)"
+        }
+        return counts.entries
+            .sortedWith(compareByDescending<Map.Entry<String, Int>> { it.value }.thenBy { it.key })
+            .take(5)
+            .joinToString { "${it.key}=${it.value}" }
+    }
 
     internal fun startCollectorService(
         action: String,

@@ -6,7 +6,6 @@ import com.dipecs.collector.collectors.DeviceContextCollector
 import com.dipecs.collector.model.CollectorEvent
 import com.dipecs.collector.storage.CollectorPreferences
 import com.dipecs.collector.storage.EventRepository
-import org.json.JSONArray
 import org.json.JSONObject
 
 class AccessibilityCollectorService : AccessibilityService() {
@@ -31,10 +30,11 @@ class AccessibilityCollectorService : AccessibilityService() {
         }
 
         val sourceNode = runCatching { event.source }.getOrNull()
-        val eventText = event.text
+        val textItemCount = event.text?.size ?: 0
+        val textLength = event.text
             ?.mapNotNull { it?.toString() }
-            ?.joinToString(" | ")
-            ?.ifBlank { null }
+            ?.sumOf { it.length }
+            ?.takeIf { it > 0 }
 
         EventRepository.record(
             this,
@@ -44,8 +44,6 @@ class AccessibilityCollectorService : AccessibilityService() {
                 eventType = accessibilityEventName(event.eventType),
                 packageName = packageName,
                 className = className,
-                windowTitle = event.contentDescription?.toString(),
-                text = eventText,
                 action = accessibilityEventName(event.eventType),
                 deviceContext = DeviceContextCollector.snapshot(this),
                 rawPayload = JSONObject()
@@ -60,10 +58,9 @@ class AccessibilityCollectorService : AccessibilityService() {
                     .put("scrollX", event.scrollX)
                     .put("scrollY", event.scrollY)
                     .put("viewIdResourceName", sourceNode?.viewIdResourceName)
-                    .put("sourceText", sourceNode?.text?.toString())
                     .put("sourceClassName", sourceNode?.className?.toString())
-                    .put("sourceContentDescription", sourceNode?.contentDescription?.toString())
-                    .put("textItems", JSONArray(event.text ?: emptyList<CharSequence>())),
+                    .put("textItemCount", textItemCount)
+                    .put("textLength", textLength ?: JSONObject.NULL),
             ),
         )
     }

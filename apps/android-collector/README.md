@@ -105,14 +105,43 @@ through the normal daemon pipeline.
 ## Authorized Action Socket
 
 The localhost action socket requires an `auth_token` field in every payload.
-The Android app stores the token in encrypted app preferences. The status panel
-only shows a redacted token; use **Copy Action Socket Token** when you need to
-pass it to local tooling. The CLI command is a ping/health-check and does not
-dispatch an action:
+Release builds generate a random token on first launch and store it in
+`EncryptedSharedPreferences`. The status panel only shows a redacted token; use
+**Copy Action Socket Token** when you need to pass the release token to local tooling.
+
+For Android Studio emulator validation, debug builds avoid the token bootstrap
+chicken-and-egg problem. On first launch, if no token has been stored yet, the
+app uses this fixed development token:
+
+```bash
+dipecs-dev-token
+```
+
+The repository `.env.example` uses the same value:
+
+```bash
+DIPECS_ANDROID_ACTION_BRIDGE_ENABLED=true
+DIPECS_ANDROID_ACTION_BRIDGE_TOKEN=dipecs-dev-token
+```
+
+You can override the debug token before the first app launch with adb:
+
+```bash
+adb shell setprop debug.dipecs.token my-local-debug-token
+```
+
+If the app has already generated or stored a token, clear app data or reinstall
+before changing the debug token:
+
+```bash
+adb shell pm clear com.dipecs.collector
+```
+
+The CLI command is a ping/health-check and does not dispatch an action:
 
 ```bash
 cargo run -p aios-cli -- send-authorized-action \
-  --auth-token <token-copied-from-app> \
+  --auth-token dipecs-dev-token \
   --host 127.0.0.1 \
   --port 46321
 ```
@@ -121,7 +150,7 @@ When `aios-action` forwards approved actions directly, set:
 
 ```bash
 DIPECS_ANDROID_ACTION_BRIDGE_ENABLED=true
-DIPECS_ANDROID_ACTION_BRIDGE_TOKEN=<token-copied-from-app>
+DIPECS_ANDROID_ACTION_BRIDGE_TOKEN=dipecs-dev-token
 ```
 
 Dispatched action payloads must include all of the following:

@@ -161,8 +161,19 @@ Enable direct forwarding from `aios-action` to Android:
 DIPECS_ANDROID_ACTION_BRIDGE_ENABLED=true
 DIPECS_ANDROID_ACTION_BRIDGE_HOST=127.0.0.1
 DIPECS_ANDROID_ACTION_BRIDGE_PORT=46321
-DIPECS_ANDROID_ACTION_BRIDGE_TOKEN=<token-copied-from-app>
+DIPECS_ANDROID_ACTION_BRIDGE_TOKEN=dipecs-dev-token
 ```
+
+Android Studio debug builds use `dipecs-dev-token` on first launch unless an
+adb property overrides it:
+
+```bash
+adb shell setprop debug.dipecs.token my-local-debug-token
+adb shell pm clear com.dipecs.collector  # only needed if a token was already stored
+```
+
+Release builds still generate a random token in `EncryptedSharedPreferences`;
+use **Copy Action Socket Token** from the app for release validation.
 
 Enable cloud LLM routing:
 

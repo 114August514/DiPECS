@@ -21,15 +21,20 @@ Implemented:
   write Rust-compatible `rawEvent` JSONL rows; optional sources remain available
   for interface screening.
 - `aios-collector` parses Android append-only JSONL into `CollectorEnvelope`
-  with `SourceTier::PublicApi`.
+  with `SourceTier::PublicApi`, and exposes Binder/eBPF and fanotify monitor
+  interfaces that safely degrade when privileged deployment is absent.
 - `aios-core` performs `PrivacyAirGap` sanitization, window aggregation,
-  policy checks, golden trace replay, and privacy leak regression tests.
+  privacy-preserving model memory, policy checks, golden trace replay, and
+  privacy leak regression tests.
 - `aios-agent` provides `DecisionRouter`, `RuleBasedBackend`,
-  `CloudLlmBackend`, and `FallbackNoOpBackend`.
+  `LocalEvaluatorBackend`, `CloudLlmBackend`, and `FallbackNoOpBackend`; cloud
+  prompts receive `ModelInput` with the current context, behavior profile, and
+  recent decision feedback.
 - `CloudLlmBackend` supports DeepSeek, Qwen/DashScope, and generic
   OpenAI-compatible endpoints.
 - `aios-action` keeps local replay fallback behavior and can forward
-  `PrefetchFile(url:/uri:)` actions to the Android localhost bridge.
+  Android-safe `PrefetchFile`, `ReleaseMemory`, `KeepAlive`, and
+  `PreWarmProcess` subsets to the Android localhost bridge.
 - `aios-cli` provides Android JSONL replay, audit hash output, and Android
   `AuthorizedAction` socket tooling.
 - `aios-daemon` runs the long-lived pipeline and can record runtime window
@@ -37,11 +42,10 @@ Implemented:
 
 Still in progress:
 
-- More Android-safe real actions beyond accessible-content prefetch.
-- LocalEvaluator backend.
-- True device validation for the Android APK and action bridge.
-- System-level collection routes such as fanotify, Binder/eBPF, and system image
-  deployment.
+- Emulator-first Android action bridge smoke coverage in CI.
+- LocalEvaluator backend hardening.
+- True privileged deployment for system-level collection routes: fanotify fd
+  attachment, Binder/eBPF program loading, and system image integration.
 
 ## Architecture
 
@@ -76,8 +80,10 @@ Core boundaries:
   `StructuredContext`.
 - Decision backends output only `IntentBatch`; action execution accepts only
   `AuthorizedAction`.
-- Android action socket payloads require `auth_token`; the token is stored in
-  Android `EncryptedSharedPreferences` and is injected by CLI/bridge tooling.
+- Android action socket payloads require `auth_token`. Dispatched actions also
+  require a short freshness window and an HMAC-SHA256 `action_signature` over
+  the action summary; the token is stored in Android `EncryptedSharedPreferences`
+  and is injected by CLI/bridge tooling.
 
 ## Quick Start
 
@@ -112,6 +118,20 @@ cargo run -p aios-cli -- replay data/traces/sample_replay.jsonl \
   --audit data/evaluation/audit.ndjson
 ```
 
+Replay the larger synthetic Android trace when real-device data is not
+available:
+
+```bash
+python tools/generate_synthetic_android_trace.py --rows 2400
+cargo run -p aios-cli -- replay data/traces/android_synthetic_large.redacted.jsonl \
+  --stages policy \
+  --audit data/evaluation/android_synthetic_large.audit.ndjson
+```
+
+`data/traces/android_synthetic_large.redacted.jsonl` is deterministic,
+redacted, and explicitly synthetic. It is suitable for dashboard, replay, and
+policy/audit demos, but it is not real-device validation evidence.
+
 Build Android collector:
 
 ```bash
@@ -122,30 +142,63 @@ cd apps/android-collector
 Local Android builds require Android SDK Platform 35. In GitHub Actions this is
 installed by `.github/workflows/android-collector.yml`.
 
-Send an authorized Android prefetch action:
+Ping the Android action socket with its auth token:
 
 ```bash
 cargo run -p aios-cli -- send-authorized-action \
-  --prefetch-target url:https://example.test/feed.json \
   --auth-token <token-copied-from-app> \
   --host 127.0.0.1 \
   --port 46321
 ```
 
+This CLI command is a health-check ping. Real prefetch dispatch is produced by
+`aios-action` after `ActionLifecycle` seals an `AuthorizedAction`; the Android
+side rejects unsigned, stale, or malformed action payloads.
+
+For Android Studio emulator validation on Windows, the end-to-end setup is
+scripted:
+
+```powershell
+.\scripts\start-android-emulator.ps1
+```
+
+It creates/starts the `dipecs_emu` API 35 emulator, installs the debug APK,
+forwards `tcp:46321`, starts the app and debug collector, and pings the action socket with a built-in TCP health check.
 Enable direct forwarding from `aios-action` to Android:
 
 ```bash
 DIPECS_ANDROID_ACTION_BRIDGE_ENABLED=true
 DIPECS_ANDROID_ACTION_BRIDGE_HOST=127.0.0.1
 DIPECS_ANDROID_ACTION_BRIDGE_PORT=46321
-DIPECS_ANDROID_ACTION_BRIDGE_TOKEN=<token-copied-from-app>
+DIPECS_ANDROID_ACTION_BRIDGE_TOKEN=dipecs-dev-emulator-shared-token-00000000
 ```
+
+Android Studio debug builds use `dipecs-dev-emulator-shared-token-00000000` on first launch unless an
+adb property overrides it:
+
+```bash
+adb shell setprop debug.dipecs.token my-local-debug-token
+adb shell pm clear com.dipecs.collector  # only needed if a token was already stored
+```
+
+Release builds still generate a random token in `EncryptedSharedPreferences`;
+use **Copy Action Socket Token** from the app for release validation.
 
 Enable cloud LLM routing:
 
 ```bash
 cp .env.example .env
 # Set DIPECS_CLOUD_LLM_ENABLED=true and the provider API key.
+```
+
+Enable model memory persistence and optional LLM habit summaries:
+
+```bash
+DIPECS_MODEL_MEMORY_PATH=data/runtime/model_memory.json
+DIPECS_MODEL_MEMORY_RECENT_WINDOWS=5
+DIPECS_MODEL_MEMORY_TOP_K=8
+DIPECS_PROFILE_SUMMARY_ENABLED=true
+DIPECS_PROFILE_SUMMARY_INTERVAL_WINDOWS=10
 ```
 
 ## Android Production Sources
@@ -175,10 +228,14 @@ Still screening:
 | `crates/aios-daemon` | `dipecsd` runtime pipeline. |
 | `crates/aios-cli` | Replay, audit, and Android action socket tooling. |
 | `apps/android-collector` | Android public-API collector and action bridge. |
+| `tools/trace-dashboard` | Local-only static viewer for sanitized JSONL and replay/audit NDJSON. |
 | `docs/src` | MkDocs Material documentation. |
 | `docs/academic-src` | Academic report sources. |
 
 ## Documentation
+
+Text files are normalized with LF endings through `.gitattributes`; keep
+`cargo fmt --all -- --check` and `git diff --check` green before submitting.
 
 Local preview:
 
@@ -192,6 +249,8 @@ PYTHONPATH=. uv run mkdocs serve
 - [Architecture Overview](docs/src/design/overview.md)
 - [Daemon Architecture](docs/src/design/daemon-architecture.md)
 - [Android Interface MVP](docs/src/design/android-interface-mvp.md)
+- [Android Real-Device Validation](docs/src/design/android-real-device-validation.md)
+- [Android Security and Privacy Boundary](docs/src/design/android-security-privacy.md)
 - [Android Action Boundary](docs/src/design/android-action-boundary.md)
 - [RFC-0001](docs/src/design/rfc/0001-layered-collection-and-decision-routing.md)
 - [Android Collector](apps/android-collector/README.md)

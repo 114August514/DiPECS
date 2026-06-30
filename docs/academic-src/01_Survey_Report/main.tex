@@ -1,19 +1,373 @@
-\documentclass{article}
+\documentclass[UTF8,a4paper,12pt]{ctexart}
 
 \usepackage[margin=1in]{geometry}
+\usepackage{array}
+\usepackage{booktabs}
+\usepackage{float}
+\usepackage{xcolor}
 \usepackage{hyperref}
+\setlength{\emergencystretch}{3em}
 
-\title{DiPECS Survey Report}
-\author{DiPECS Team}
-\date{\today}
+\definecolor{reportlink}{RGB}{65, 145, 210}
+
+\hypersetup{
+  colorlinks=true,
+  linkcolor=reportlink,
+  urlcolor=reportlink,
+  citecolor=reportlink
+}
+
+\newcommand{\project}{DiPECS}
+
+\title{\project{} 相关工作调研报告}
+\author{\project{} Team}
+\date{2026 年 3 月 28 日}
 
 \begin{document}
 
 \maketitle
 
-\section{Status}
+\begin{abstract}
+\project{} 是一个面向 Android/Linux 场景的 AIOS 原型系统。它关注的不是单一模型能力，
+而是如何把本地可观测信号、隐私脱敏、上下文聚合、决策路由、策略审查和受控动作执行组织成
+一条可审计的数据链路。本报告调研 AIOS、桌面与移动端智能代理、移动应用行为预测、
+隐私保护上下文建模以及 Android 数据源能力等方向，并据此说明 \project{} 当前实现的技术定位：
+以 Android 公共 API 和 Linux 本机信号为主要数据源，以本地规则决策为默认路径，
+以隐私边界和动作治理作为系统核心约束。
+\end{abstract}
 
-This is a CI-ready LaTeX shell for the future formal survey report.
-The current working content is maintained in the MkDocs research pages.
+\newpage
+{\hypersetup{linkcolor=black}\tableofcontents}
+\newpage
+
+\section{项目简介}
+
+\project{} 是一个面向 Android/Linux 端侧环境的意图预测与动作治理原型。它的核心目标不是让
+大模型直接接管设备，而是在现有操作系统能力边界内，把用户行为信号整理成结构化上下文，再由
+本地规则或云端模型产生候选意图，最后通过策略引擎和动作生命周期模块决定哪些低风险动作可以执行。
+
+从工程实现看，\project{} 当前已经形成一条可回放的数据链路：
+
+\begin{center}
+\small
+Android JSONL / daemon sources / replay fixture
+$\rightarrow$ RawEvent
+$\rightarrow$ PrivacyAirGap
+$\rightarrow$ SanitizedEvent
+$\rightarrow$ StructuredContext
+$\rightarrow$ DecisionRouter
+$\rightarrow$ PolicyEngine
+$\rightarrow$ AuthorizedAction
+$\rightarrow$ AuditRecord
+\end{center}
+
+这条链路决定了本报告的调研重点：我们不把 \project{} 定位为通用聊天助手，也不把它定位为
+单一的 next-app prediction 模型，而是把它看作一个端侧 AIOS 原型。它需要同时回答三个问题：
+哪些上下文可以被安全采集，哪些意图可以被本地或云端判断，哪些动作可以在策略约束下落地。
+
+\section{项目背景}
+
+大语言模型推动了智能代理系统的发展。现有研究已经证明，模型可以在代码仓库、桌面应用、
+网页和多轮任务中承担计划、推理和执行职责。然而，当智能代理进入操作系统或移动终端场景时，
+问题不再只是“模型能不能完成任务”，还包括以下系统问题：
+
+\begin{itemize}
+  \item 终端侧数据来自多个异构来源，既有应用前后台切换、通知、屏幕状态，也有系统负载和进程变化。
+  \item 原始数据常包含个人信息，不能直接交给模型或外部服务。
+  \item 模型输出不能直接变成系统动作，必须经过权限、风险和上下文一致性检查。
+  \item 系统需要可回放、可审计，否则难以验证行为是否符合策略。
+\end{itemize}
+
+因此，端侧 AIOS 的关键不只是“预测用户下一步会做什么”，而是要在预测之前建立数据边界，在预测之后
+建立动作边界。这个背景也解释了为什么 \project{} 当前实现中，Rust core、replay、policy 和 audit
+占据了很大比例：这些模块决定系统是否可验证、可降级和可追责。
+
+\section{调研范围}
+
+参考已有 OSH 项目的调研报告结构，本报告按“系统背景、关键技术、相关系统、项目差异”的顺序组织。
+具体调研范围包括：
+
+\begin{itemize}
+  \item AIOS 与操作系统级智能代理：说明 LLM agent 如何被系统化，以及这些工作与传统 OS 边界的关系。
+  \item 移动应用行为预测：说明应用切换、通知、时间和设备状态是否足以支持下一步意图推断。
+  \item 隐私保护上下文建模：说明为什么不能把 raw event 直接交给模型，以及本地脱敏的必要性。
+  \item Android 数据源与系统观测：说明公开 API、Accessibility、Binder、eBPF 等数据源的能力和限制。
+  \item 动作治理与可审计执行：说明预测结果为什么还需要 policy、capability 和 audit 约束。
+\end{itemize}
+
+\section{主要特点}
+
+与许多以模型能力为中心的 Agent 项目相比，\project{} 的主要特点在于系统边界更明确。
+
+\begin{itemize}
+  \item \textbf{事件驱动}：系统从 Android 事件、Linux 进程状态和离线 trace 出发，而不是从自然语言请求出发。
+  \item \textbf{隐私前置}：通知正文、文件路径、notification key 等敏感信息在进入决策后端前被转换为摘要或直接丢弃。
+  \item \textbf{后端可替换}：\texttt{DecisionRouter} 可以选择 RuleBased、CloudLlm 或 FallbackNoOp，后续也可以接入统计预测模型。
+  \item \textbf{动作受控}：模型或规则只能提出 \texttt{IntentBatch}；动作能否执行由 capability、policy 和 lifecycle 决定。
+  \item \textbf{可回放}：同一 JSONL trace 可以离线重跑，用于比较 intent、policy verdict、audit hash 和 denial reason。
+\end{itemize}
+
+\section{AIOS 与操作系统级智能代理}
+
+AIOS 相关工作把大语言模型代理从单个应用提升到系统级平台。典型观点认为，LLM 可以承担类似
+操作系统服务的角色，为多个代理提供调度、上下文、记忆、工具调用和权限管理能力。AIOS
+实现强调将代理应用逻辑和底层模型服务分离，使多个代理能够共享模型资源和系统能力 \cite{aios}。
+
+OS-Copilot、FRIDAY、UFO 等工作则从桌面或通用计算机代理出发，让模型通过终端、文件系统、
+图形界面或应用 API 完成复杂任务。这些系统证明了“代理作为系统用户”的可行性，但它们通常面向
+桌面环境，依赖窗口自动化、视觉理解或高权限工具接口。移动端 Android 场景存在更强的权限边界：
+普通应用无法任意读取其他应用内部状态，也不能随意注入系统级动作 \cite{os-copilot,os-copilot-page,ufo}。
+
+\project{} 与这些工作的关系是继承其系统化思想，但收窄执行边界。当前实现没有把云端 LLM
+作为默认内核，也没有默认授予代理高权限自动化能力。相反，系统把代理输出限制为意图批次，
+再由策略引擎和动作生命周期模块决定是否形成授权动作。 这使得 \project{}
+更接近一个“受控端侧 AIOS 原型”，而不是完全自治的桌面代理。
+
+\section{移动应用行为预测}
+
+移动场景中的行为预测研究早于 LLM 代理。FALCON 等系统使用时间、地点、传感器和历史使用模式
+预测用户下一次启动的应用，以降低启动延迟和能耗。AppUsage2Vec、DeepAPP、Appformer
+以及后续基于 Transformer 或图神经网络的方法进一步把应用序列、时间上下文和用户个性化编码进
+预测模型，用于 next-app prediction 或应用推荐 \cite{falcon,appusage2vec,deepapp}。
+
+这些方法为 \project{} 提供了两个启发。第一，移动端上下文确实包含可预测的规律，应用切换、
+通知到达、屏幕状态和系统状态都可以构成意图推断信号。第二，仅有预测结果不足以支撑系统动作。
+传统 next-app prediction 主要输出“用户可能打开什么应用”，而 \project{} 需要处理的是
+“系统是否应该提出某个动作、该动作是否安全、是否需要授权以及如何留下审计记录”。
+
+因此，\project{} 当前没有把核心问题定义为最高精度的应用预测，而是定义为从多源事件生成
+结构化上下文，再在策略约束下产生可审计动作建议。预测模型可以作为未来后端之一接入
+\texttt{DecisionRouter}，但不应绕过隐私和动作治理边界。
+
+\section{隐私保护与上下文建模}
+
+端侧智能系统的关键风险是原始上下文泄漏。通知标题、正文、文件路径、应用包名、交互时间等数据
+都可能间接暴露用户身份、工作内容或社交关系。相关研究通常采用本地处理、最小化采集、
+脱敏摘要、访问控制或联邦学习等方式降低风险。
+
+\project{} 当前实现采用明确的隐私空气隙设计：\texttt{RawEvent} 只允许存在于采集器到 core
+的短路径内，经过 \texttt{PrivacyAirGap} 后，后续模块只看到 \texttt{SanitizedEvent} 和
+\texttt{StructuredContext}。例如，通知文本不会直接进入决策后端，而是转换为文本长度、
+书写系统和语义提示；文件路径只用于类型分类，不保留原始路径；Android notification key
+等可能携带个人信息的字段会被丢弃。
+
+这一设计和许多 LLM 代理系统不同。后者常把完整屏幕、网页或文件内容交给模型，以换取更强理解能力。
+\project{} 选择牺牲一部分语义完整性，换取更清晰的隐私边界和可验证的数据流。对于 Android/Linux
+端侧系统，这种取舍更符合普通用户授权和最小权限原则。
+
+\section{Android 数据源能力}
+
+Android 平台的数据源天然分层。普通应用可以通过用户授权访问部分公开 API，例如 UsageStats、
+NotificationListener、BatteryManager、ConnectivityManager 和 PowerManager。 这些 API 能提供
+应用前后台切换、通知元数据、屏幕交互、电量和网络状态等信息，是 \project{} 当前 Android collector
+的主要基础 \cite{android-usagestats,android-notification,android-battery}。
+
+更高权限的数据源包括 \texttt{AccessibilityService}、ADB/Shizuku、Root、Xposed 或内核级追踪。
+它们可以提高观测精度，但代价是权限门槛、部署成本、应用商店合规性和隐私风险显著增加。
+\project{} 当前把无障碍服务定位为 screening source：可以用于界面预览和调研，但如果事件没有
+符合 Rust schema 的 \texttt{rawEvent}，Rust 入口会跳过该行 \cite{android-accessibility,google-play-accessibility}。
+
+\begin{table}[H]
+\centering
+\small
+\begin{tabular}{p{0.22\linewidth}p{0.29\linewidth}p{0.38\linewidth}}
+\toprule
+数据源层级 & 代表机制 & 对 \project{} 的意义 \\
+\midrule
+公开 API & UsageStats、NotificationListener、设备状态 & 当前真实 Android 采集主路径，适合默认启用。 \\
+无障碍服务 & AccessibilityService & 可作为增强观测来源，但当前不是主链路 schema。 \\
+开发者接口 & ADB、Shizuku、dumpsys & 适合实验，不适合普通用户默认部署。 \\
+Root/内核级 & eBPF、Xposed、LSPosed & 部署和合规成本高，不属于当前默认目标。 \\
+\bottomrule
+\end{tabular}
+\caption{Android 数据源分层与项目定位}
+\end{table}
+
+\section{eBPF 与内核观测}
+
+eBPF 在 Linux 系统观测、网络过滤和安全分析中非常重要。它可以在内核侧以较低开销采集系统调用、
+网络包、调度事件或文件访问等信号。然而，Android 应用意图往往存在于应用层语义中，例如通知文本、
+聊天 UI、文件消息类型或用户点击含义。仅靠内核事件很难还原这些语义 \cite{aosp-ebpf}。
+
+从当前项目目标看，eBPF 不是解决 Android 语义采集的主路径。即使能够观察到某个进程调用
+\texttt{open()}、\texttt{write()} 或网络发送，也不能可靠判断“用户是否收到一个工作文件”
+或“是否应该建议打开某个文档”。此外，Android 上部署 eBPF 还会受到 root 权限、SELinux、
+内核版本和系统策略限制。
+
+仓库中已经预留了 \texttt{BinderProbe} 相关接口，但当前实现只是检测 stub，不产生真实 Binder
+事件。因此报告和后续设计都应把 eBPF 描述为“未来可研究的低层观测方向”，而不是当前已经接入的
+生产数据源。
+
+\section{动作治理与可审计执行}
+
+智能代理系统中的动作执行通常比意图识别更危险。桌面代理可以通过 UI 自动化或 shell 命令直接操作
+文件、窗口和网络；移动端系统如果采用类似方式，则会遇到更强的权限和隐私约束。相关工作中的
+guardrail、权限控制和人工确认机制说明，模型输出必须经过单独的安全边界。
+
+\project{} 当前把这条边界拆成三层。第一层是后端能力等级：RuleBased 只能产生低风险的
+\texttt{NoOp}、\texttt{KeepAlive} 和 \texttt{ReleaseMemory}，而 \texttt{PreWarmProcess}、
+\texttt{PrefetchFile} 等动作需要更高能力后端。第二层是 \texttt{PolicyEngine}：它检查风险等级、
+置信度、动作类型、紧急程度和 target 是否来自当前上下文。第三层是 \texttt{ActionLifecycle}：
+它把每个候选动作展开为 proposal，经过 schema validation、policy verdict、adapter dispatch，
+最终形成一条终态明确的 \texttt{AuditRecord}。
+
+这使得 \project{} 和“模型直接调用工具”的系统不同。即使云端模型返回了结构化动作，本地端也不会
+立即执行；所有动作都要经过可解释的拒绝理由或授权记录。因此，调研中与 \project{} 最相关的不是
+单纯的工具调用框架，而是具备机制/策略分离、最小权限和可审计执行思想的系统设计。
+
+\section{相关系统与项目}
+
+综合上述方向，可以把相关系统分为四类。
+
+\begin{itemize}
+  \item \textbf{AIOS 与 LLM OS}：AIOS、MemGPT 等工作把 LLM 服务、上下文、记忆和工具调用抽象成系统服务，
+  为 \project{} 提供了“Agent 需要系统层支撑”的背景。
+  \item \textbf{桌面 Agent}：OS-Copilot、FRIDAY、UFO 等系统证明了模型可以跨应用执行复杂任务，但其依赖的
+  GUI 自动化和高权限工具接口难以直接迁移到 Android 普通应用环境。
+  \item \textbf{移动行为预测}：FALCON、AppUsage2Vec、DeepAPP、Appformer 等工作说明 next-app prediction
+  和预加载在移动端有实际意义，但它们通常不处理动作授权和隐私空气隙。
+  \item \textbf{Android 与系统观测工具}：UsageStats、NotificationListener、Accessibility、Binder tracing、
+  eBPF 等机制决定了 \project{} 可以观察到什么，也决定了当前实现必须以公开 API 和离线 replay 为主。
+\end{itemize}
+
+\section{相关工作对比}
+
+\begin{table}[H]
+\centering
+\small
+\begin{tabular}{p{0.20\linewidth}p{0.25\linewidth}p{0.22\linewidth}p{0.22\linewidth}}
+\toprule
+方向 & 主要贡献 & 可借鉴点 & 与 \project{} 的差异 \\
+\midrule
+AIOS / LLM OS & 把 LLM 服务、代理调度、记忆和工具调用系统化 & 把 Agent 能力放进系统层，而非单个应用脚本 & 多数工作更关注模型资源和代理框架，较少落到 Android 端侧权限边界。 \\
+桌面智能代理 & 通过 GUI、终端或应用 API 完成跨应用任务 & 说明跨应用任务需要工具边界和状态反馈 & 通常依赖桌面自动化能力，Android 普通应用环境没有同等权限。 \\
+移动应用预测 & 使用历史序列和上下文预测下一应用或下一行为 & 支持后续接入统计或序列预测后端 & 关注预测精度，较少处理动作授权、审计和隐私空气隙。 \\
+隐私保护上下文系统 & 本地处理、最小化采集、脱敏和访问控制 & 支撑 RawEvent 到 StructuredContext 的空气隙设计 & 脱敏会降低语义完整性，需要规则和模型适配。 \\
+Android 数据源 & 公开 API、Accessibility、Binder、eBPF 等分层观测 & 明确哪些数据源可默认启用，哪些只能做实验 & 高权限数据源部署成本高，不能作为当前主链路前提。 \\
+动作治理系统 & capability、policy、audit、guardrail & 支撑模型建议与真实执行分离 & 需要牺牲部分自动化能力，换取可解释拒绝和可审计终态。 \\
+\bottomrule
+\end{tabular}
+\caption{相关方向与 \project{} 当前定位}
+\end{table}
+
+\section{\project{} 的定位}
+
+基于上述调研，\project{} 的技术定位可以概括为三点。
+
+第一，\project{} 是端侧上下文 AIOS 原型，而不是单纯的 LLM 应用。系统关心的是采集、脱敏、
+聚合、决策、策略和审计之间的边界。
+
+第二，\project{} 的默认数据源是现实可部署的数据源。Android 侧主要使用公开 API 生成
+append-only JSONL；Linux daemon 侧使用本机进程和系统状态；离线 replay 使用相同 schema
+验证管线行为。假数据和 replay fixture 只用于测试，不是项目唯一来源。
+
+第三，\project{} 把动作安全置于模型能力之前。决策后端默认本地规则优先，云端 LLM 只有在环境变量
+和配置完整时才参与；所有动作建议都必须经过策略引擎和 \texttt{ActionLifecycle}，最终形成可审计
+的终态记录。
+
+\section{对当前实现的影响}
+
+调研结果对当前代码路线有直接约束。
+
+首先，RuleBased 后端应保持为低权限本地基线。移动行为预测研究说明，通知、前台切换和系统状态
+可以作为意图信号；但动作治理相关设计说明，RuleBased 不应越过 capability 直接产生
+\texttt{PreWarmProcess} 或 \texttt{PrefetchFile}。因此当前把 RuleBased 收敛到
+\texttt{KeepAlive}、\texttt{ReleaseMemory} 和 \texttt{NoOp} 是合理方向。
+
+其次，云端 LLM 应作为可选增强，而不是默认控制面。AIOS 和桌面 Agent 相关工作证明模型可以承担
+复杂推理，但 Android 端侧权限和隐私限制要求本地端只接受结构化输出，并继续由 policy 决定是否
+授权。云端失败时回退到 RuleBased 或 FallbackNoOp，符合端侧系统的可降级要求。
+
+再次，Android 采集源应按权限层级逐步推进。公开 API 和用户授权服务适合作为主路径；
+Accessibility、Binder 和 eBPF 可以作为实验数据源，但不应写成当前系统已经依赖的前提。这样可以避免
+报告目标和当前实现脱节。
+
+最后，下一阶段比单纯增加规则更重要的是补齐可评价指标。调研中的 next-app prediction 和预加载系统
+通常使用准确率、延迟收益和资源开销评估；\project{} 还应额外记录 policy denial、noop rate、
+audit hash 稳定性和动作执行终态。这样才能判断一个新后端或新动作是否真的改善系统，而不只是增加输出数量。
+
+\section{结论}
+
+相关工作显示，AIOS、桌面代理和移动行为预测已经分别证明了系统级代理、跨应用自动化和移动上下文
+预测的可行性。但在 Android/Linux 端侧环境中，真正困难的是权限边界、隐私边界和动作边界。
+\project{} 当前实现选择了一条保守但可验证的路线：用公开 API 和本机信号构造结构化上下文，
+用隐私空气隙限制模型可见信息，用策略引擎限制动作输出，并用 replay 和审计哈希验证行为。
+
+后续工作可以在不破坏这些边界的前提下继续推进：扩展 Android raw event schema、完善 Android
+动作桥接、引入可替换的预测模型或 LLM 后端，并把 eBPF/Binder 观测作为独立实验方向评估，而不是
+作为当前主链路的前提。
+
+\begin{thebibliography}{99}
+
+\bibitem{aios}
+Kai Mei et al.
+\newblock AIOS: LLM Agent Operating System.
+\newblock \href{https://arxiv.org/abs/2403.16971}{arXiv:2403.16971}.
+
+\bibitem{memgpt}
+Charles Packer et al.
+\newblock MemGPT: Towards LLMs as Operating Systems.
+\newblock \href{https://arxiv.org/abs/2310.08560}{arXiv:2310.08560}.
+
+\bibitem{os-copilot}
+Zhiyong Wu et al.
+\newblock OS-Copilot: Towards Generalist Computer Agents with Self-Improvement.
+\newblock \href{https://arxiv.org/abs/2402.07456}{arXiv:2402.07456}.
+
+\bibitem{os-copilot-page}
+OS-Copilot project page.
+\newblock \href{https://os-copilot.github.io/}{os-copilot.github.io}.
+
+\bibitem{ufo}
+Chaoyun Zhang et al.
+\newblock UFO: A UI-Focused Agent for Windows OS Interaction.
+\newblock \href{https://arxiv.org/abs/2402.07939}{arXiv:2402.07939}.
+
+\bibitem{falcon}
+Tingxin Yan et al.
+\newblock FALCON: Fast App Launching via Predictive User Context.
+\newblock \href{https://www.microsoft.com/en-us/research/publication/fast-app-launching-for-mobile-devices-using-predictive-user-context/}{Microsoft Research page}.
+
+\bibitem{appusage2vec}
+Sha Zhao et al.
+\newblock AppUsage2Vec: Modeling Smartphone App Usage for Prediction.
+\newblock \href{https://ieeexplore.ieee.org/document/8731424/}{IEEE Xplore page}.
+
+\bibitem{deepapp}
+Zhihao Shen et al.
+\newblock DeepAPP: A Deep Reinforcement Learning Framework for Mobile Application Usage Prediction.
+\newblock \href{https://dl.acm.org/doi/10.1145/3356250.3360038}{ACM Digital Library page}.
+
+\bibitem{android-usagestats}
+Android Developers.
+\newblock UsageStatsManager.
+\newblock \href{https://developer.android.com/reference/android/app/usage/UsageStatsManager}{Android API reference}.
+
+\bibitem{android-notification}
+Android Developers.
+\newblock NotificationListenerService.
+\newblock \href{https://developer.android.com/reference/android/service/notification/NotificationListenerService}{Android API reference}.
+
+\bibitem{android-battery}
+Android Developers.
+\newblock BatteryManager.
+\newblock \href{https://developer.android.com/reference/android/os/BatteryManager}{Android API reference}.
+
+\bibitem{android-accessibility}
+Android Developers.
+\newblock AccessibilityService.
+\newblock \href{https://developer.android.com/reference/android/accessibilityservice/AccessibilityService}{Android API reference}.
+
+\bibitem{google-play-accessibility}
+Google Play Console Help.
+\newblock AccessibilityService API policy.
+\newblock \href{https://support.google.com/googleplay/android-developer/answer/10964491}{Google Play policy page}.
+
+\bibitem{aosp-ebpf}
+Android Open Source Project.
+\newblock Extend the kernel with eBPF.
+\newblock \href{https://source.android.com/docs/core/architecture/kernel/bpf}{AOSP documentation}.
+
+\end{thebibliography}
 
 \end{document}

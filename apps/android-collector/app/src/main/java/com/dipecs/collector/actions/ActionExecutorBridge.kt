@@ -5,7 +5,11 @@ import org.json.JSONObject
 import com.dipecs.collector.storage.EventRepository
 
 object ActionExecutorBridge {
+    const val ACTION_TYPE_PREWARM_PROCESS = "PreWarmProcess"
     const val ACTION_TYPE_PREFETCH_FILE = "PrefetchFile"
+    const val ACTION_TYPE_KEEP_ALIVE = "KeepAlive"
+    const val ACTION_TYPE_RELEASE_MEMORY = "ReleaseMemory"
+    const val ACTION_TYPE_NO_OP = "NoOp"
 
     fun dispatch(
         context: Context,
@@ -15,6 +19,13 @@ object ActionExecutorBridge {
     ): Boolean {
         val normalizedTarget = target?.trim().takeUnless { it.isNullOrBlank() }
         return when (actionType) {
+            ACTION_TYPE_PREWARM_PROCESS -> {
+                if (normalizedTarget == null || normalizedTarget.startsWith("own:")) {
+                    OwnResourceWarmer.warm(context, normalizedTarget, reason)
+                } else {
+                    UserVisibleActionNotifier.postLaunchHint(context, normalizedTarget, reason)
+                }
+            }
             ACTION_TYPE_PREFETCH_FILE -> {
                 if (normalizedTarget == null) {
                     EventRepository.recordInternal(
@@ -30,6 +41,22 @@ object ActionExecutorBridge {
                     AccessibleContentPrefetcher.enqueue(context, normalizedTarget, reason)
                     true
                 }
+            }
+            ACTION_TYPE_KEEP_ALIVE -> {
+                ActionMaintenanceScheduler.schedule(context, normalizedTarget, reason)
+            }
+            ACTION_TYPE_RELEASE_MEMORY -> {
+                CacheTrimmer.release(context, normalizedTarget, reason)
+                true
+            }
+            ACTION_TYPE_NO_OP -> {
+                EventRepository.recordInternal(
+                    context,
+                    "action_noop",
+                    "NoOp action acknowledged",
+                    JSONObject().put("reason", reason),
+                )
+                true
             }
             else -> {
                 EventRepository.recordInternal(
@@ -51,33 +78,32 @@ object ActionExecutorBridge {
         payload: JSONObject,
         reason: String = "authorized_action_json",
     ): Boolean {
-        val action = payload.optJSONObject("action")
-        if (action == null) {
+        val parsed = parseAuthorizedAction(payload)
+        if (parsed == null) {
             EventRepository.recordInternal(
                 context,
                 "action_dispatch_rejected",
-                "AuthorizedAction JSON missing action object",
+                "AuthorizedAction JSON missing action object or action_type",
                 JSONObject()
                     .put("reason", reason)
-                    .put("payload", payload.toString().take(2048)),
+                    .put("payloadBytes", payload.toString().toByteArray(Charsets.UTF_8).size),
             )
             return false
         }
 
-        val actionType = action.optString("action_type").takeIf { it.isNotBlank() }
-        val target = action.takeIf { it.has("target") && !it.isNull("target") }?.optString("target")
-        if (actionType == null) {
-            EventRepository.recordInternal(
-                context,
-                "action_dispatch_rejected",
-                "AuthorizedAction JSON missing action_type",
-                JSONObject()
-                    .put("reason", reason)
-                    .put("payload", payload.toString().take(2048)),
-            )
-            return false
-        }
-
-        return dispatch(context, actionType, target, reason)
+        return dispatch(context, parsed.actionType, parsed.target, reason)
     }
+
+    internal fun parseAuthorizedAction(payload: JSONObject): ParsedAction? {
+        val action = payload.optJSONObject("action") ?: return null
+        val actionType = action.optString("action_type").takeIf { it.isNotBlank() }
+            ?: return null
+        val target = action.takeIf { it.has("target") && !it.isNull("target") }?.optString("target")
+        return ParsedAction(actionType, target)
+    }
+
+    internal data class ParsedAction(
+        val actionType: String,
+        val target: String?,
+    )
 }

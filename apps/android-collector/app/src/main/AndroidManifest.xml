@@ -22,10 +22,19 @@
             </intent-filter>
         </activity>
 
+        <activity android:name=".DashboardActivity" android:exported="false" />
+        <activity android:name=".SourcesActivity" android:exported="false" />
+        <activity android:name=".ConsoleActivity" android:exported="false" />
+
         <service
             android:name=".services.CollectorForegroundService"
             android:exported="false"
             android:foregroundServiceType="dataSync" />
+
+        <service
+            android:name=".services.ActionMaintenanceJobService"
+            android:exported="false"
+            android:permission="android.permission.BIND_JOB_SERVICE" />
 
         <service
             android:name=".services.NotificationCollectorService"

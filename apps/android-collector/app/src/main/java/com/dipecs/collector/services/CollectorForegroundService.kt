@@ -50,6 +50,7 @@ class CollectorForegroundService : Service() {
             }
             val now = System.currentTimeMillis()
             val deviceContext = DeviceContextCollector.snapshot(this@CollectorForegroundService)
+            CollectorPreferences.setLastHeartbeatMs(this@CollectorForegroundService, now)
             EventRepository.record(
                 this@CollectorForegroundService,
                 CollectorEvent(
@@ -70,7 +71,11 @@ class CollectorForegroundService : Service() {
             if (!running) {
                 return
             }
-            CloudUploader.uploadRecent(this@CollectorForegroundService, reason = "periodic")
+            CloudUploader.uploadRecent(
+                this@CollectorForegroundService,
+                reason = "periodic",
+                requireUploadEnabled = true,
+            )
             handler.postDelayed(this, UPLOAD_INTERVAL_MS)
         }
     }
@@ -95,6 +100,7 @@ class CollectorForegroundService : Service() {
 
     override fun onDestroy() {
         running = false
+        CollectorPreferences.setCollectorRunning(this, false)
         handler.removeCallbacksAndMessages(null)
         actionSocketServer?.stop()
         actionSocketServer = null
@@ -111,6 +117,7 @@ class CollectorForegroundService : Service() {
         }
 
         running = true
+        CollectorPreferences.setCollectorRunning(this, true)
         EventRepository.recordInternal(this, "collector_service_started", "Collector foreground service started")
         usageCollector.collectSinceLastPoll()
         handler.postDelayed(pollRunnable, USAGE_POLL_INTERVAL_MS)
@@ -120,6 +127,7 @@ class CollectorForegroundService : Service() {
 
     private fun stopCollector() {
         running = false
+        CollectorPreferences.setCollectorRunning(this, false)
         handler.removeCallbacksAndMessages(null)
         EventRepository.recordInternal(this, "collector_service_stopped", "Collector foreground service stopped")
         stopForeground(STOP_FOREGROUND_REMOVE)

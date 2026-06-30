@@ -22,10 +22,7 @@ object AndroidRawEventMapper {
         packageName: String,
         category: String?,
         channelId: String?,
-        rawTitle: String?,
-        rawText: String?,
         isOngoing: Boolean,
-        groupKey: String?,
         hasPicture: Boolean,
     ): JSONObject = tagged(
         "NotificationPosted",
@@ -34,24 +31,23 @@ object AndroidRawEventMapper {
             .put("package_name", packageName)
             .put("category", category ?: JSONObject.NULL)
             .put("channel_id", channelId ?: JSONObject.NULL)
-            .put("raw_title", rawTitle.orEmpty())
-            .put("raw_text", rawText.orEmpty())
+            .put("raw_title", "")
+            .put("raw_text", "")
             .put("is_ongoing", isOngoing)
-            .put("group_key", groupKey ?: JSONObject.NULL)
+            .put("group_key", JSONObject.NULL)
             .put("has_picture", hasPicture),
     )
 
     fun notificationInteraction(
         timestampMs: Long,
         packageName: String,
-        notificationKey: String,
         action: String,
     ): JSONObject = tagged(
         "NotificationInteraction",
         JSONObject()
             .put("timestamp_ms", timestampMs)
             .put("package_name", packageName)
-            .put("notification_key", notificationKey)
+            .put("notification_key", "")
             .put("action", action),
     )
 
@@ -70,9 +66,9 @@ object AndroidRawEventMapper {
             .put("is_charging", context.isCharging ?: false)
             .put("network", rustNetwork(context.networkType))
             .put("ringer_mode", rustRingerMode(context.ringerMode))
-            .put("location_type", "Unknown")
-            .put("headphone_connected", false)
-            .put("bluetooth_connected", false),
+            .put("location_type", rustLocationType(context.locationType))
+            .put("headphone_connected", context.headphoneConnected)
+            .put("bluetooth_connected", context.bluetoothConnected),
     )
 
     fun rawEventKind(rawEvent: JSONObject?): String? {
@@ -96,5 +92,12 @@ object AndroidRawEventMapper {
         "vibrate" -> "Vibrate"
         "silent" -> "Silent"
         else -> "Normal"
+    }
+
+    private fun rustLocationType(locationType: String): String = when (locationType.lowercase()) {
+        "home" -> "Home"
+        "work" -> "Work"
+        "commute" -> "Commute"
+        else -> "Unknown"
     }
 }

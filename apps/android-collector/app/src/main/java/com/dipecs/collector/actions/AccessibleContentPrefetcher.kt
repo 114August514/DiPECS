@@ -5,6 +5,7 @@ import android.net.Uri
 import com.dipecs.collector.storage.EventRepository
 import java.io.File
 import java.io.FileOutputStream
+import java.net.InetAddress
 import java.net.HttpURLConnection
 import java.net.URL
 import java.security.MessageDigest
@@ -15,6 +16,8 @@ object AccessibleContentPrefetcher {
     private const val CONNECT_TIMEOUT_MS = 10_000
     private const val READ_TIMEOUT_MS = 20_000
     private const val MAX_DOWNLOAD_BYTES = 2 * 1024 * 1024
+    private const val MAX_REDIRECTS = 3
+    private const val CACHE_TTL_MS = 24L * 60L * 60L * 1000L
     private val executor = Executors.newSingleThreadExecutor()
 
     fun enqueue(context: Context, rawTarget: String, reason: String = "manual") {
@@ -79,19 +82,11 @@ object AccessibleContentPrefetcher {
     }
 
     private fun prefetchUrl(context: Context, target: PrefetchTarget): PrefetchResult {
-        val cacheDir = File(context.cacheDir, "prefetch")
-        if (!cacheDir.exists()) {
-            cacheDir.mkdirs()
-        }
+        val cacheDir = cacheDir(context)
+        cleanupExpiredCache(cacheDir)
         val cacheFile = File(cacheDir, target.cacheFileName())
 
-        val connection = (URL(target.value).openConnection() as HttpURLConnection).apply {
-            requestMethod = "GET"
-            connectTimeout = CONNECT_TIMEOUT_MS
-            readTimeout = READ_TIMEOUT_MS
-            instanceFollowRedirects = true
-            setRequestProperty("Accept", "*/*")
-        }
+        val connection = openValidatedConnection(target.value)
 
         return try {
             val responseCode = connection.responseCode
@@ -131,14 +126,38 @@ object AccessibleContentPrefetcher {
         }
     }
 
+    private fun openValidatedConnection(rawUrl: String): HttpURLConnection {
+        var currentUrl = validateHttpsUrl(rawUrl, resolveHost = true)
+        repeat(MAX_REDIRECTS + 1) { redirectCount ->
+            val connection = (currentUrl.openConnection() as HttpURLConnection).apply {
+                requestMethod = "GET"
+                connectTimeout = CONNECT_TIMEOUT_MS
+                readTimeout = READ_TIMEOUT_MS
+                instanceFollowRedirects = false
+                setRequestProperty("Accept", "*/*")
+            }
+            val responseCode = connection.responseCode
+            if (responseCode !in 300..399) {
+                return connection
+            }
+            if (redirectCount >= MAX_REDIRECTS) {
+                connection.disconnect()
+                error("Prefetch aborted: too many redirects")
+            }
+            val location = connection.getHeaderField("Location")
+                ?: error("Prefetch redirect missing Location header")
+            connection.disconnect()
+            currentUrl = validateHttpsUrl(URL(currentUrl, location).toString(), resolveHost = true)
+        }
+        error("Prefetch aborted: too many redirects")
+    }
+
     private fun prefetchUri(context: Context, target: PrefetchTarget): PrefetchResult {
         val uri = Uri.parse(target.value)
         require(uri.scheme == "content") { "Only content:// URI prefetch targets are supported" }
 
-        val cacheDir = File(context.cacheDir, "prefetch")
-        if (!cacheDir.exists()) {
-            cacheDir.mkdirs()
-        }
+        val cacheDir = cacheDir(context)
+        cleanupExpiredCache(cacheDir)
         val cacheFile = File(cacheDir, target.cacheFileName())
         val contentType = context.contentResolver.getType(uri)
 
@@ -171,6 +190,31 @@ object AccessibleContentPrefetcher {
             cacheFile.delete()
             throw error
         }
+    }
+
+    fun clearCache(context: Context): Int {
+        val dir = File(context.applicationContext.cacheDir, "prefetch")
+        if (!dir.exists()) {
+            return 0
+        }
+        return dir.listFiles()
+            ?.count { file -> file.isFile && file.delete() }
+            ?: 0
+    }
+
+    private fun cacheDir(context: Context): File {
+        val dir = File(context.cacheDir, "prefetch")
+        if (!dir.exists()) {
+            dir.mkdirs()
+        }
+        return dir
+    }
+
+    private fun cleanupExpiredCache(cacheDir: File): Int {
+        val cutoffMs = System.currentTimeMillis() - CACHE_TTL_MS
+        return cacheDir.listFiles()
+            ?.count { file -> file.isFile && file.lastModified() < cutoffMs && file.delete() }
+            ?: 0
     }
 
     internal data class PrefetchTarget(
@@ -208,11 +252,7 @@ object AccessibleContentPrefetcher {
 
                 return when (kind) {
                     "url" -> {
-                        val normalizedValue = if (value.startsWith("http://") || value.startsWith("https://")) {
-                            value
-                        } else {
-                            error("Only http:// or https:// URL prefetch targets are supported")
-                        }
+                        val normalizedValue = validateHttpsUrl(value, resolveHost = false).toString()
                         PrefetchTarget(trimmed, kind, normalizedValue)
                     }
                     "uri" -> {
@@ -225,6 +265,44 @@ object AccessibleContentPrefetcher {
                 }
             }
         }
+    }
+
+    private fun validateHttpsUrl(rawUrl: String, resolveHost: Boolean): URL {
+        val url = URL(rawUrl)
+        require(url.protocol == "https") { "Only https:// URL prefetch targets are supported" }
+        val host = url.host?.lowercase().orEmpty()
+        require(host.isNotBlank()) { "Prefetch URL host is blank" }
+        require(!isBlockedHostName(host)) { "Prefetch URL host is not allowed" }
+        if (resolveHost) {
+            val addresses = InetAddress.getAllByName(host)
+            require(addresses.isNotEmpty()) { "Prefetch URL host did not resolve" }
+            require(addresses.none { it.isBlockedAddress() }) {
+                "Prefetch URL resolved to a private or local address"
+            }
+        } else {
+            runCatching { InetAddress.getByName(host) }
+                .getOrNull()
+                ?.let { address ->
+                    require(!address.isBlockedAddress()) {
+                        "Prefetch URL host is not allowed"
+                    }
+                }
+        }
+        return url
+    }
+
+    private fun isBlockedHostName(host: String): Boolean =
+        host == "localhost" || host.endsWith(".localhost")
+
+    private fun InetAddress.isBlockedAddress(): Boolean {
+        val bytes = address
+        val uniqueLocalIpv6 = bytes.size == 16 && (bytes[0].toInt() and 0xfe) == 0xfc
+        return isAnyLocalAddress ||
+            isLoopbackAddress ||
+            isLinkLocalAddress ||
+            isSiteLocalAddress ||
+            isMulticastAddress ||
+            uniqueLocalIpv6
     }
 
     private data class PrefetchResult(

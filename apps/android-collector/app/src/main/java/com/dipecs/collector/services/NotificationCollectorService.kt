@@ -44,11 +44,12 @@ class NotificationCollectorService : NotificationListenerService() {
 
     private fun notificationEvent(eventType: String, sbn: StatusBarNotification): CollectorEvent {
         val extras = sbn.notification.extras
-        val title = extras.getCharSequence(Notification.EXTRA_TITLE)?.toString()
         val text = extras.getCharSequence(Notification.EXTRA_TEXT)?.toString()
         val subText = extras.getCharSequence(Notification.EXTRA_SUB_TEXT)?.toString()
         val bigText = extras.getCharSequence(Notification.EXTRA_BIG_TEXT)?.toString()
-        val combinedText = listOfNotNull(text, bigText, subText).joinToString(" | ").ifBlank { null }
+        val combinedTextLength = listOfNotNull(text, bigText, subText)
+            .sumOf { it.length }
+            .takeIf { it > 0 }
         val isOngoing = (sbn.notification.flags and Notification.FLAG_ONGOING_EVENT) != 0
         val hasPicture = extras.containsKey(Notification.EXTRA_PICTURE)
         val rawEvent = AndroidRawEventMapper.notificationPosted(
@@ -56,10 +57,7 @@ class NotificationCollectorService : NotificationListenerService() {
             packageName = sbn.packageName,
             category = sbn.notification.category,
             channelId = sbn.notification.channelId,
-            rawTitle = title,
-            rawText = combinedText,
             isOngoing = isOngoing,
-            groupKey = sbn.groupKey,
             hasPicture = hasPicture,
         )
 
@@ -69,19 +67,17 @@ class NotificationCollectorService : NotificationListenerService() {
             eventType = eventType,
             packageName = sbn.packageName,
             className = sbn.notification.category,
-            text = combinedText,
             action = eventType,
             deviceContext = DeviceContextCollector.snapshot(this),
             rawEvent = rawEvent,
             rawPayload = JSONObject()
                 .put("id", sbn.id)
-                .put("tag", sbn.tag)
-                .put("key", sbn.key)
                 .put("category", sbn.notification.category)
                 .put("channelId", sbn.notification.channelId)
                 .put("priority", sbn.notification.priority)
                 .put("isOngoing", isOngoing)
                 .put("hasPicture", hasPicture)
+                .put("textLength", combinedTextLength ?: JSONObject.NULL)
                 .put("foregroundPackage", CollectorPreferences.foregroundPackage(this)),
         )
     }
@@ -100,13 +96,10 @@ class NotificationCollectorService : NotificationListenerService() {
             rawEvent = AndroidRawEventMapper.notificationInteraction(
                 timestampMs = now,
                 packageName = sbn.packageName,
-                notificationKey = sbn.key,
                 action = action,
             ),
             rawPayload = JSONObject()
                 .put("id", sbn.id)
-                .put("tag", sbn.tag)
-                .put("key", sbn.key)
                 .put("category", sbn.notification.category)
                 .put("removalReason", reason ?: JSONObject.NULL)
                 .put("foregroundPackage", CollectorPreferences.foregroundPackage(this)),

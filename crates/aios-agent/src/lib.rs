@@ -1,34 +1,34 @@
-//! # aios-agent — 决策路由与模型后端
+//! # aios-agent - decision routing and model backends
 //!
-//! 接收 `StructuredContext`, 选择本地规则/本地模型/云端模型等后端,
-//! 并返回 `IntentBatch` 供 core 做最终审查。
-//!
-//! ## 模块结构
-//!
-//! - `DecisionBackend` trait — 统一的后端接口
-//! - `router` — DecisionRouter, RouterConfig, CircuitState, RoutingReason
-//! - `backends::rule_based` — 规则驱动的意图生成
-//! - `backends::fallback` — circuit breaker 熔断后的最终安全后端
+//! Receives `StructuredContext`, selects a local rule/local evaluator/cloud
+//! backend, and returns an `IntentBatch` for final review in core.
 
 mod backends;
 mod router;
 
+pub use backends::cloud_llm::ProfileSummarizer;
 pub use backends::fallback::FallbackNoOpBackend;
+pub use backends::local_evaluator::LocalEvaluatorBackend;
 pub use backends::rule_based::RuleBasedBackend;
 pub use router::{DecisionRouter, RouterConfig};
 
-use aios_spec::{DecisionBackendResult, StructuredContext};
+use aios_spec::{DecisionBackendResult, ModelInput, StructuredContext};
 use uuid::Uuid;
 
 // ============================================================
 // DecisionBackend trait
 // ============================================================
 
-/// 统一的后端接口 — 接收 Context, 返回决策结果。
+/// Common backend interface: receive a context and return a decision result.
 ///
-/// 所有后端（规则引擎、本地模型、云端 LLM、fallback）都实现此 trait。
+/// Rule-based, local evaluator, cloud LLM, and fallback backends all implement
+/// this trait.
 pub trait DecisionBackend {
     fn evaluate(&self, context: &StructuredContext) -> DecisionBackendResult;
+
+    fn evaluate_model_input(&self, input: &ModelInput) -> DecisionBackendResult {
+        self.evaluate(&input.current_context)
+    }
 }
 
 // ============================================================

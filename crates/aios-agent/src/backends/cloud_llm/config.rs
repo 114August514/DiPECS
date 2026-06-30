@@ -47,7 +47,20 @@ Rules:
 - For PrefetchFile, use a concrete Android bridge target when possible:
   `url:https://...` for network-accessible content or `uri:content://...` for
   persisted document/content-provider access.
+- For PreWarmProcess, never request background-launching another app. Use
+  `own:resources` for DiPECS-owned warmup or `pkg:<observed.package>` for a
+  user-visible notification hint.
+- For KeepAlive, use DiPECS-owned work targets such as
+  `work:collector_heartbeat`.
+- For ReleaseMemory, use app-owned cache targets such as `cache:prefetch`.
 - Use short snake_case rationale tags.
+- The user message contains `model_input_json` with:
+  - `current_context`: the current sanitized window.
+  - `behavior_profile`: long-running privacy-preserving habit summary.
+  - `recent_feedback`: recent decisions plus local policy/execution outcomes.
+- Prefer current_context for immediate facts, use behavior_profile for stable
+  tendencies, and use recent_feedback to avoid repeating recently denied,
+  failed, or low-value actions.
 "#;
 
 pub(super) fn cloud_llm_enabled() -> bool {

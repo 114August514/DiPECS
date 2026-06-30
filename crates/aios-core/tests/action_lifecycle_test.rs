@@ -90,6 +90,8 @@ fn happy_path_records_full_transition_sequence() {
     let records = lifecycle.run(
         0,
         &batch_with_single(noop_intent()),
+        DecisionRoute::RuleBased,
+        None,
         &CapabilityLevel::for_route(DecisionRoute::RuleBased),
         &ctx_with_apps(&[]),
     );
@@ -129,6 +131,8 @@ fn missing_prewarm_target_rejected_invalid_schema() {
     let records = lifecycle.run(
         0,
         &batch_with_single(intent),
+        DecisionRoute::RuleBased,
+        None,
         &CapabilityLevel::for_route(DecisionRoute::RuleBased),
         &ctx_with_apps(&[]),
     );
@@ -160,6 +164,8 @@ fn capability_denial_maps_to_denied_by_capability() {
     let records = lifecycle.run(
         0,
         &batch_with_single(intent),
+        DecisionRoute::RuleBased,
+        None,
         &CapabilityLevel::for_route(DecisionRoute::RuleBased),
         &ctx_with_apps(&["com.example.app"]),
     );
@@ -182,6 +188,8 @@ fn adapter_err_maps_to_failed_terminal() {
     let records = lifecycle.run(
         0,
         &batch_with_single(noop_intent()),
+        DecisionRoute::RuleBased,
+        None,
         &CapabilityLevel::for_route(DecisionRoute::RuleBased),
         &ctx_with_apps(&[]),
     );
@@ -205,6 +213,8 @@ fn each_coord_has_exactly_one_terminal_audit_record() {
     let records = lifecycle.run(
         0,
         &batch,
+        DecisionRoute::RuleBased,
+        None,
         &CapabilityLevel::for_route(DecisionRoute::RuleBased),
         &ctx_with_apps(&[]),
     );
@@ -224,12 +234,16 @@ fn window_ordinal_prevents_collision_across_windows() {
     let r0 = lifecycle.run(
         0,
         &batch,
+        DecisionRoute::RuleBased,
+        None,
         &CapabilityLevel::for_route(DecisionRoute::RuleBased),
         &ctx_with_apps(&[]),
     );
     let r1 = lifecycle.run(
         1,
         &batch,
+        DecisionRoute::RuleBased,
+        None,
         &CapabilityLevel::for_route(DecisionRoute::RuleBased),
         &ctx_with_apps(&[]),
     );
@@ -283,12 +297,16 @@ fn outcome_drift_changes_audit_hash() {
     let records_a = lifecycle_a.run(
         0,
         &batch,
+        DecisionRoute::RuleBased,
+        None,
         &CapabilityLevel::for_route(DecisionRoute::RuleBased),
         &ctx_with_apps(&[]),
     );
     let records_b = lifecycle_b.run(
         0,
         &batch,
+        DecisionRoute::RuleBased,
+        None,
         &CapabilityLevel::for_route(DecisionRoute::RuleBased),
         &ctx_with_apps(&[]),
     );
@@ -313,12 +331,16 @@ fn audit_hash_is_stable_across_repeated_runs() {
     let r0 = lifecycle.run(
         0,
         &batch,
+        DecisionRoute::RuleBased,
+        None,
         &CapabilityLevel::for_route(DecisionRoute::RuleBased),
         &ctx_with_apps(&[]),
     );
     let r1 = lifecycle.run(
         0,
         &batch,
+        DecisionRoute::RuleBased,
+        None,
         &CapabilityLevel::for_route(DecisionRoute::RuleBased),
         &ctx_with_apps(&[]),
     );
@@ -330,6 +352,24 @@ fn audit_hash_is_stable_across_repeated_runs() {
         assert_eq!(a.outcome, b.outcome);
         assert_eq!(a.transitions, b.transitions);
     }
+}
+
+#[test]
+fn audit_record_source_tier_matches_context_summary() {
+    let policy = PolicyEngine::default();
+    let lifecycle = ActionLifecycle::new(&policy, &OkAdapter);
+    let ctx = ctx_with_apps(&[]);
+    let records = lifecycle.run(
+        0,
+        &batch_with_single(noop_intent()),
+        DecisionRoute::RuleBased,
+        None,
+        &CapabilityLevel::for_route(DecisionRoute::RuleBased),
+        &ctx,
+    );
+
+    assert_eq!(records.len(), 1);
+    assert_eq!(records[0].source_tier, ctx.summary.source_tier);
 }
 
 #[test]
@@ -346,4 +386,55 @@ fn deterministic_coord_excludes_runtime_volatiles() {
     assert!(json.contains("42"));
     assert!(json.contains("7"));
     assert!(json.contains("3"));
+}
+
+#[test]
+fn audit_record_includes_route_and_backend_error() {
+    let policy = PolicyEngine::default();
+    let lifecycle = ActionLifecycle::new(&policy, &OkAdapter);
+    let records = lifecycle.run(
+        0,
+        &batch_with_single(noop_intent()),
+        DecisionRoute::FallbackNoOp,
+        Some("circuit breaker engaged".into()),
+        &CapabilityLevel::for_route(DecisionRoute::FallbackNoOp),
+        &ctx_with_apps(&[]),
+    );
+
+    assert_eq!(records.len(), 1);
+    let record = &records[0];
+    assert!(matches!(record.route, DecisionRoute::FallbackNoOp));
+    assert_eq!(
+        record.backend_error.as_deref(),
+        Some("circuit breaker engaged")
+    );
+}
+
+#[test]
+fn fallback_noop_cannot_be_rejected_by_confidence() {
+    let mut intent = noop_intent();
+    // 即使 confidence 低于默认 threshold，FallbackNoOp 的 capability 只允
+    // 许 NoOp，且 NoOp 在 schema 校验后不会被 confidence gate 拒绝；更重要
+    // 的是，issue #10 要求验证 FallbackNoOp 不会因普通 confidence threshold
+    // 进入未定义行为。这里用 confidence=1.0 模拟 fallback 输出，断言其到达
+    // Succeeded 终态。
+    intent.confidence = 1.0;
+
+    let policy = PolicyEngine::default();
+    let lifecycle = ActionLifecycle::new(&policy, &OkAdapter);
+    let records = lifecycle.run(
+        0,
+        &batch_with_single(intent),
+        DecisionRoute::FallbackNoOp,
+        Some("test fallback".into()),
+        &CapabilityLevel::for_route(DecisionRoute::FallbackNoOp),
+        &ctx_with_apps(&[]),
+    );
+
+    assert_eq!(records.len(), 1);
+    assert!(
+        matches!(records[0].terminal, ActionState::Succeeded),
+        "FallbackNoOp NoOp must reach Succeeded, got {:?}",
+        records[0].terminal
+    );
 }

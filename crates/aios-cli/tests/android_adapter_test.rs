@@ -19,8 +19,8 @@ use aios_core::policy_engine::PolicyEngine;
 use aios_spec::context::ContextSummary;
 use aios_spec::governance::ActionState;
 use aios_spec::intent::{
-    ActionType, ActionUrgency, CapabilityLevel, Intent, IntentBatch, IntentType, RiskLevel,
-    SuggestedAction,
+    ActionType, ActionUrgency, CapabilityLevel, DecisionRoute, Intent, IntentBatch, IntentType,
+    RiskLevel, SuggestedAction,
 };
 use aios_spec::{SourceTier, StructuredContext};
 
@@ -105,6 +105,8 @@ fn run_single(
     let mut records = lifecycle.run(
         0,
         &single_action_batch(action),
+        DecisionRoute::Mock,
+        None,
         &permissive_capability(),
         &ctx,
     );

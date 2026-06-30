@@ -1,5 +1,5 @@
 <resources>
-    <string name="app_name">DiPECS Collector</string>
-    <string name="accessibility_service_label">DiPECS Action Collector</string>
-    <string name="accessibility_service_description">Collects authorized UI interaction events for the DiPECS MVP trace pipeline.</string>
+    <string name="app_name">DiPECS 采集器</string>
+    <string name="accessibility_service_label">DiPECS 动作采集器</string>
+    <string name="accessibility_service_description">为 DiPECS 追踪管线采集已授权的 UI 交互事件。</string>
 </resources>

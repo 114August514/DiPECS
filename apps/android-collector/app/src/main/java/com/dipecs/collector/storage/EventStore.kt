@@ -2,6 +2,7 @@ package com.dipecs.collector.storage
 
 import android.content.Context
 import com.dipecs.collector.model.CollectorEvent
+import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
 
@@ -19,7 +20,7 @@ class EventStore(context: Context) {
 
     fun append(event: CollectorEvent) {
         synchronized(LOCK) {
-            traceFile.appendText(event.toJson().toString() + "\n")
+            traceFile.appendText(sanitizeForTrace(event.toJson()).toString() + "\n")
         }
     }
 
@@ -32,19 +33,8 @@ class EventStore(context: Context) {
             .asSequence()
             .filter { it.isNotBlank() }
             .takeLastCompat(limit)
-            .mapNotNull { line -> runCatching { JSONObject(line) }.getOrNull() }
+            .mapNotNull { line -> runCatching { sanitizeForTrace(JSONObject(line)) }.getOrNull() }
             .toList()
-    }
-
-    fun readRecentLines(limit: Int): List<String> {
-        val file = traceFile
-        if (!file.exists()) {
-            return emptyList()
-        }
-        return file.readLines()
-            .asSequence()
-            .filter { it.isNotBlank() }
-            .takeLastCompat(limit)
     }
 
     fun clear() {
@@ -64,7 +54,16 @@ class EventStore(context: Context) {
         }
         val target = File(targetDir, "actions.jsonl")
         if (source.exists()) {
-            source.copyTo(target, overwrite = true)
+            val sanitized = source.readLines()
+                .asSequence()
+                .filter { it.isNotBlank() }
+                .map { line ->
+                    runCatching { sanitizeForTrace(JSONObject(line)).toString() }
+                        .getOrElse { "" }
+                }
+                .filter { it.isNotBlank() }
+                .joinToString(separator = "\n", postfix = "\n")
+            target.writeText(sanitized)
         } else {
             target.writeText("")
         }
@@ -77,6 +76,75 @@ class EventStore(context: Context) {
             return 0
         }
         return file.useLines { lines -> lines.count() }
+    }
+
+    fun stats(): TraceStats {
+        val file = traceFile
+        if (!file.exists()) {
+            return TraceStats(fileSizeBytes = 0L)
+        }
+
+        var total = 0
+        var rawEventRows = 0
+        var rawEventNullRows = 0
+        var parseErrors = 0
+        var latestParseError: String? = null
+        var latestTimestampMs: Long? = null
+        var latestRawEventKind: String? = null
+        val sourceCounts = linkedMapOf<String, Int>()
+        val eventTypeCounts = linkedMapOf<String, Int>()
+        val rawEventKindCounts = linkedMapOf<String, Int>()
+
+        file.useLines { lines ->
+            for (line in lines) {
+                if (line.isBlank()) {
+                    continue
+                }
+                total += 1
+                val parsed = runCatching { JSONObject(line) }
+                val event = parsed.getOrNull()
+                if (event == null) {
+                    parseErrors += 1
+                    latestParseError = parsed.exceptionOrNull()?.message
+                        ?: "Invalid JSON row"
+                    continue
+                }
+
+                latestTimestampMs = maxOf(
+                    latestTimestampMs ?: Long.MIN_VALUE,
+                    event.optLong("timestampMs", Long.MIN_VALUE),
+                ).takeIf { it != Long.MIN_VALUE }
+                increment(sourceCounts, event.optString("source", "unknown").ifBlank { "unknown" })
+                increment(eventTypeCounts, event.optString("eventType", "unknown").ifBlank { "unknown" })
+
+                val rawEvent = event.optJSONObject("rawEvent")
+                if (rawEvent != null) {
+                    val keys = rawEvent.keys()
+                    if (keys.hasNext()) {
+                        val kind = keys.next()
+                        rawEventRows += 1
+                        latestRawEventKind = kind
+                        increment(rawEventKindCounts, kind)
+                    }
+                } else {
+                    rawEventNullRows += 1
+                }
+            }
+        }
+
+        return TraceStats(
+            totalRows = total,
+            fileSizeBytes = file.length(),
+            rawEventRows = rawEventRows,
+            rawEventNullRows = rawEventNullRows,
+            parseErrors = parseErrors,
+            latestParseError = latestParseError,
+            latestTimestampMs = latestTimestampMs,
+            latestRawEventKind = latestRawEventKind,
+            sourceCounts = sourceCounts,
+            eventTypeCounts = eventTypeCounts,
+            rawEventKindCounts = rawEventKindCounts,
+        )
     }
 
     private fun <T> Sequence<T>.takeLastCompat(count: Int): List<T> {
@@ -95,5 +163,76 @@ class EventStore(context: Context) {
 
     companion object {
         private val LOCK = Any()
+
+        private val SENSITIVE_NULL_KEYS = setOf(
+            "group_key",
+            "key",
+            "tag",
+            "payload",
+            "responseBody",
+            "sourceText",
+            "sourceContentDescription",
+            "textItems",
+            "windowTitle",
+            "text",
+            "target",
+            "cachePath",
+        )
+
+        private val SENSITIVE_STRING_KEYS = setOf(
+            "raw_title",
+            "raw_text",
+            "notification_key",
+        )
+
+        fun sanitizeForTrace(value: JSONObject): JSONObject =
+            sanitizeObject(value)
+
+        private fun sanitizeObject(value: JSONObject): JSONObject {
+            val sanitized = JSONObject()
+            val keys = value.keys()
+            while (keys.hasNext()) {
+                val key = keys.next()
+                val original = value.opt(key)
+                when {
+                    key in SENSITIVE_NULL_KEYS -> sanitized.put(key, JSONObject.NULL)
+                    key in SENSITIVE_STRING_KEYS -> sanitized.put(key, "")
+                    original is JSONObject -> sanitized.put(key, sanitizeObject(original))
+                    original is JSONArray -> sanitized.put(key, sanitizeArray(original))
+                    else -> sanitized.put(key, original ?: JSONObject.NULL)
+                }
+            }
+            return sanitized
+        }
+
+        private fun sanitizeArray(value: JSONArray): JSONArray {
+            val sanitized = JSONArray()
+            for (index in 0 until value.length()) {
+                when (val item = value.opt(index)) {
+                    is JSONObject -> sanitized.put(sanitizeObject(item))
+                    is JSONArray -> sanitized.put(sanitizeArray(item))
+                    else -> sanitized.put(item ?: JSONObject.NULL)
+                }
+            }
+            return sanitized
+        }
+
+        private fun increment(counts: MutableMap<String, Int>, key: String) {
+            counts[key] = (counts[key] ?: 0) + 1
+        }
     }
 }
+
+data class TraceStats(
+    val totalRows: Int = 0,
+    val fileSizeBytes: Long = 0L,
+    val rawEventRows: Int = 0,
+    val rawEventNullRows: Int = 0,
+    val parseErrors: Int = 0,
+    val latestParseError: String? = null,
+    val latestTimestampMs: Long? = null,
+    val latestRawEventKind: String? = null,
+    val sourceCounts: Map<String, Int> = emptyMap(),
+    val eventTypeCounts: Map<String, Int> = emptyMap(),
+    val rawEventKindCounts: Map<String, Int> = emptyMap(),
+)

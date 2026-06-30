@@ -12,7 +12,7 @@ use aios_spec::governance::{PolicyActionDecision, PolicyVerdict};
 use aios_spec::intent::{
     ActionType, ActionUrgency, CapabilityLevel, DenialReason, Intent, IntentBatch, RiskLevel,
 };
-use aios_spec::{SanitizedEventType, StructuredContext};
+use aios_spec::{SanitizedEventType, SourceTier, StructuredContext};
 use tracing::debug;
 
 /// 策略引擎配置
@@ -58,7 +58,13 @@ impl PolicyEngine {
         let mut decisions = Vec::new();
         for (intent_ordinal, intent) in batch.intents.iter().enumerate() {
             let intent_ordinal = intent_ordinal as u32;
-            decisions.extend(self.evaluate_intent(intent, intent_ordinal, &capability, None));
+            decisions.extend(self.evaluate_intent(
+                intent,
+                intent_ordinal,
+                &capability,
+                None,
+                SourceTier::PublicApi,
+            ));
         }
         decisions
     }
@@ -72,7 +78,13 @@ impl PolicyEngine {
         let mut decisions = Vec::new();
         for (intent_ordinal, intent) in batch.intents.iter().enumerate() {
             let intent_ordinal = intent_ordinal as u32;
-            decisions.extend(self.evaluate_intent(intent, intent_ordinal, capability, None));
+            decisions.extend(self.evaluate_intent(
+                intent,
+                intent_ordinal,
+                capability,
+                None,
+                SourceTier::PublicApi,
+            ));
         }
         decisions
     }
@@ -88,6 +100,7 @@ impl PolicyEngine {
         ctx: &StructuredContext,
     ) -> Vec<PolicyActionDecision> {
         let known = Some(KnownTargets::from_context(ctx));
+        let source_tier = ctx.summary.source_tier;
         let mut decisions = Vec::new();
         for (intent_ordinal, intent) in batch.intents.iter().enumerate() {
             let intent_ordinal = intent_ordinal as u32;
@@ -96,6 +109,7 @@ impl PolicyEngine {
                 intent_ordinal,
                 capability,
                 known.as_ref(),
+                source_tier,
             ));
         }
         decisions
@@ -107,7 +121,14 @@ impl PolicyEngine {
         intent_ordinal: u32,
         capability: &CapabilityLevel,
         known: Option<&KnownTargets>,
+        source_tier: SourceTier,
     ) -> Vec<PolicyActionDecision> {
+        debug!(
+            intent_id = %intent.intent_id,
+            ?source_tier,
+            "policy evaluating intent with source tier"
+        );
+
         // 1. 后端能力等级检查 — 先于通用策略
         if !capability.allows_risk(intent.risk_level) {
             return self.denied_all(
@@ -284,17 +305,42 @@ fn check_target(
     match action {
         ActionType::NoOp => None,
         ActionType::PreWarmProcess => match target {
-            Some(t) if !t.is_empty() && (known.packages.contains(t) || known.files.contains(t)) => {
-                None
-            },
+            Some(t) if is_allowed_prewarm_target(t, known) => None,
             _ => Some(DenialReason::TargetNotInContext),
         },
         ActionType::KeepAlive | ActionType::ReleaseMemory | ActionType::PrefetchFile => {
             match target {
                 None => None,
                 Some("") => Some(DenialReason::TargetNotInContext),
-                Some(t) if known.packages.contains(t) || known.files.contains(t) => None,
+                Some(t) if is_allowed_low_risk_target(action, t, known) => None,
                 Some(_) => Some(DenialReason::TargetNotInContext),
+            }
+        },
+    }
+}
+
+fn is_allowed_prewarm_target(target: &str, known: &KnownTargets) -> bool {
+    if target.starts_with("own:") || target.starts_with("notif:") {
+        return true;
+    }
+    if let Some(package) = target.strip_prefix("pkg:") {
+        return known.packages.contains(package);
+    }
+    !target.is_empty() && (known.packages.contains(target) || known.files.contains(target))
+}
+
+fn is_allowed_low_risk_target(action: &ActionType, target: &str, known: &KnownTargets) -> bool {
+    match action {
+        ActionType::KeepAlive if target.starts_with("work:") => true,
+        ActionType::ReleaseMemory if matches!(target, "cache:prefetch" | "cache:all") => true,
+        ActionType::PrefetchFile if target.starts_with("url:") || target.starts_with("uri:") => {
+            true
+        },
+        _ => {
+            if let Some(package) = target.strip_prefix("pkg:") {
+                known.packages.contains(package)
+            } else {
+                known.packages.contains(target) || known.files.contains(target)
             }
         },
     }

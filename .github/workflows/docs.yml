@@ -99,10 +99,10 @@ jobs:
 
       - name: Build Academic Reports
         run: |
-          sudo apt-get update -qq && sudo apt-get install -y -qq texlive-latex-base texlive-latex-recommended latexmk
+          sudo apt-get update -qq && sudo apt-get install -y -qq texlive-latex-base texlive-latex-recommended texlive-xetex texlive-lang-chinese latexmk
           cd docs/academic-src
           for tex in 01_Survey_Report/main.tex 02_Feasibility_Report/main.tex 03_Midterm_Report/main.tex 04_Final_Report/main.tex; do
-            latexmk -pdf -interaction=nonstopmode "$tex" || true
+            latexmk -xelatex -halt-on-error -interaction=nonstopmode "$tex"
           done
 
       - name: Collect PDFs

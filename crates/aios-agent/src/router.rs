@@ -1,20 +1,22 @@
-//! DecisionRouter — 多层级决策路由。
+//! DecisionRouter - multi-tier decision routing.
 //!
-//! 路由优先级：
-//! 1. Circuit breaker — 连续错误超阈值 → FallbackNoOp
-//! 2. Privacy sensitivity — 敏感信号过多 → RuleBased 降级
-//! 3. Semantic complexity — 信号种类数决定后端（当前统一收敛到 RuleBased）
-
+//! Routing priority:
+//! 1. Circuit breaker: too many consecutive backend errors -> FallbackNoOp.
+//! 2. Privacy sensitivity: too many sensitive signals -> RuleBased.
+//! 3. Semantic complexity: low complexity -> RuleBased, medium/high ->
+//!    CloudLlm when configured, otherwise LocalEvaluator.
 use std::cell::RefCell;
 use std::collections::HashSet;
 use std::time::{Duration, Instant};
 
 use aios_spec::{
-    DecisionBackendResult, DecisionRoute, SanitizedEventType, SemanticHint, StructuredContext,
+    DecisionBackendResult, DecisionRoute, ModelInput, SanitizedEventType, SemanticHint,
+    StructuredContext,
 };
 
 use crate::backends::cloud_llm::CloudBackendState;
 use crate::backends::fallback::FallbackNoOpBackend;
+use crate::backends::local_evaluator::LocalEvaluatorBackend;
 use crate::backends::rule_based::RuleBasedBackend;
 use crate::DecisionBackend;
 
@@ -84,9 +86,8 @@ enum RoutingReason {
     CircuitBreakerTripped { failure_count: u32 },
     PrivacySensitive { score: usize },
     LowComplexity,
+    LocalPreferred { complexity: &'static str },
     CloudPreferred { complexity: &'static str },
-    CloudDisabled { complexity: &'static str },
-    CloudMisconfigured { complexity: &'static str },
 }
 
 impl RoutingReason {
@@ -99,14 +100,11 @@ impl RoutingReason {
                 format!("routing:privacy_sensitive(score={})", score)
             },
             RoutingReason::LowComplexity => "routing:low_complexity".into(),
+            RoutingReason::LocalPreferred { complexity } => {
+                format!("routing:{complexity}_complexity(local_evaluator)")
+            },
             RoutingReason::CloudPreferred { complexity } => {
                 format!("routing:{complexity}_complexity(cloud_llm)")
-            },
-            RoutingReason::CloudDisabled { complexity } => {
-                format!("routing:{complexity}_complexity(rule_based_cloud_disabled)")
-            },
-            RoutingReason::CloudMisconfigured { complexity } => {
-                format!("routing:{complexity}_complexity(rule_based_cloud_misconfigured)")
             },
         }
     }
@@ -119,6 +117,7 @@ impl RoutingReason {
 pub struct DecisionRouter {
     config: RouterConfig,
     rule_based: Box<dyn DecisionBackend + Send + Sync>,
+    local_evaluator: Box<dyn DecisionBackend + Send + Sync>,
     fallback: Box<dyn DecisionBackend + Send + Sync>,
     cloud_llm: Option<Box<dyn DecisionBackend + Send + Sync>>,
     cloud_disabled: bool,
@@ -148,6 +147,7 @@ impl DecisionRouter {
         Self {
             config,
             rule_based: Box::new(RuleBasedBackend),
+            local_evaluator: Box::new(LocalEvaluatorBackend),
             fallback: Box::new(FallbackNoOpBackend),
             cloud_llm,
             cloud_disabled,
@@ -160,6 +160,7 @@ impl DecisionRouter {
     fn with_backends(
         config: RouterConfig,
         rule_based: Box<dyn DecisionBackend + Send + Sync>,
+        local_evaluator: Box<dyn DecisionBackend + Send + Sync>,
         cloud_llm: Option<Box<dyn DecisionBackend + Send + Sync>>,
         fallback: Box<dyn DecisionBackend + Send + Sync>,
     ) -> Self {
@@ -167,6 +168,7 @@ impl DecisionRouter {
         Self {
             config,
             rule_based,
+            local_evaluator,
             fallback,
             cloud_llm,
             cloud_disabled,
@@ -180,20 +182,33 @@ impl DecisionRouter {
     /// Uses interior mutability (`RefCell`) to track circuit breaker state
     /// across calls without requiring `&mut self`.
     pub fn evaluate(&self, context: &StructuredContext) -> DecisionBackendResult {
+        let input = ModelInput::current_only(context.clone());
+        self.evaluate_model_input(&input)
+    }
+
+    /// Evaluate a model input that includes the current window plus optional
+    /// behavior profile and recent feedback memory.
+    pub fn evaluate_model_input(&self, input: &ModelInput) -> DecisionBackendResult {
+        let context = &input.current_context;
         let (route, reason) = self.determine_route(context);
         let reason_tag = reason.tag();
 
         let (mut result, backend_failed) = match route {
             DecisionRoute::RuleBased => {
-                let result = self.rule_based.evaluate(context);
+                let result = self.rule_based.evaluate_model_input(input);
+                let backend_failed = result.error.is_some();
+                (result, backend_failed)
+            },
+            DecisionRoute::LocalEvaluator => {
+                let result = self.local_evaluator.evaluate_model_input(input);
                 let backend_failed = result.error.is_some();
                 (result, backend_failed)
             },
             DecisionRoute::CloudLlm => match &self.cloud_llm {
                 Some(backend) => {
-                    let cloud_result = backend.evaluate(context);
+                    let cloud_result = backend.evaluate_model_input(input);
                     if let Some(error) = cloud_result.error.as_deref() {
-                        let mut fallback = self.rule_based.evaluate(context);
+                        let mut fallback = self.rule_based.evaluate_model_input(input);
                         fallback.error = Some(format!("cloud llm backend failed: {error}"));
                         fallback
                             .rationale_tags
@@ -204,20 +219,19 @@ impl DecisionRouter {
                     }
                 },
                 None => {
-                    let result = self.rule_based.evaluate(context);
+                    let result = self.rule_based.evaluate_model_input(input);
                     let backend_failed = result.error.is_some();
                     (result, backend_failed)
                 },
             },
             DecisionRoute::FallbackNoOp => {
-                let result = self.fallback.evaluate(context);
+                let result = self.fallback.evaluate_model_input(input);
                 // FallbackNoOp may preserve an audit error while successfully
                 // generating the safe NoOp used to probe recovery.
                 (result, false)
             },
-            // Future routes (LocalEvaluator) fall back to RuleBased
             _ => {
-                let result = self.rule_based.evaluate(context);
+                let result = self.rule_based.evaluate_model_input(input);
                 let backend_failed = result.error.is_some();
                 (result, backend_failed)
             },
@@ -283,22 +297,16 @@ impl DecisionRouter {
                 RoutingReason::CloudPreferred { complexity },
             );
         }
-        if self.cloud_disabled {
+        if self.cloud_disabled || self.cloud_misconfigured.is_some() {
             return (
-                DecisionRoute::RuleBased,
-                RoutingReason::CloudDisabled { complexity },
+                DecisionRoute::LocalEvaluator,
+                RoutingReason::LocalPreferred { complexity },
             );
         }
-        if self.cloud_misconfigured.is_some() {
-            return (
-                DecisionRoute::RuleBased,
-                RoutingReason::CloudMisconfigured { complexity },
-            );
-        }
-        // No cloud backend available; treat as disabled for safety.
+        // No cloud backend available; stay local for safety.
         (
-            DecisionRoute::RuleBased,
-            RoutingReason::CloudDisabled { complexity },
+            DecisionRoute::LocalEvaluator,
+            RoutingReason::LocalPreferred { complexity },
         )
     }
 
@@ -442,6 +450,9 @@ mod tests {
                 route: DecisionRoute::RuleBased,
                 error: "rule-based failure".into(),
             }),
+            Box::new(OkBackend {
+                route: DecisionRoute::LocalEvaluator,
+            }),
             None,
             Box::new(FallbackNoOpBackend),
         );
@@ -482,6 +493,9 @@ mod tests {
             Box::new(FailingBackend {
                 route: DecisionRoute::RuleBased,
                 error: "rule-based failure".into(),
+            }),
+            Box::new(OkBackend {
+                route: DecisionRoute::LocalEvaluator,
             }),
             None,
             Box::new(FallbackNoOpBackend),
@@ -592,6 +606,9 @@ mod tests {
             Box::new(OkBackend {
                 route: DecisionRoute::RuleBased,
             }),
+            Box::new(OkBackend {
+                route: DecisionRoute::LocalEvaluator,
+            }),
             Some(Box::new(FailingBackend {
                 route: DecisionRoute::CloudLlm,
                 error: "cloud failure".into(),
@@ -621,5 +638,66 @@ mod tests {
             "cloud errors should trip the circuit breaker, got {:?}",
             r3.route
         );
+    }
+    #[test]
+    fn cloud_disabled_medium_complexity_routes_to_local_evaluator() {
+        let ctx = StructuredContext {
+            window_id: "local-route-window".into(),
+            window_start_ms: 0,
+            window_end_ms: 1000,
+            duration_secs: 1,
+            events: vec![SanitizedEvent {
+                event_id: "n1".into(),
+                timestamp_ms: 100,
+                event_type: SanitizedEventType::Notification {
+                    source_package: "com.chat".into(),
+                    category: None,
+                    channel_id: None,
+                    title_hint: aios_spec::TextHint {
+                        length_chars: 1,
+                        script: aios_spec::ScriptHint::Latin,
+                        is_emoji_only: false,
+                    },
+                    text_hint: aios_spec::TextHint {
+                        length_chars: 1,
+                        script: aios_spec::ScriptHint::Latin,
+                        is_emoji_only: false,
+                    },
+                    semantic_hints: vec![SemanticHint::FileMention, SemanticHint::ImageMention],
+                    is_ongoing: false,
+                    group_key: None,
+                },
+                source_tier: SourceTier::PublicApi,
+                app_package: Some("com.chat".into()),
+                uid: None,
+            }],
+            summary: ContextSummary {
+                foreground_apps: vec![],
+                notified_apps: vec!["com.chat".into()],
+                all_semantic_hints: vec![SemanticHint::FileMention, SemanticHint::ImageMention],
+                file_activity: vec![],
+                latest_system_status: None,
+                source_tier: SourceTier::PublicApi,
+            },
+        };
+
+        let router = DecisionRouter::with_backends(
+            RouterConfig::default(),
+            Box::new(OkBackend {
+                route: DecisionRoute::RuleBased,
+            }),
+            Box::new(OkBackend {
+                route: DecisionRoute::LocalEvaluator,
+            }),
+            None,
+            Box::new(FallbackNoOpBackend),
+        );
+
+        let result = router.evaluate(&ctx);
+        assert!(matches!(result.route, DecisionRoute::LocalEvaluator));
+        assert!(result
+            .rationale_tags
+            .iter()
+            .any(|tag| tag == "routing:medium_complexity(local_evaluator)"));
     }
 }

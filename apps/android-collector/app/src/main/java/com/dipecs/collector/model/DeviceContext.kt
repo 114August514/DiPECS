@@ -10,6 +10,9 @@ data class DeviceContext(
     val isScreenOn: Boolean,
     val ringerMode: String,
     val doNotDisturbMode: Int?,
+    val locationType: String = "Unknown",
+    val headphoneConnected: Boolean = false,
+    val bluetoothConnected: Boolean = false,
 ) {
     fun toJson(): JSONObject = JSONObject()
         .put("timezone", timezone)
@@ -19,4 +22,7 @@ data class DeviceContext(
         .put("isScreenOn", isScreenOn)
         .put("ringerMode", ringerMode)
         .put("doNotDisturbMode", doNotDisturbMode ?: JSONObject.NULL)
+        .put("locationType", locationType)
+        .put("headphoneConnected", headphoneConnected)
+        .put("bluetoothConnected", bluetoothConnected)
 }

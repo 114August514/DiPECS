@@ -1,8 +1,8 @@
-//! 隐私脱敏引擎 — DiPECS 的核心安全边界
+//! Privacy sanitization boundary for DiPECS.
 //!
-//! 所有 `RawEvent` 在此处被转化为 `SanitizedEvent`。
-//! 在此边界之后，原始敏感数据（通知正文、文件名、Binder 参数）不可访问。
-
+//! Every `RawEvent` is converted into `SanitizedEvent` here. After this
+//! boundary, raw sensitive data such as notification text, file paths, and
+//! Binder parameters must not be accessible.
 use aios_spec::traits::PrivacySanitizer;
 use aios_spec::{
     AppTransitionRawEvent, BinderTxEvent, FsAccessEvent, FsActivityType, InteractionType,
@@ -13,7 +13,7 @@ use uuid::Uuid;
 
 use crate::text_analysis::{analyze_text, classify_extension, extract_semantic_hints};
 
-/// 默认脱敏引擎
+/// Default privacy sanitizer.
 pub struct DefaultPrivacyAirGap;
 
 impl PrivacySanitizer for DefaultPrivacyAirGap {
@@ -44,7 +44,7 @@ impl PrivacySanitizer for DefaultPrivacyAirGap {
                     semantic_hints: vec![],
                     is_ongoing: false,
                     // The Android NotificationListenerService key has shape
-                    // "<userId>|<package>|<id>|<tag>|<uid>" — the *tag*
+                    // "<userId>|<package>|<id>|<tag>|<uid>"; the *tag*
                     // portion is user-controlled and can carry PII (contact
                     // names, chat thread IDs). No downstream consumer uses
                     // this key for dedup today, so the safe choice is to
@@ -84,7 +84,7 @@ impl PrivacySanitizer for DefaultPrivacyAirGap {
     }
 }
 
-// ===== 各类型脱敏逻辑 =====
+// ===== Per-event sanitization logic =====
 
 fn sanitize_app_transition(e: AppTransitionRawEvent) -> SanitizedEvent {
     SanitizedEvent {
@@ -197,7 +197,7 @@ fn sanitize_notification(e: NotificationRawEvent) -> SanitizedEvent {
             text_hint,
             semantic_hints,
             is_ongoing: e.is_ongoing,
-            group_key: e.group_key,
+            group_key: None,
         },
         source_tier: SourceTier::PublicApi,
         app_package: Some(e.package_name),

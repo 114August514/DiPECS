@@ -12,6 +12,7 @@ import android.view.ViewGroup
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
+import com.dipecs.collector.BuildConfig
 import com.dipecs.collector.storage.CollectorPreferences
 import com.dipecs.collector.storage.EventStore
 
@@ -19,6 +20,13 @@ class MainActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(buildHomePage())
+        // 测试便利:adb 可用 --ez auto_start true 拉起前台采集服务(连带动作 socket),
+        // 免去人工点 Start。仅读 launch intent,不导出任何凭证。
+        // 该入口只在 debug build 启用,release 包忽略此 extra,避免将 LAUNCHER activity
+        // 作为非预期后台服务启动点暴露到生产环境。
+        if (BuildConfig.DEBUG && intent?.getBooleanExtra("auto_start", false) == true) {
+            startCollectorService(com.dipecs.collector.services.CollectorForegroundService.ACTION_START)
+        }
     }
 
     override fun onResume() {

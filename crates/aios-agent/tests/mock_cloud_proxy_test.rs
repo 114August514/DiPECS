@@ -295,13 +295,13 @@ fn test_file_activity_routes_to_local_evaluator() {
             .any(|i| matches!(i.intent_type, IntentType::HandleFile(_))),
         "FileActivity should produce HandleFile intents under LocalEvaluator"
     );
+    let intents = &batch.intents;
     assert!(
         batch.intents.iter().any(|i| i
             .suggested_actions
             .iter()
             .any(|a| matches!(a.action_type, ActionType::PrefetchFile))),
-        "LocalEvaluator should emit safe prefetch actions, got {:?}",
-        batch.intents
+        "LocalEvaluator should emit safe prefetch actions, got {intents:?}"
     );
 }
 
@@ -744,13 +744,13 @@ fn test_router_privacy_sensitivity_downgrades_to_rule_based() {
 
     let result = DecisionRouter::default().evaluate(&ctx);
     assert!(matches!(result.route, DecisionRoute::RuleBased));
+    let rationale_tags = &result.rationale_tags;
     assert!(
         result
             .rationale_tags
             .iter()
             .any(|t| t.contains("privacy_sensitive")),
-        "should have privacy_sensitive routing reason, got {:?}",
-        result.rationale_tags
+        "should have privacy_sensitive routing reason, got {rationale_tags:?}"
     );
 }
 
@@ -791,13 +791,13 @@ fn test_fallback_noop_passes_policy_engine() {
 
     assert_eq!(decisions.len(), 1);
     let decision = &decisions[0];
+    let verdict = &decision.verdict;
     assert!(
         matches!(
             decision.verdict,
             aios_spec::governance::PolicyVerdict::Approved
         ),
-        "fallback NoOp must clear policy gate; got verdict {:?}",
-        decision.verdict,
+        "fallback NoOp must clear policy gate; got verdict {verdict:?}",
     );
     assert_eq!(decision.action_ordinal, 0);
     assert!(matches!(
@@ -911,7 +911,10 @@ impl aios_core::governance::ActionAdapter for NoOpAdapter {
         authorized: &aios_core::governance::AuthorizedAction,
     ) -> Result<aios_spec::governance::ActionOutcome, aios_spec::governance::AdapterError> {
         Ok(aios_spec::governance::ActionOutcome {
-            action_type: format!("{:?}", authorized.action().action_type),
+            action_type: {
+                let action_type = &authorized.action().action_type;
+                format!("{action_type:?}")
+            },
             target: authorized.action().target.clone(),
             summary: "noop".into(),
             latency_us: 0,

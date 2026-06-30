@@ -95,10 +95,10 @@ impl RoutingReason {
     fn tag(&self) -> String {
         match self {
             RoutingReason::CircuitBreakerTripped { failure_count } => {
-                format!("routing:circuit_breaker_fallback(errors={})", failure_count)
+                format!("routing:circuit_breaker_fallback(errors={failure_count})")
             },
             RoutingReason::PrivacySensitive { score } => {
-                format!("routing:privacy_sensitive(score={})", score)
+                format!("routing:privacy_sensitive(score={score})")
             },
             RoutingReason::LocalActionableSignal => "routing:local_actionable_signal".into(),
             RoutingReason::LowComplexity => "routing:low_complexity".into(),
@@ -508,10 +508,10 @@ mod tests {
 
         // Third window: circuit is now open, so we fall back to NoOp.
         let r3 = router.evaluate(&ctx);
+        let route = &r3.route;
         assert!(
             matches!(r3.route, DecisionRoute::FallbackNoOp),
-            "circuit breaker should trip after two consecutive errors, got {:?}",
-            r3.route
+            "circuit breaker should trip after two consecutive errors, got {route:?}"
         );
     }
 
@@ -552,10 +552,10 @@ mod tests {
         // A generated NoOp is a successful safe fallback, even though it preserves
         // an audit error for downstream visibility.
         let r_reset = router.evaluate(&ctx);
+        let route = &r_reset.route;
         assert!(
             !matches!(r_reset.route, DecisionRoute::FallbackNoOp),
-            "circuit should reset after a successful fallback, got {:?}",
-            r_reset.route
+            "circuit should reset after a successful fallback, got {route:?}"
         );
     }
 
@@ -670,10 +670,10 @@ mod tests {
         );
 
         let r3 = router.evaluate(&ctx);
+        let route = &r3.route;
         assert!(
             matches!(r3.route, DecisionRoute::FallbackNoOp),
-            "cloud errors should trip the circuit breaker, got {:?}",
-            r3.route
+            "cloud errors should trip the circuit breaker, got {route:?}"
         );
     }
     #[test]

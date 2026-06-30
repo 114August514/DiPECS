@@ -399,7 +399,10 @@ impl WindowAggregation {
             return;
         };
 
-        match nearest_delta_ms(self.notification_timestamps.get(package), file_timestamp_ms) {
+        match nearest_delta_ms(
+            self.notification_timestamps.get(package).map(Vec::as_slice),
+            file_timestamp_ms,
+        ) {
             Some(delta) if delta <= STRONG_CORRELATION_WINDOW_MS => score.add_grouped(
                 BoostGroup::Correlation,
                 BOOST_FILE_NOTIFICATION_STRONG,
@@ -420,7 +423,10 @@ impl WindowAggregation {
         notification_timestamp_ms: i64,
         score: &mut Score,
     ) {
-        match nearest_delta_ms(self.file_timestamps.get(package), notification_timestamp_ms) {
+        match nearest_delta_ms(
+            self.file_timestamps.get(package).map(Vec::as_slice),
+            notification_timestamp_ms,
+        ) {
             Some(delta) if delta <= STRONG_CORRELATION_WINDOW_MS => score.add_grouped(
                 BoostGroup::Correlation,
                 BOOST_FILE_NOTIFICATION_STRONG,
@@ -472,7 +478,7 @@ fn push_timestamp(timestamps: &mut HashMap<String, Vec<i64>>, key: &str, timesta
         .push(timestamp_ms);
 }
 
-fn nearest_delta_ms(timestamps: Option<&Vec<i64>>, timestamp_ms: i64) -> Option<i64> {
+fn nearest_delta_ms(timestamps: Option<&[i64]>, timestamp_ms: i64) -> Option<i64> {
     timestamps?
         .iter()
         .map(|other| timestamp_ms.saturating_sub(*other).abs())
@@ -760,11 +766,9 @@ fn is_safe_prewarm_target(target: &str, signals: &WindowSignals) -> bool {
 fn candidate_key(candidate: &IntentCandidate) -> String {
     let mut parts = vec![intent_key(&candidate.intent_type)];
     for action in &candidate.actions {
-        parts.push(format!(
-            "{:?}:{}",
-            action.action_type,
-            action.target.as_deref().unwrap_or("")
-        ));
+        let action_type = &action.action_type;
+        let target = action.target.as_deref().unwrap_or("");
+        parts.push(format!("{action_type:?}:{target}"));
     }
     parts.join("|")
 }

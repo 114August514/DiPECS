@@ -211,13 +211,12 @@ fn noop_matrix_reports_rule_based_blind_spots() {
             if noop { "NoOp" } else { "act" },
         ));
         if noop != case.expect_noop {
+            let label = case.label;
+            let expected_noop = case.expect_noop;
+            let ran = fmt_list(&outcome.ran);
+            let denied = fmt_list(&outcome.denied);
             mismatches.push(format!(
-                "  {} — expected no-op={}, measured no-op={} (ran={}, denied={})",
-                case.label,
-                case.expect_noop,
-                noop,
-                fmt_list(&outcome.ran),
-                fmt_list(&outcome.denied),
+                "  {label} — expected no-op={expected_noop}, measured no-op={noop} (ran={ran}, denied={denied})",
             ));
         }
     }
@@ -243,12 +242,11 @@ fn noop_matrix_reports_rule_based_blind_spots() {
     for (i, case) in EXPECTED.iter().enumerate() {
         if let Some(rest) = case.label.strip_prefix("ok:") {
             let outcome = outcomes.get(&(i as u64)).cloned().unwrap_or_default();
+            let ran = &outcome.ran;
+            let denied = &outcome.denied;
             assert!(
                 !outcome.is_noop(),
-                "{} must produce an authorized action, got ran={:?} denied={:?}",
-                rest,
-                outcome.ran,
-                outcome.denied,
+                "{rest} must produce an authorized action, got ran={ran:?} denied={denied:?}",
             );
         }
         if let Some(rest) = case.label.strip_prefix("local:") {
@@ -258,12 +256,11 @@ fn noop_matrix_reports_rule_based_blind_spots() {
                 rest
             );
             let outcome = outcomes.get(&(i as u64)).cloned().unwrap_or_default();
+            let ran = &outcome.ran;
+            let denied = &outcome.denied;
             assert!(
                 !outcome.is_noop(),
-                "{} must produce an authorized action, got ran={:?} denied={:?}",
-                rest,
-                outcome.ran,
-                outcome.denied,
+                "{rest} must produce an authorized action, got ran={ran:?} denied={denied:?}",
             );
         }
     }
@@ -278,12 +275,12 @@ fn noop_matrix_reports_rule_based_blind_spots() {
             (!denied.is_empty()).then_some((i, denied))
         })
         .collect();
+    let denied_labels: Vec<_> = denials
+        .iter()
+        .map(|(i, d)| (EXPECTED[*i].label, d))
+        .collect();
     assert!(
         denials.is_empty(),
-        "RuleBased emitted capability-denied actions (option B violated): {:?}",
-        denials
-            .iter()
-            .map(|(i, d)| (EXPECTED[*i].label, d))
-            .collect::<Vec<_>>(),
+        "RuleBased emitted capability-denied actions (option B violated): {denied_labels:?}",
     );
 }

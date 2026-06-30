@@ -11,6 +11,7 @@ import org.json.JSONObject
 import java.io.BufferedReader
 import java.io.File
 import java.io.InputStreamReader
+import java.util.concurrent.TimeUnit
 
 /**
  * System-level action executors for a platform-signed DiPECS system daemon.
@@ -364,7 +365,10 @@ object SystemActionExecutors {
             val reader = BufferedReader(InputStreamReader(process.inputStream))
             val output = reader.readText().trim()
             reader.close()
-            process.waitFor()
+            if (!process.waitFor(5, TimeUnit.SECONDS)) {
+                process.destroyForcibly()
+                return "pm_clear_timeout:$pkg"
+            }
             output.ifBlank { "cleared" }
         } catch (e: Exception) {
             error("pm clear $pkg: ${e.message}")

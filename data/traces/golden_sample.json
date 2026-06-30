@@ -88,26 +88,8 @@
     "intents": [
       {
         "intent_id": "399fc515-2697-4b18-a354-256a28baf75b",
-        "intent_type": {
-          "SwitchToApp": "com.android.chrome"
-        },
-        "confidence": 0.8,
-        "risk_level": "Low",
-        "suggested_actions": [
-          {
-            "action_type": "KeepAlive",
-            "target": "com.android.chrome",
-            "urgency": "Immediate"
-          }
-        ],
-        "rationale_tags": [
-          "app_foreground_observed"
-        ]
-      },
-      {
-        "intent_id": "6b431190-a79d-4de3-9c49-cde9de6b4709",
         "intent_type": "Idle",
-        "confidence": 0.8,
+        "confidence": 0.84,
         "risk_level": "Low",
         "suggested_actions": [
           {
@@ -117,24 +99,58 @@
           }
         ],
         "rationale_tags": [
-          "low_battery"
+          "local:low_battery",
+          "local:signal:low_battery"
+        ]
+      },
+      {
+        "intent_id": "6b431190-a79d-4de3-9c49-cde9de6b4709",
+        "intent_type": {
+          "SwitchToApp": "com.android.chrome"
+        },
+        "confidence": 0.67,
+        "risk_level": "Low",
+        "suggested_actions": [
+          {
+            "action_type": "PreWarmProcess",
+            "target": "pkg:com.android.chrome",
+            "urgency": "Immediate"
+          },
+          {
+            "action_type": "KeepAlive",
+            "target": "work:collector_heartbeat",
+            "urgency": "Immediate"
+          }
+        ],
+        "rationale_tags": [
+          "local:foreground_transition",
+          "local:boost:foreground",
+          "local:boost:recent_foreground",
+          "local:penalty:low_battery"
         ]
       }
     ],
     "generated_at_ms": 3000,
-    "model": "rule-based-v0.3"
+    "model": "local-evaluator-v0.1"
   },
   "expected_actions": [
     {
-      "action_type": "KeepAlive",
-      "target": "com.android.chrome",
+      "action_type": "ReleaseMemory",
+      "target": "cache:prefetch",
       "executed_at_ms": 3000,
       "success": true,
       "error_reason": null
     },
     {
-      "action_type": "ReleaseMemory",
-      "target": "cache:prefetch",
+      "action_type": "PreWarmProcess",
+      "target": "pkg:com.android.chrome",
+      "executed_at_ms": 3000,
+      "success": true,
+      "error_reason": null
+    },
+    {
+      "action_type": "KeepAlive",
+      "target": "work:collector_heartbeat",
       "executed_at_ms": 3000,
       "success": true,
       "error_reason": null

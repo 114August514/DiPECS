@@ -1,4 +1,4 @@
-//! Effective-no-op instrumentation over the rule-based backend.
+//! Effective-no-op instrumentation over the offline replay pipeline.
 //!
 //! Drives the deterministic offline pipeline (`aios_cli::replay::run`) over the
 //! `data/traces/noop_matrix.jsonl` coverage corpus — one window per distinct
@@ -7,15 +7,12 @@
 //!
 //! A window is an **effective no-op** when it produced no authorized,
 //! non-`NoOp` action. This is stricter than "did the rule emit an intent": an
-//! intent whose only action is denied by the `RuleBased` capability
-//! (`allowed_actions: [NoOp, ReleaseMemory, KeepAlive]`) or by a target check is
-//! still a no-op in effect.
+//! intent whose only action is denied by the selected route capability or by a
+//! target check is still a no-op in effect.
 //!
-//! After the capability reconciliation (option B), the rule engine no longer
-//! emits `PreWarmProcess` / `PrefetchFile` under `RuleBased`, so it produces
-//! **zero** capability denials. The test asserts that invariant directly: every
-//! window's `denied` column must be empty. If a future rule reintroduces a
-//! forbidden action, this guard trips before the silent-denial regresses.
+//! After the LocalEvaluator routing split, proactive actions such as
+//! `PreWarmProcess` / `PrefetchFile` should route to a capability that allows
+//! them. The test asserts that every window's `denied` column is empty.
 //!
 //! Run with output to eyeball the table:
 //!   cargo test -p aios-cli --test noop_rate_test -- --nocapture
@@ -50,8 +47,8 @@ const EXPECTED: &[Case] = &[
         expect_noop: false,
     },
     Case {
-        label: "gap:file_access_prefetch_out_of_scope",
-        expect_noop: true,
+        label: "local:file_access_prefetch",
+        expect_noop: false,
     },
     Case {
         label: "ok:low_battery_release_memory",
@@ -191,7 +188,7 @@ fn noop_matrix_reports_rule_based_blind_spots() {
     };
 
     let mut report = String::new();
-    report.push_str("\n=== rule-based effective-no-op matrix (route: RuleBased) ===\n");
+    report.push_str("\n=== effective-no-op matrix ===\n");
     report.push_str(&format!(
         "{:<48} {:<14} {:<16} {:>6}\n",
         "pattern", "ran", "denied", "no-op"
@@ -241,10 +238,25 @@ fn noop_matrix_reports_rule_based_blind_spots() {
         mismatches.join("\n"),
     );
 
-    // Hard invariant: every `ok:` pattern must route RuleBased AND do real work.
+    // Hard invariant: every `ok:` pattern must do real work.
+    // `local:` rows are expected to do real work through LocalEvaluator.
     for (i, case) in EXPECTED.iter().enumerate() {
         if let Some(rest) = case.label.strip_prefix("ok:") {
-            assert_eq!(routes[i], "RuleBased", "{} should route RuleBased", rest);
+            let outcome = outcomes.get(&(i as u64)).cloned().unwrap_or_default();
+            assert!(
+                !outcome.is_noop(),
+                "{} must produce an authorized action, got ran={:?} denied={:?}",
+                rest,
+                outcome.ran,
+                outcome.denied,
+            );
+        }
+        if let Some(rest) = case.label.strip_prefix("local:") {
+            assert_eq!(
+                routes[i], "LocalEvaluator",
+                "{} should route LocalEvaluator",
+                rest
+            );
             let outcome = outcomes.get(&(i as u64)).cloned().unwrap_or_default();
             assert!(
                 !outcome.is_noop(),
@@ -256,10 +268,8 @@ fn noop_matrix_reports_rule_based_blind_spots() {
         }
     }
 
-    // Capability-conformance invariant (option B): the rule engine must never
-    // emit an action the RuleBased capability forbids, so no window may show a
-    // denied non-NoOp action. This trips if a rule reintroduces
-    // PreWarmProcess / PrefetchFile on the RuleBased route.
+    // Capability-conformance invariant: no selected backend should emit an
+    // action its route capability rejects.
     let denials: Vec<(usize, Vec<String>)> = EXPECTED
         .iter()
         .enumerate()

@@ -85,6 +85,7 @@ impl CircuitState {
 enum RoutingReason {
     CircuitBreakerTripped { failure_count: u32 },
     PrivacySensitive { score: usize },
+    LocalActionableSignal,
     LowComplexity,
     LocalPreferred { complexity: &'static str },
     CloudPreferred { complexity: &'static str },
@@ -99,6 +100,7 @@ impl RoutingReason {
             RoutingReason::PrivacySensitive { score } => {
                 format!("routing:privacy_sensitive(score={})", score)
             },
+            RoutingReason::LocalActionableSignal => "routing:local_actionable_signal".into(),
             RoutingReason::LowComplexity => "routing:low_complexity".into(),
             RoutingReason::LocalPreferred { complexity } => {
                 format!("routing:{complexity}_complexity(local_evaluator)")
@@ -281,6 +283,17 @@ impl DecisionRouter {
             );
         }
 
+        // LocalEvaluator owns low-risk proactive actions such as prefetch,
+        // process prewarm, and work-scoped keepalive. Route these signals to it
+        // before the generic semantic-complexity split so single-hint or
+        // FileActivity-only windows are not trapped in RuleBased.
+        if Self::has_local_actionable_signal(context) {
+            return (
+                DecisionRoute::LocalEvaluator,
+                RoutingReason::LocalActionableSignal,
+            );
+        }
+
         // Priority 3: Semantic complexity
         let unique_types = Self::count_unique_semantic_hint_types(context);
         match unique_types {
@@ -331,6 +344,27 @@ impl DecisionRouter {
                 _ => 0,
             })
             .sum()
+    }
+
+    fn has_local_actionable_signal(context: &StructuredContext) -> bool {
+        context.events.iter().any(|event| match &event.event_type {
+            SanitizedEventType::FileActivity { .. } => true,
+            SanitizedEventType::Notification { semantic_hints, .. } => {
+                semantic_hints.iter().any(|hint| {
+                    matches!(
+                        hint,
+                        SemanticHint::FileMention
+                            | SemanticHint::ImageMention
+                            | SemanticHint::LinkAttachment
+                    )
+                })
+            },
+            SanitizedEventType::AppTransition {
+                transition: aios_spec::AppTransition::Foreground,
+                ..
+            } => true,
+            _ => false,
+        })
     }
 
     /// Count unique SemanticHint variants across all notification events.
@@ -552,7 +586,7 @@ mod tests {
                             script: aios_spec::ScriptHint::Latin,
                             is_emoji_only: false,
                         },
-                        semantic_hints: vec![SemanticHint::FileMention],
+                        semantic_hints: vec![SemanticHint::UserMentioned],
                         is_ongoing: false,
                         group_key: None,
                     },
@@ -577,7 +611,7 @@ mod tests {
                             script: aios_spec::ScriptHint::Latin,
                             is_emoji_only: false,
                         },
-                        semantic_hints: vec![SemanticHint::ImageMention],
+                        semantic_hints: vec![SemanticHint::CalendarInvitation],
                         is_ongoing: false,
                         group_key: None,
                     },
@@ -589,7 +623,10 @@ mod tests {
             summary: ContextSummary {
                 foreground_apps: vec![],
                 notified_apps: vec!["com.a".into(), "com.b".into()],
-                all_semantic_hints: vec![SemanticHint::FileMention, SemanticHint::ImageMention],
+                all_semantic_hints: vec![
+                    SemanticHint::UserMentioned,
+                    SemanticHint::CalendarInvitation,
+                ],
                 file_activity: vec![],
                 latest_system_status: None,
                 source_tier: SourceTier::PublicApi,
@@ -663,7 +700,10 @@ mod tests {
                         script: aios_spec::ScriptHint::Latin,
                         is_emoji_only: false,
                     },
-                    semantic_hints: vec![SemanticHint::FileMention, SemanticHint::ImageMention],
+                    semantic_hints: vec![
+                        SemanticHint::UserMentioned,
+                        SemanticHint::CalendarInvitation,
+                    ],
                     is_ongoing: false,
                     group_key: None,
                 },
@@ -674,7 +714,10 @@ mod tests {
             summary: ContextSummary {
                 foreground_apps: vec![],
                 notified_apps: vec!["com.chat".into()],
-                all_semantic_hints: vec![SemanticHint::FileMention, SemanticHint::ImageMention],
+                all_semantic_hints: vec![
+                    SemanticHint::UserMentioned,
+                    SemanticHint::CalendarInvitation,
+                ],
                 file_activity: vec![],
                 latest_system_status: None,
                 source_tier: SourceTier::PublicApi,

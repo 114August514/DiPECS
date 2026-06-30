@@ -177,8 +177,8 @@ fn replay_matches_golden_sample() {
     );
     assert!(result.all_match());
 
-    // Sanity: the golden's own counts are what we expect (denial.jsonl
-    // shape — 2 ActionCapabilityDenied → 2 approved actions executed).
+    // Sanity: the golden's own counts are what we expect for the current
+    // LocalEvaluator routing path.
     assert_eq!(
         sanitized.len(),
         3,
@@ -186,8 +186,8 @@ fn replay_matches_golden_sample() {
     );
     assert_eq!(
         executed.len(),
-        2,
-        "exactly 2 actions survive policy: KeepAlive(work:collector_heartbeat) + ReleaseMemory(cache:prefetch)"
+        3,
+        "exactly 3 actions survive policy: ReleaseMemory(cache:prefetch) + PreWarmProcess(pkg:com.android.chrome) + KeepAlive(work:collector_heartbeat)"
     );
 }
 

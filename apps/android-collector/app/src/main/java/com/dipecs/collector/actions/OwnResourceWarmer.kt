@@ -23,12 +23,7 @@ object OwnResourceWarmer {
             return false
         }
 
-        val traceStats = EventStore(appContext).stats()
-        val prefetchDir = File(appContext.cacheDir, "prefetch")
-        if (!prefetchDir.exists()) {
-            prefetchDir.mkdirs()
-        }
-        CollectorPreferences.actionSocketToken(appContext)
+        val result = prewarmOwnedResources(appContext)
 
         EventRepository.recordInternal(
             appContext,
@@ -37,14 +32,45 @@ object OwnResourceWarmer {
             JSONObject()
                 .put("target", normalizedTarget)
                 .put("reason", reason)
-                .put("traceRows", traceStats.totalRows)
-                .put("prefetchCacheReady", prefetchDir.exists()),
+                .put("traceRows", result.traceRows)
+                .put("prefetchCacheReady", result.prefetchCacheReady)
+                .put("warmedComponents", result.warmedComponents),
         )
         return true
     }
 
+    private fun prewarmOwnedResources(context: Context): PrewarmResult {
+        val traceStats = EventStore(context).stats()
+        val prefetchDir = File(context.cacheDir, "prefetch").apply {
+            if (!exists()) {
+                mkdirs()
+            }
+        }
+        val warmedComponents = listOf(
+            AccessibleContentPrefetcher::class.java.name,
+            ActionMaintenanceScheduler::class.java.name,
+            CacheTrimmer::class.java.name,
+            UserVisibleActionNotifier::class.java.name,
+        )
+        CollectorPreferences.actionSocketToken(context)
+        CollectorPreferences.prefetchTarget(context)
+        CollectorPreferences.actionSocketPort(context)
+
+        return PrewarmResult(
+            traceRows = traceStats.totalRows,
+            prefetchCacheReady = prefetchDir.exists(),
+            warmedComponents = warmedComponents,
+        )
+    }
+
     private fun isAllowedTarget(target: String): Boolean =
         target == TARGET_RESOURCES || target.startsWith("own:")
+
+    private data class PrewarmResult(
+        val traceRows: Int,
+        val prefetchCacheReady: Boolean,
+        val warmedComponents: List<String>,
+    )
 
     private const val TARGET_RESOURCES = "own:resources"
 }

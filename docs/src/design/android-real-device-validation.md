@@ -1,5 +1,7 @@
 # Android 真机验证手册
 
+> Deprecated: 2026-06-30. The current v0.2 validation target is emulator plus sanitized JSONL replay, not physical-device sign-off. Keep this file as historical reference only; do not treat it as a required release checklist unless real-device validation is reintroduced.
+
 本文档把真机 Android 采集验证分成两层：
 
 1. Android App 内的用户/开发者页面，用于授权、采集、隐私确认、导出、清理和 action socket token 管理。

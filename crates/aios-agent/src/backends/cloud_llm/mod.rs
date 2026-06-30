@@ -5,9 +5,11 @@
 
 mod client;
 mod config;
+mod summarizer;
 mod translate;
 
 pub(crate) use client::CloudLlmBackend;
+pub use summarizer::ProfileSummarizer;
 
 use config::{cloud_llm_enabled, CloudLlmConfig};
 

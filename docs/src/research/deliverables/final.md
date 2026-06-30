@@ -40,7 +40,7 @@ Android public API / daemon source
 
 ### 推理与策略
 
-- `aios-agent` 已提供 `DecisionRouter`、`RuleBasedBackend`、`CloudLlmBackend`、`FallbackNoOpBackend`。
+- `aios-agent` 已提供 `DecisionRouter`、`RuleBasedBackend`、`LocalEvaluatorBackend`、`CloudLlmBackend`、`FallbackNoOpBackend`。
 - Cloud LLM 支持 DeepSeek、Qwen/DashScope 和 OpenAI-compatible endpoint。
 - `PolicyEngine` 使用 `CapabilityLevel`、风险等级、置信度、目标上下文和动作 allow-list 做最终授权。
 - Cloud LLM 错误不会记录 HTTP 响应体，避免 provider 错误信息进入日志/audit 链路。
@@ -95,7 +95,6 @@ Android Gradle 构建依赖本机 Android SDK；当前本地未配置 `ANDROID_H
 
 - 真机 Android 验证尚未完成，包括权限授予、trace 导出、adb forward、action bridge 和 APK 安装路径。
 - `PreWarmProcess`、`KeepAlive`、`ReleaseMemory` 当前仍以本地 fallback/trace 为主，后续应收敛为 Android-safe 的自有资源动作。
-- LocalEvaluator 后端仍是后续工作，当前主要由 RuleBased 与 Cloud LLM 覆盖。
 - 系统态采集路线（fanotify、Binder/eBPF、system image）还未作为主线部署。
 - 最终报告需要补入真实设备运行截图、CI artifact 链接和真机 trace 样本。
 

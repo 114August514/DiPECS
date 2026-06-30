@@ -1,6 +1,6 @@
 use std::time::{Duration, Instant};
 
-use aios_spec::{DecisionBackendResult, DecisionRoute, IntentBatch, StructuredContext};
+use aios_spec::{DecisionBackendResult, DecisionRoute, IntentBatch, ModelInput, StructuredContext};
 use reqwest::blocking::Client;
 use serde::{Deserialize, Serialize};
 
@@ -23,8 +23,9 @@ impl CloudLlmBackend {
         Ok(Self { config, client })
     }
 
-    fn request_intents(&self, context: &StructuredContext) -> Result<IntentBatch, String> {
-        let request = self.build_request_body(context)?;
+    fn request_intents(&self, input: &ModelInput) -> Result<IntentBatch, String> {
+        let context = &input.current_context;
+        let request = self.build_request_body(input)?;
 
         let mut http = self
             .client
@@ -59,19 +60,11 @@ impl CloudLlmBackend {
         })
     }
 
-    fn render_user_prompt(&self, context: &StructuredContext) -> Result<String, String> {
-        let json = serde_json::to_string(context)
-            .map_err(|error| format!("serializing StructuredContext failed: {error}"))?;
-        Ok(format!(
-            "Generate DiPECS intents for this sanitized context.\nwindow_id={}\ncontext_json={json}",
-            context.window_id
-        ))
+    fn render_user_prompt(&self, input: &ModelInput) -> Result<String, String> {
+        render_model_input_prompt(input)
     }
 
-    fn build_request_body(
-        &self,
-        context: &StructuredContext,
-    ) -> Result<ChatCompletionRequest, String> {
+    fn build_request_body(&self, input: &ModelInput) -> Result<ChatCompletionRequest, String> {
         let messages = vec![
             ChatMessage {
                 role: "system".to_string(),
@@ -79,7 +72,7 @@ impl CloudLlmBackend {
             },
             ChatMessage {
                 role: "user".to_string(),
-                content: self.render_user_prompt(context)?,
+                content: self.render_user_prompt(input)?,
             },
         ];
         Ok(ChatCompletionRequest {
@@ -97,8 +90,14 @@ impl CloudLlmBackend {
 
 impl DecisionBackend for CloudLlmBackend {
     fn evaluate(&self, context: &StructuredContext) -> DecisionBackendResult {
+        let input = ModelInput::current_only(context.clone());
+        self.evaluate_model_input(&input)
+    }
+
+    fn evaluate_model_input(&self, input: &ModelInput) -> DecisionBackendResult {
+        let context = &input.current_context;
         let start = Instant::now();
-        match self.request_intents(context) {
+        match self.request_intents(input) {
             Ok(intent_batch) => {
                 let rationale_tags = intent_batch
                     .intents
@@ -122,6 +121,15 @@ impl DecisionBackend for CloudLlmBackend {
             },
         }
     }
+}
+
+pub(super) fn render_model_input_prompt(input: &ModelInput) -> Result<String, String> {
+    let json = serde_json::to_string(input)
+        .map_err(|error| format!("serializing ModelInput failed: {error}"))?;
+    Ok(format!(
+        "Generate DiPECS intents for this sanitized context plus behavior memory.\nwindow_id={}\nmodel_input_json={json}",
+        input.current_context.window_id
+    ))
 }
 
 #[derive(Debug, Serialize)]
@@ -202,4 +210,91 @@ struct ChatChoice {
 #[derive(Debug, Deserialize)]
 struct ChatMessageResponse {
     content: Option<String>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::render_model_input_prompt;
+    use aios_spec::{
+        ContextSummary, ModelInput, RecentDecisionRecord, SanitizedEvent, SanitizedEventType,
+        ScriptHint, SemanticHint, SourceTier, StructuredContext, TextHint, UserBehaviorProfile,
+    };
+
+    #[test]
+    fn prompt_contains_model_memory_sections_without_raw_text() {
+        let input = ModelInput {
+            current_context: StructuredContext {
+                window_id: "w-memory".into(),
+                window_start_ms: 0,
+                window_end_ms: 1000,
+                duration_secs: 1,
+                events: vec![SanitizedEvent {
+                    event_id: "n1".into(),
+                    timestamp_ms: 1,
+                    event_type: SanitizedEventType::Notification {
+                        source_package: "com.chat".into(),
+                        category: None,
+                        channel_id: None,
+                        title_hint: TextHint {
+                            length_chars: 12,
+                            script: ScriptHint::Latin,
+                            is_emoji_only: false,
+                        },
+                        text_hint: TextHint {
+                            length_chars: 20,
+                            script: ScriptHint::Latin,
+                            is_emoji_only: false,
+                        },
+                        semantic_hints: vec![SemanticHint::FileMention],
+                        is_ongoing: false,
+                        group_key: None,
+                    },
+                    source_tier: SourceTier::PublicApi,
+                    app_package: Some("com.chat".into()),
+                    uid: None,
+                }],
+                summary: ContextSummary {
+                    foreground_apps: vec!["com.chat".into()],
+                    notified_apps: vec!["com.chat".into()],
+                    all_semantic_hints: vec![SemanticHint::FileMention],
+                    file_activity: vec![],
+                    latest_system_status: None,
+                    source_tier: SourceTier::PublicApi,
+                },
+            },
+            behavior_profile: UserBehaviorProfile {
+                summary: "usually opens docs after chat notifications".into(),
+                observation_windows: 3,
+                frequent_foreground_apps: vec![],
+                frequent_notifying_apps: vec![],
+                frequent_semantic_hints: vec![],
+                action_successes: vec![],
+                action_denials: vec![],
+                action_failures: vec![],
+                last_updated_window_id: Some("w-prev".into()),
+            },
+            recent_feedback: vec![RecentDecisionRecord {
+                window_id: "w-prev".into(),
+                window_start_ms: 0,
+                window_end_ms: 1,
+                foreground_apps: vec!["com.chat".into()],
+                notified_apps: vec!["com.chat".into()],
+                semantic_hints: vec![SemanticHint::FileMention],
+                route: "CloudLlm".into(),
+                model: "test".into(),
+                intent_count: 1,
+                rationale_tags: vec!["attachment".into()],
+                backend_error: None,
+                action_outcomes: vec![],
+            }],
+        };
+
+        let prompt = render_model_input_prompt(&input).unwrap();
+        assert!(prompt.contains("model_input_json="));
+        assert!(prompt.contains("current_context"));
+        assert!(prompt.contains("behavior_profile"));
+        assert!(prompt.contains("recent_feedback"));
+        assert!(prompt.contains("usually opens docs"));
+        assert!(!prompt.contains("private raw notification body"));
+    }
 }

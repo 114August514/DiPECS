@@ -1,102 +1,88 @@
-//! Binder eBPF 探针 — 跨进程通信监控
+//! Binder/eBPF probe interface for Android IPC observation.
 //!
-//! "how" — 如何通过 eBPF tracepoint 监控 Android Binder 事务。
-//!
-//! Binder 是 Android 的核心 IPC 机制。所有系统服务调用
-//! (通知、Activity 启动、窗口管理) 都是 Binder 事务。
-//!
-//! eBPF tracepoint: `tracepoint/binder/binder_transaction`
-//! 提供: source_pid, target_pid, target_node (服务名), 事务类型。
-//!
-//! ## 实现状态
-//!
-//! 本模块提供完整的接口定义和 Linux 端实现 stubs。
-//! Android 真机部署需要:
-//! 1. 自编译内核 (CONFIG_BPF_SYSCALL=y, CONFIG_DEBUG_INFO_BTF=y)
-//! 2. 或 root 权限 (加载预编译的 BPF 程序)
-//! 3. Daemon 以 system 身份运行 (SELinux 允许 bpf)
+//! The probe is safe to construct on every development platform. A real Binder
+//! eBPF attachment requires a privileged Android/Linux daemon with kernel BPF
+//! support and Binder tracepoints. When those requirements are not met, the
+//! probe reports a clear status and returns an empty event stream.
+
+use std::path::Path;
 
 use aios_spec::BinderTxEvent;
 
-/// Binder 探针 — 订阅 Binder 事务事件
-pub struct BinderProbe {
-    /// 是否已初始化 eBPF 程序
-    initialized: bool,
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BinderProbeStatus {
+    Uninitialized,
+    UnsupportedPlatform,
+    TracepointUnavailable,
+    PermissionRequired,
+    Ready,
 }
 
-/// 从 eBPF tracepoint 解析出的 Binder 事务
+/// Binder probe subscribing to Binder transaction events.
+pub struct BinderProbe {
+    status: BinderProbeStatus,
+}
+
+/// Binder transaction decoded from an eBPF tracepoint record.
 #[derive(Debug, Clone)]
 pub struct BinderTransaction {
     pub timestamp_ms: i64,
     pub source_pid: u32,
     pub source_uid: u32,
-    /// 目标服务名 (从 Binder node 名称解析)
-    /// 例如: "notification", "activity", "package"
+    /// Target Binder service name, for example "notification" or "activity".
     pub target_service: String,
-    /// 目标方法 (从 Binder 事务 code 推断)
-    /// 例如: "enqueueNotificationWithTag" (code 5 in INotificationManager)
+    /// Target method inferred from Binder transaction code.
     pub target_method: String,
-    /// 事务是否为 oneway (不需要返回值)
+    /// Whether the transaction is oneway.
     pub is_oneway: bool,
-    /// Parcel 数据大小 (bytes)
+    /// Parcel payload size in bytes. Payload content is never stored.
     pub payload_size: u32,
 }
 
 impl BinderProbe {
-    /// 创建新的 Binder 探针
-    ///
-    /// 在 Linux 上: 返回一个标记为未初始化的实例。
-    /// 在 Android (root/system daemon) 上: 加载 BPF 程序并 attach 到 tracepoint。
     pub fn new() -> Self {
-        // Linux 上 eBPF 需要特定内核版本和权限
-        // 我们返回一个未初始化的探针, 调用 poll() 时返回空
-        Self { initialized: false }
-    }
-
-    /// 尝试初始化 eBPF 程序
-    ///
-    /// 返回 Ok(true) 表示 BPF 程序已加载并 attach。
-    /// 返回 Ok(false) 表示当前平台不支持 (Linux 桌面 / 无权限)。
-    pub fn try_init(&mut self) -> Result<bool, ProbeError> {
-        // 检查是否有 /sys/kernel/debug/tracing/events/binder/ 目录
-        // 这是 Binder tracepoint 存在的标志
-        let binder_trace = std::path::Path::new(
-            "/sys/kernel/debug/tracing/events/binder/binder_transaction/enable",
-        );
-
-        if binder_trace.exists() {
-            // Android (有 Binder tracepoint) — 可以加载 eBPF
-            // 实际实现需要:
-            // 1. 编译 BPF 程序到 ELF (使用 aya 或 libbpf-rs)
-            // 2. 加载 BPF 程序 (调用 bpf() syscall)
-            // 3. Attach 到 tracepoint/binder/binder_transaction
-            // 4. 通过 perf buffer 或 ring buffer 读取事件
-            self.initialized = true;
-            tracing::info!("Binder tracepoint detected, probe initialized");
-            Ok(true)
-        } else {
-            // Linux 桌面 / 不支持的环境
-            tracing::warn!("Binder tracepoint not available — probe will return no events");
-            Ok(false)
+        Self {
+            status: BinderProbeStatus::Uninitialized,
         }
     }
 
-    /// 轮询 Binder 事件
+    pub fn status(&self) -> BinderProbeStatus {
+        self.status
+    }
+
+    /// Attempts to initialize Binder/eBPF observation.
     ///
-    /// 返回自上次 poll 以来的所有新事务。
-    /// 在 Linux 桌面环境下始终返回空。
+    /// `Ok(true)` means the probe can be polled. `Ok(false)` means the current
+    /// environment cannot support privileged Binder tracing and the daemon
+    /// should degrade to public/API and `/proc` inputs.
+    pub fn try_init(&mut self) -> Result<bool, ProbeError> {
+        self.status = detect_status();
+        match self.status {
+            BinderProbeStatus::Ready => {
+                tracing::info!("Binder tracepoint detected, probe initialized");
+                Ok(true)
+            },
+            BinderProbeStatus::PermissionRequired => {
+                tracing::warn!("Binder tracepoint exists but eBPF attachment requires privilege");
+                Ok(false)
+            },
+            BinderProbeStatus::UnsupportedPlatform | BinderProbeStatus::TracepointUnavailable => {
+                tracing::warn!("Binder tracepoint not available; probe will return no events");
+                Ok(false)
+            },
+            BinderProbeStatus::Uninitialized => Ok(false),
+        }
+    }
+
+    /// Polls Binder events observed since the previous call.
     pub fn poll(&self) -> Vec<BinderTransaction> {
-        if !self.initialized {
+        if self.status != BinderProbeStatus::Ready {
             return Vec::new();
         }
 
-        // 从 eBPF perf buffer 读取事件
-        // 使用 aya::maps::perf::PerfBuffer 或 libbpf-rs::RingBuffer
-        //
-        // 伪代码:
-        // let events = self.bpf_map.read_events();
-        // events.into_iter().map(parse_binder_event).collect()
-
+        // A real implementation should load a BPF program, attach it to
+        // tracepoint/binder/binder_transaction, and drain a ring/perf buffer.
+        // Until that fd-backed path exists, keep the stream empty and explicit.
         Vec::new()
     }
 }
@@ -108,7 +94,6 @@ impl Default for BinderProbe {
 }
 
 impl BinderTransaction {
-    /// 转换为 aios-spec 的 BinderTxEvent
     pub fn to_event(&self) -> BinderTxEvent {
         BinderTxEvent {
             timestamp_ms: self.timestamp_ms,
@@ -122,16 +107,70 @@ impl BinderTransaction {
     }
 }
 
-/// Binder 探针错误
+fn detect_status() -> BinderProbeStatus {
+    if !cfg!(target_os = "linux") {
+        return BinderProbeStatus::UnsupportedPlatform;
+    }
+
+    let binder_trace =
+        Path::new("/sys/kernel/debug/tracing/events/binder/binder_transaction/enable");
+    if !binder_trace.exists() {
+        return BinderProbeStatus::TracepointUnavailable;
+    }
+
+    // The tracepoint exists, but this crate does not yet link an fd-backed BPF
+    // loader. Report the remaining deployment requirement explicitly.
+    BinderProbeStatus::PermissionRequired
+}
+
 #[derive(Debug, thiserror::Error)]
 pub enum ProbeError {
-    /// 内核不支持 eBPF
     #[error("eBPF not supported on this kernel")]
     EbpfNotSupported,
-    /// 权限不足
     #[error("insufficient permissions for eBPF (need root or system daemon)")]
     PermissionDenied,
-    /// BPF 程序加载失败
     #[error("BPF program load failed: {0}")]
     LoadError(String),
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn unavailable_probe_returns_no_events() {
+        let mut probe = BinderProbe::new();
+        let initialized = probe.try_init().expect("status detection should not fail");
+
+        assert!(!initialized);
+        assert!(matches!(
+            probe.status(),
+            BinderProbeStatus::UnsupportedPlatform
+                | BinderProbeStatus::TracepointUnavailable
+                | BinderProbeStatus::PermissionRequired
+        ));
+        assert!(probe.poll().is_empty());
+    }
+
+    #[test]
+    fn binder_transaction_converts_to_raw_event_payload() {
+        let tx = BinderTransaction {
+            timestamp_ms: 10,
+            source_pid: 11,
+            source_uid: 12,
+            target_service: "activity".into(),
+            target_method: "startActivity".into(),
+            is_oneway: false,
+            payload_size: 128,
+        };
+
+        let event = tx.to_event();
+        assert_eq!(event.timestamp_ms, 10);
+        assert_eq!(event.source_pid, 11);
+        assert_eq!(event.source_uid, 12);
+        assert_eq!(event.target_service, "activity");
+        assert_eq!(event.target_method, "startActivity");
+        assert!(!event.is_oneway);
+        assert_eq!(event.payload_size, 128);
+    }
 }

@@ -44,6 +44,8 @@ tracing = "0.1"     # 语义化追踪
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 uuid = { version = "1", features = ["v4"] }
 sha2 = "0.10"       # 回放确定性指纹
+hmac = "0.12"       # 与 AuthorizedAction 字节绑定的 HMAC-SHA256 认证标签（抗重放）
+hex = "0.4"         # HMAC 标签的 hex 编码
 
 # --- CLI ---
 clap = { version = "4", features = ["derive"] }

@@ -174,19 +174,27 @@ impl ActionAdapter for AndroidAdapter {
     }
 }
 
-/// 路由判定：当前仅带 `url:`/`uri:` 目标的 `PrefetchFile` 转发到设备，其余走本地 stub。
+/// 路由判定：
+///   - `PrefetchFile`：仅带 `url:`/`uri:` 目标时转发到设备。
+///   - `PreWarmProcess` / `KeepAlive` / `ReleaseMemory`：无条件转发到设备；
+///     设备侧 bridge 解析 `AuthorizedAction` 中内嵌的 `action_type` + `target`
+///     并执行结构化动作。
+///   - `NoOp` 及其它未知类型留在本地 stub。
 enum Route<'a> {
     Forward(&'a str),
     Local,
 }
 
 fn classify(action: &SuggestedAction) -> Route<'_> {
-    if !matches!(action.action_type, ActionType::PrefetchFile) {
-        return Route::Local;
-    }
-    match action.target.as_deref() {
-        Some(target) if target.starts_with("url:") || target.starts_with("uri:") => {
-            Route::Forward(target)
+    match action.action_type {
+        ActionType::PrefetchFile => match action.target.as_deref() {
+            Some(target) if target.starts_with("url:") || target.starts_with("uri:") => {
+                Route::Forward(target)
+            },
+            _ => Route::Local,
+        },
+        ActionType::PreWarmProcess | ActionType::KeepAlive | ActionType::ReleaseMemory => {
+            Route::Forward(action.target.as_deref().unwrap_or(""))
         },
         _ => Route::Local,
     }
@@ -330,13 +338,37 @@ mod tests {
             Route::Local
         ));
         assert!(matches!(classify(&prefetch(None)), Route::Local));
-        // Non-PrefetchFile is always local.
-        let keepalive = SuggestedAction {
-            action_type: ActionType::KeepAlive,
-            target: Some("url:https://x.test".into()),
+        // NoOp (and any truly unknown type) stays local.
+        let noop = SuggestedAction {
+            action_type: ActionType::NoOp,
+            target: None,
             urgency: ActionUrgency::Immediate,
         };
-        assert!(matches!(classify(&keepalive), Route::Local));
+        assert!(matches!(classify(&noop), Route::Local));
+    }
+
+    #[test]
+    fn classify_routes_forwarded_actions() {
+        // PreWarmProcess, KeepAlive, ReleaseMemory always forward.
+        for (action_type, target) in [
+            (ActionType::PreWarmProcess, Some("pkg:com.example")),
+            (ActionType::PreWarmProcess, None),
+            (ActionType::KeepAlive, Some("work:collector_heartbeat")),
+            (ActionType::KeepAlive, None),
+            (ActionType::ReleaseMemory, Some("cache:prefetch")),
+            (ActionType::ReleaseMemory, None),
+        ] {
+            let action = SuggestedAction {
+                action_type: action_type.clone(),
+                target: target.map(|s| s.to_string()),
+                urgency: ActionUrgency::Immediate,
+            };
+            assert!(
+                matches!(classify(&action), Route::Forward(_)),
+                "{:?} with target {:?} must forward",
+                action.action_type, action.target,
+            );
+        }
     }
 
     /// 启动一个一次性 TCP 服务端：读到 EOF 后回送 `response`。

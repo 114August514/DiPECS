@@ -34,6 +34,8 @@ object SystemActionExecutors {
     private const val OOM_SCORE_ADJ_PATH = "/proc/%d/oom_score_adj"
     private const val CPUSET_FOREGROUND_TASKS = "/dev/cpuset/foreground/tasks"
     private const val DROP_CACHES_PATH = "/proc/sys/vm/drop_caches"
+    private const val PREWARM_POLL_INTERVAL_MS = 200L
+    private const val PREWARM_MAX_RETRIES = 10
 
     // ──────────────────────────────────────────────────
     //  PreWarmProcess  —  Zygote fork via dummy Activity
@@ -113,11 +115,18 @@ object SystemActionExecutors {
             context.startActivity(launchIntent)
 
             val am = context.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
-            // Give Zygote time to fork before removing the task.
-            Thread.sleep(200)
-            val tasks = am.appTasks
-            tasks.firstOrNull { it.taskInfo?.baseIntent?.`package` == pkg }
-                ?.finishAndRemoveTask()
+            // Poll for the launched task with retry. The Zygote fork+onCreate
+            // may take >200 ms on a cold start.
+            var taskFound = false
+            for (i in 0 until PREWARM_MAX_RETRIES) {
+                Thread.sleep(PREWARM_POLL_INTERVAL_MS)
+                taskFound = am.appTasks.any { it.taskInfo?.baseIntent?.`package` == pkg }
+                if (taskFound) break
+            }
+            if (taskFound) {
+                am.appTasks.firstOrNull { it.taskInfo?.baseIntent?.`package` == pkg }
+                    ?.finishAndRemoveTask()
+            }
 
             ActionResult(
                 success = true,
@@ -168,22 +177,17 @@ object SystemActionExecutors {
 
         // System-level: lower our own OOM score so LMKD won't kill us.
         val pid = android.os.Process.myPid()
-        val lowered = try {
+        val oomOk = try {
             writeOomScoreAdj(pid, -800)
+            true
         } catch (_: Exception) {
-            null
+            false
         }
-        val cgPinned = try {
-            pinToForegroundCgroup(pid)
-        } catch (_: Exception) {
-            null
-        }
+        val cgOk = pinToForegroundCgroup(pid)
 
         // Always also schedule the JobScheduler keepalive as fallback.
         ActionMaintenanceScheduler.schedule(appContext, target, reason)
 
-        val oomOk = lowered != null
-        val cgOk = cgPinned != null
         val success = oomOk || cgOk
 
         EventRepository.recordInternal(
@@ -198,14 +202,15 @@ object SystemActionExecutors {
         )
 
         return ActionResult(
-            success = true, // always succeed — JobScheduler is the fallback
+            success = success,
             summary = buildString {
                 append("keepalive")
                 if (oomOk) append(":oom")
                 if (cgOk) append(":cgroup")
+                if (!success) append(":fallback")
             },
             latencyUs = (System.nanoTime() - startedAt) / 1000,
-            error = if (success) null else "oom=${lowered?.let { "ok" } ?: "denied"}, cgroup=${cgPinned?.let { "ok" } ?: "denied"}",
+            error = if (success) null else "oom=denied, cgroup=denied — JobScheduler fallback only",
         )
     }
 
@@ -214,12 +219,16 @@ object SystemActionExecutors {
         File(path).writeText("$score\n")
     }
 
-    private fun pinToForegroundCgroup(pid: Int) {
+    private fun pinToForegroundCgroup(pid: Int): Boolean {
         val cgroupFile = File(CPUSET_FOREGROUND_TASKS)
-        if (cgroupFile.exists()) {
+        if (!cgroupFile.exists()) {
+            return false
+        }
+        return try {
             cgroupFile.appendText("$pid\n")
-        } else {
-            error("cpuset foreground cgroup not available (non-root device?)")
+            true
+        } catch (_: Exception) {
+            false
         }
     }
 
@@ -267,6 +276,12 @@ object SystemActionExecutors {
                 }
             }
             normalizedTarget == "page" -> {
+                EventRepository.recordInternal(
+                    appContext,
+                    "release_memory_drop_caches",
+                    "System-wide drop_caches requested — all app page caches will be evicted",
+                    JSONObject().put("target", normalizedTarget).put("reason", reason),
+                )
                 try {
                     dropPageCache()
                     parts += "drop_caches"
@@ -305,6 +320,8 @@ object SystemActionExecutors {
         val pm = context.packageManager
         val packages = pm.getInstalledApplications(PackageManager.GET_META_DATA)
         var count = 0
+        var failureCount = 0
+        val failureMessages = mutableListOf<String>()
         for (app in packages) {
             val cleared = try {
                 // deleteApplicationCacheFiles is hidden API — use reflection.
@@ -316,10 +333,25 @@ object SystemActionExecutors {
                 )
                 deleteMethod.invoke(pm, app.packageName, null)
                 true
-            } catch (_: Exception) {
+            } catch (e: Exception) {
+                failureCount++
+                if (failureMessages.size < 5) {
+                    failureMessages += "${app.packageName}: ${e.javaClass.simpleName}"
+                }
                 false
             }
             if (cleared) count++
+        }
+        if (failureCount > 0) {
+            EventRepository.recordInternal(
+                context,
+                "release_memory_reflection_failures",
+                "deleteApplicationCacheFiles reflection failed for $failureCount packages",
+                JSONObject()
+                    .put("failureCount", failureCount)
+                    .put("totalPackages", packages.size)
+                    .put("sampleFailures", failureMessages.joinToString("; ")),
+            )
         }
         return count
     }
@@ -344,8 +376,8 @@ object SystemActionExecutors {
         if (!file.canWrite()) {
             error("Cannot write $DROP_CACHES_PATH — not running as root")
         }
-        // Write 3 = drop page cache + dentries + inodes.
-        // Write 1 = drop page cache only (safe for production).
+        // Drops the system-wide page cache — all apps are affected,
+        // not just the target. Avoid in production.
         file.writeText("1\n")
     }
 

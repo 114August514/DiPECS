@@ -379,51 +379,8 @@ class AuthorizedActionSocketServer(
         actionType: String,
         target: String?,
         reason: String,
-    ): SystemActionExecutors.ActionResult {
-        return when (actionType) {
-            "PreWarmProcess" -> {
-                val t = target ?: "own:resources"
-                SystemActionExecutors.prewarmProcess(context, t, reason)
-            }
-            "PrefetchFile" -> {
-                val t = target
-                if (t.isNullOrBlank()) {
-                    SystemActionExecutors.ActionResult(
-                        success = false, summary = "prefetch_no_target",
-                        latencyUs = 0, error = "PrefetchFile requires a target")
-                } else {
-                    var result: SystemActionExecutors.ActionResult? = null
-                    SystemActionExecutors.prefetchFile(context, t, reason) { r ->
-                        result = r
-                    }
-                    result ?: SystemActionExecutors.ActionResult(
-                        success = true, summary = "prefetch_enqueued",
-                        latencyUs = 0, error = null)
-                }
-            }
-            "KeepAlive" -> {
-                val t = target ?: "work:collector_heartbeat"
-                SystemActionExecutors.keepAlive(context, t, reason)
-            }
-            "ReleaseMemory" -> {
-                SystemActionExecutors.releaseMemory(context, target, reason)
-            }
-            "NoOp" -> {
-                SystemActionExecutors.noOp(context, reason)
-            }
-            else -> {
-                SystemActionExecutors.ActionResult(
-                    success = false,
-                    summary = "unsupported_action",
-                    latencyUs = 0,
-                    error = "Unknown action type: $actionType")
-            }
-        }
-    }
-
-    private fun recordEvent(eventType: String, message: String, extra: JSONObject = JSONObject()) {
-        EventRepository.recordInternal(context, eventType, message, extra)
-    }
+    ): SystemActionExecutors.ActionResult =
+        ActionExecutorBridge.dispatch(context, actionType, target, reason)
 
     private fun sendPong(client: Socket) {
         runCatching {

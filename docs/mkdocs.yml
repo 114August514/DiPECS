@@ -104,6 +104,13 @@ markdown_extensions:
 
 nav:
   - 项目概览: index.md
+  - 当前实现:
+    - current/overview.md
+    - 数据流: current/data-flow.md
+    - Daemon 运行时: current/runtime.md
+    - 动作治理: current/action-governance.md
+    - Android 桥接: current/android-bridge.md
+    - Replay 与审计: current/replay-audit.md
   - 调研分析:
     - research/index.md
     - 交付文档:
@@ -137,6 +144,7 @@ nav:
     - RFC 提案:
       - design/rfc/process.md
       - RFC-0001 分层采集与决策路由重构: design/rfc/0001-layered-collection-and-decision-routing.md
+      - RFC-0002 Action Bus Governance: design/rfc/0002-action-bus-governance.md
   - 团队与开发:
     - 团队分工: team/roles.md
     - 会议纪要:

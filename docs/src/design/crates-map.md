@@ -1,62 +1,133 @@
 # 代码地图
 
-DiPECS 采用严格的”机制与策略分离”架构（详见[架构概览](overview.md)和[设计哲学](philosophy.md)）。本文档是代码仓库的导览地图，说明每个目录和文件的用途。
+> Status: Current  
+> Last verified: 2026-06-30
 
-## 核心工作区 (Crates)
+本文是源码导览。历史交付、slides 和 release notes 中的模块名可能已经变化，以本页为准。
 
-依赖按边界自下而上组织：`aios-spec` 是共同协议层，`collector`、`core`、`action`、`agent` 都保持窄职责；`daemon` 负责把这些能力装配成 `dipecsd` 长驻运行时。
+## Rust Workspace
+
+```text
+crates/
+  aios-spec/       # 协议和跨层数据结构
+  aios-collector/  # Android JSONL + daemon/system source ingress
+  aios-core/       # privacy / context / policy / lifecycle
+  aios-agent/      # decision router and backends
+  aios-action/     # action adapters
+  aios-daemon/     # dipecsd runtime
+  aios-cli/        # replay / audit / socket tooling
+```
+
+依赖方向：
 
 ```text
 aios-spec
-  ├─► aios-collector
-  ├─► aios-core
-  ├─► aios-action
-  └─► aios-agent
+  ├─ aios-collector
+  ├─ aios-core
+  ├─ aios-agent
+  └─ aios-action
 
 aios-collector ─┐
-aios-core ──────┼─► aios-daemon (dipecsd)
-aios-action ────┤
-aios-agent ─────┘
+aios-core ──────┼─ aios-daemon
+aios-agent ─────┤
+aios-action ────┘
 
-aios-cli (独立工具入口)
+aios-cli 复用 collector/core/agent/action 做离线 replay
 ```
 
-- **`crates/aios-spec/`** `src/lib.rs` — 核心数据结构、Trait 接口和跨层协议。禁止业务逻辑或平台依赖
-- **`crates/aios-core/`** `src/lib.rs` + `src/context_builder.rs` — 脱敏引擎、窗口聚合、策略引擎、ActionBus。接收 collector 输出的 `RawEvent`, 生成 `SanitizedEvent` / `StructuredContext`
-- **`crates/aios-action/`** `src/lib.rs` — 授权动作执行层与 DefaultActionExecutor 骨架
-- **`crates/aios-collector/`** `src/lib.rs` — Rust 采集层入口。对接 app 侧采集能力与后续 system 下沉来源，统一规范化并输出 `CollectorEnvelope` / `RawEvent`
-- **`crates/aios-agent/`** `src/lib.rs` — DecisionRouter 与本地/云端模型后端，不含 daemon 生命周期
-- **`crates/aios-daemon/`** `src/main.rs` + `src/daemon.rs` — **daemon 二进制入口** (`dipecsd`)，含长期运行主循环、采集循环和完整处理管道
-- **`crates/aios-cli/`** `src/main.rs` — 命令行交互工具
+## `aios-spec`
 
-## 文档生态 (Docs)
+| 文件 | 职责 |
+| --- | --- |
+| `event.rs` | `RawEvent`、`CollectorEnvelope`、`IngestedRawEvent`、source tier 和原始事件子类型。 |
+| `sanitized.rs` | `SanitizedEvent` 和脱敏后的事件枚举。 |
+| `context.rs` | `StructuredContext`、`ContextSummary`。 |
+| `intent.rs` | `IntentBatch`、`Intent`、`SuggestedAction`、`CapabilityLevel`、`DenialReason`。 |
+| `governance.rs` | `ActionProposal`、`ActionState`、`AuditRecord`、`ActionOutcome`、`PolicyActionDecision`。 |
+| `trace.rs` | Golden trace / replay validation 数据结构。 |
 
-双轨知识库体系，供工程协作与学术验收。
+`aios-spec` 不应包含业务逻辑、平台 API 或运行时状态。
 
-- **`docs/src/`**: MkDocs Material 站点源码和公开资料。
-  - `design/states.md`: 系统状态机核心设计文档。
-  - `team/dev.md`: 开发者指南。
-  - `design/rfc/`: 架构设计提案 (Request for Comments) 存放处。
-- **`docs/academic-src/`**: 未来正式学术报告的 LaTeX 源码空壳。
-  - `01_Survey_Report/` 至 `04_Final_Report/`: 课题调研、可行性、中期及结题报告的 LaTeX 入口。
-- **`docs/src/academic/`**, **`docs/src/refs/`**, **`docs/src/slides/`**: 站点公开的学术材料、参考资料和演示材料。
+## `aios-collector`
 
-## 脚本与工具 (Scripts)
+| 文件 | 职责 |
+| --- | --- |
+| `android_jsonl.rs` | 解析 Android `CollectorEvent` JSONL，tail append-only `actions.jsonl`。 |
+| `proc_reader.rs` | 扫描 `/proc`，生成进程资源事件。 |
+| `system_collector.rs` | 系统状态快照。 |
+| `binder_probe.rs` | Binder/eBPF 预留接口；当前为 stub，不产生真实事件。 |
+| `collection_stats.rs` | 按 raw event kind 统计窗口内采集数量。 |
 
-- **`scripts/android-runner.sh`**: 用于在 Android (NDK/API 33) 上的交叉编译部署与运行脚本。
-- **`scripts/check-all.sh`**: 核心 CI 脚本，执行格式化、Clippy 验证、构建与测试。
-- **`scripts/setup-env.sh`**: 初始化 Rust 工具链和预编译环境的脚本。
+## `aios-core`
 
-## 数据与测试 (Data & Tests)
+| 文件 | 职责 |
+| --- | --- |
+| `collector_ingress.rs` | 校验 external envelope，给内部 source 打 `SourceTier::Daemon`。 |
+| `privacy_airgap.rs` | `RawEvent -> SanitizedEvent`，隐私边界。 |
+| `context_builder.rs` | `WindowAggregator`，`SanitizedEvent -> StructuredContext`。 |
+| `policy_engine.rs` | 逐 action 策略裁决，不构造 `AuthorizedAction`。 |
+| `action_lifecycle.rs` | 唯一授权状态机，生成 `AuthorizedAction` 和 `AuditRecord`。 |
+| `governance/mod.rs` | 私有字段 `AuthorizedAction` 和 `ActionAdapter` trait。 |
+| `action_bus.rs` | raw event / intent mpsc 通道封装。 |
+| `trace_engine.rs` | Golden trace 验证。 |
 
-- **`data/traces/`**: 收集的离线系统轨迹数据，用于离线回放、状态机回归与验证。
-- **`data/evaluation/`**: 系统性能与准确性评估数据集。
-- **`tests/integration/`**: 跨 Crates 的集成测试用例，确保状态转移的正确性。
+## `aios-agent`
 
-## 根目录配置文件
+| 文件 | 职责 |
+| --- | --- |
+| `router.rs` | `DecisionRouter`、routing reason、circuit breaker、privacy sensitivity fallback。 |
+| `backends/rule_based.rs` | 当前默认本地规则后端。 |
+| `backends/fallback.rs` | 熔断后的 `Idle + NoOp` 安全后端。 |
+| `backends/cloud_llm/*` | 可选云端 LLM 后端、provider config、HTTP client、模型输出翻译。 |
+| `backends/prefetch_target.rs` | cloud output 到 Android prefetch target 的保守映射。 |
 
-- **`Cargo.toml`**: Cargo Workspace 配置文件，统筹所有 Crates。
-- **`rust-toolchain.toml`**: 锁定 Rust 版本（要求 1.95.0）及交叉编译 Target。
-- **`deny.toml`**: 依赖项审计配置，防止引入不安全的重型大体积 Crate。
-- **`rustfmt.toml`**: 全局代码格式化规范。
-- **`README.md` & `CONTRIBUTING.md`**: 项目门面介绍及贡献指南。
+## `aios-action`
+
+| 文件 | 职责 |
+| --- | --- |
+| `lib.rs` | `DefaultActionExecutor`，默认 stub，按 env 转发 Android-safe action。 |
+| `offline_adapter.rs` | replay / golden 使用的 deterministic adapter。 |
+
+`DefaultActionExecutor` 只接收 `AuthorizedAction`。它不能自行 seal action。
+
+## `aios-daemon`
+
+| 文件 | 职责 |
+| --- | --- |
+| `main.rs` | `dipecsd` 二进制入口。 |
+| `lib.rs` | runtime 装配、collection task、processing loop、CLI/env 参数解析。 |
+| `pipeline.rs` | `process_window` 和 runtime trace recorder。 |
+| `daemon.rs` | Linux daemonize 和 signal handling。 |
+
+## `aios-cli`
+
+| 文件 | 职责 |
+| --- | --- |
+| `main.rs` | `replay` 和 `send-authorized-action` CLI。当前 socket 命令只做 ping。 |
+| `replay.rs` | JSONL replay、stage output、canonical audit hash。 |
+| `android_bridge.rs` | Android socket ping/health-check。 |
+
+## Android App
+
+| 路径 | 职责 |
+| --- | --- |
+| `storage/EventStore.kt` | append-only `actions.jsonl` 写入、导出、清理。 |
+| `model/AndroidRawEventMapper.kt` | Kotlin 事件到 Rust `RawEvent` JSON shape 的映射。 |
+| `collectors/UsageCollector.kt` | `UsageStatsManager` 采集。 |
+| `services/NotificationCollectorService.kt` | 通知到达/移除采集。 |
+| `services/CollectorForegroundService.kt` | heartbeat、collector lifecycle、manual action service entry。 |
+| `actions/AuthorizedActionSocketServer.kt` | localhost action socket、token、TTL、HMAC、rate limit。 |
+| `actions/ActionExecutorBridge.kt` | Android-side action dispatch。 |
+| `actions/AccessibleContentPrefetcher.kt` | `url:https://` / `uri:content://` prefetch。 |
+| `actions/ActionMaintenanceScheduler.kt` | `KeepAlive(work:*)` 的 JobScheduler 实现。 |
+| `actions/CacheTrimmer.kt` | `ReleaseMemory(cache:*)` 的 app-owned cache 清理。 |
+| `actions/OwnResourceWarmer.kt` | `PreWarmProcess(own:*)` 的自身资源预热。 |
+
+## 数据与实验
+
+| 路径 | 职责 |
+| --- | --- |
+| `data/traces/` | replay / golden fixture。 |
+| `lab4/` | 课程 Lab4 llama.cpp、RPC、Ray 实验；不是 DiPECS runtime 主链路。 |
+| `docs/src/` | MkDocs 文档。 |
+| `docs/academic-src/` | LaTeX 学术报告源。 |

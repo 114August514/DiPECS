@@ -14,6 +14,9 @@ banner() { printf '\n=== %s ===\n' "$*" | tee -a "$RUN_LOG"; }
 # "只有引导行"的空采集会被数成 1、在阶段 6 被误判 REAL(三态设计要防的假阳性)。
 # ':{"' 要求 { 后紧跟一个 key,与 Android EventStore.stats() 的 keys.hasNext() 同口径;
 # grep -c ... || true 保证零匹配时仍输出单行 "0"(原 || echo 0 会产双行触发 integer expected)。
+# 正则假设紧凑 JSON(键冒号间无空格):trace 唯一写入路径 EventStore.append 用 org.json
+# 无参 toString()(永远紧凑);pretty-print 变体 toString(indentFactor) 全仓无调用。
+# 即此假设由数据源保证,非碰巧成立 —— 若日后改用缩进序列化,此处与下面闸门正则需同步。
 count_real_raw_events() {
   local trace="$1"
   [ -s "$trace" ] || { echo 0; return 0; }

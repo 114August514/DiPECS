@@ -1,34 +1,33 @@
-//! # dipecsd — DiPECS 系统守护进程
+//! # dipecsd - DiPECS system daemon
 //!
-//! 部署路径: `/system/bin/dipecsd`
-//! 启动方式: `dipecsd [--no-daemon] [--verbose]`
+//! Deployment path: `/system/bin/dipecsd`
+//! Startup: `dipecsd [--no-daemon] [--verbose]`
 //!
-//! ## 运行模式
+//! ## Runtime Modes
 //!
-//! - **daemon 模式** (默认): fork 到后台, 持续采集系统事件
-//! - **--no-daemon**: 前台运行, 用于调试和开发
+//! - daemon mode: fork to the background and keep collecting system events
+//! - `--no-daemon`: foreground mode for debugging and development
 //!
-//! ## 数据流 (v0.2 — 2-task 管道)
+//! ## Data Flow
 //!
 //! ```text
-//! Task 1 (采集):  BinderProbe + ProcReader + SysCollector → bus.raw_events_tx
-//! Task 2 (处理):  bus.raw_events_rx → PrivacyAirGap → WindowAggregator
-//!                    → DecisionRouter → PolicyEngine → ActionExecutor
+//! Task 1 (collection): BinderProbe + ProcReader + SysCollector -> bus.raw_events_tx
+//! Task 2 (processing): bus.raw_events_rx -> PrivacyAirGap -> WindowAggregator
+//!                      -> DecisionRouter -> PolicyEngine -> ActionExecutor
 //! ```
 //!
-//! ## 当前实现状态 (2026-05-05)
+//! ## Current Implementation Status
 //!
-//! - ProcReader: 可用 (Linux/Android 均可)
-//! - SystemStateCollector: 可用 (Linux/Android 均可, 电池/网络 fallback)
-//! - BinderProbe: 接口完成, eBPF attach 待真机验证
-//! - 决策路由: DecisionRouter with RuleBasedBackend (rule-based intent generation)
-//! - Action 执行: 骨架 (tracing 记录)
-
+//! - ProcReader: available on Linux/Android
+//! - SystemStateCollector: available with battery/network fallback
+//! - BinderProbe/FanotifyMonitor: interfaces complete; real fd/eBPF attach requires privileged deployment
+//! - Decision routing: RuleBased, LocalEvaluator, CloudLlm, and FallbackNoOp
+//! - Action execution: Android bridge plus local fallback behavior
 use std::collections::HashMap;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use aios_action::DefaultActionExecutor;
-use aios_agent::DecisionRouter;
+use aios_agent::{DecisionRouter, ProfileSummarizer};
 use aios_collector::{
     android_jsonl::AndroidJsonlTailer,
     binder_probe::BinderProbe,
@@ -40,6 +39,7 @@ use aios_core::action_bus::ActionBus;
 use aios_core::action_lifecycle::ActionLifecycle;
 use aios_core::collector_ingress::RustCollectorIngress;
 use aios_core::context_builder::WindowAggregator;
+use aios_core::context_memory::{ModelMemoryConfig, ModelMemoryStore};
 use aios_core::policy_engine::PolicyEngine;
 use aios_core::privacy_airgap::DefaultPrivacyAirGap;
 use aios_spec::traits::PrivacySanitizer;
@@ -48,28 +48,32 @@ use aios_spec::RawEvent;
 mod daemon;
 pub mod pipeline;
 
-use pipeline::{should_stop_processing, ProcessingEvent, RuntimeTraceRecorder};
+use pipeline::{
+    should_stop_processing, ProcessingEvent, ProfileSummaryWorker, RuntimeTraceRecorder,
+    WindowProcessingDeps,
+};
 
-/// 系统状态采集间隔 (秒)
+/// System state collection interval, in seconds.
 const SYS_POLL_INTERVAL_SECS: u64 = 30;
-/// Binder 事件轮询间隔 (毫秒)
+/// Binder event polling interval, in milliseconds.
 const BINDER_POLL_INTERVAL_MS: u64 = 100;
-/// Android JSONL 文件轮询间隔 (毫秒)
+/// Android JSONL file polling interval, in milliseconds.
 const ANDROID_JSONL_POLL_INTERVAL_MS: u64 = 500;
-/// 上下文窗口时长 (秒)
+/// Context window duration, in seconds.
 const WINDOW_DURATION_SECS: u64 = 10;
 const ANDROID_TRACE_JSONL_ENV: &str = "DIPECS_ANDROID_TRACE_JSONL";
 const RUNTIME_TRACE_OUTPUT_ENV: &str = "DIPECS_RUNTIME_TRACE_OUTPUT";
+const PROFILE_SUMMARY_INTERVAL_ENV: &str = "DIPECS_PROFILE_SUMMARY_INTERVAL_WINDOWS";
 
 pub async fn run() -> anyhow::Result<()> {
-    // 1. 初始化日志
+    // 1. Initialize logging
     tracing_subscriber::fmt()
         .with_env_filter(
             tracing_subscriber::EnvFilter::from_default_env().add_directive("dipecs=info".parse()?),
         )
         .init();
 
-    // 2. 解析命令行参数
+    // 2. Parse command-line arguments
     let args: Vec<String> = std::env::args().collect();
     let no_daemon = args.iter().any(|a| a == "--no-daemon");
     let android_trace_jsonl = android_trace_jsonl_path(&args);
@@ -89,11 +93,10 @@ pub async fn run() -> anyhow::Result<()> {
         tracing::info!(path = %path.display(), "daemon runtime trace enabled");
     }
 
-    // 3. 初始化 ActionBus 和关闭信号
+    // 3. Initialize ActionBus and shutdown signals
     let mut bus = ActionBus::new(4096);
     let mut shutdown_rx = daemon::install_signal_handlers();
-
-    // ---- Task 1: 采集 ----
+    // ---- Task 1: collection ----
     let collect_raw_tx = bus.raw_sender();
     let mut collect_shutdown = shutdown_rx.resubscribe();
     let collect_handle = tokio::spawn(async move {
@@ -107,7 +110,7 @@ pub async fn run() -> anyhow::Result<()> {
         match binder_probe.try_init() {
             Ok(true) => tracing::info!("Binder probe initialized with eBPF"),
             Ok(false) => {
-                tracing::warn!("Binder probe unavailable — running without IPC monitoring")
+                tracing::warn!("Binder probe unavailable; running without IPC monitoring")
             },
             Err(e) => tracing::error!("Binder probe init failed: {}", e),
         }
@@ -117,8 +120,7 @@ pub async fn run() -> anyhow::Result<()> {
 
         loop {
             let now = timestamp_ms();
-
-            // /proc 轮询
+            // /proc polling
             {
                 let snapshots = ProcReader::scan_all();
                 let curr_map: HashMap<u32, proc_reader::ProcSnapshot> =
@@ -139,7 +141,7 @@ pub async fn run() -> anyhow::Result<()> {
                 prev_proc_snapshots = curr_map;
             }
 
-            // 系统状态采集
+            // System state collection
             {
                 let elapsed = SystemTime::now()
                     .duration_since(last_sys_poll)
@@ -158,8 +160,7 @@ pub async fn run() -> anyhow::Result<()> {
                     last_sys_poll = SystemTime::now();
                 }
             }
-
-            // Binder 事件轮询
+            // Binder event polling
             {
                 let binder_events = binder_probe.poll();
                 for tx in &binder_events {
@@ -213,8 +214,7 @@ pub async fn run() -> anyhow::Result<()> {
                     last_android_jsonl_poll = SystemTime::now();
                 }
             }
-
-            // 检查退出信号 (non-blocking)
+            // Check shutdown signal (non-blocking)
             if collect_shutdown.try_recv().is_ok() {
                 tracing::info!("collection task shutting down");
                 return;
@@ -224,11 +224,15 @@ pub async fn run() -> anyhow::Result<()> {
         }
     });
 
-    // ---- Task 2: 处理管道 (运行在主 task 上) ----
+    // ---- Task 2: processing pipeline (main task) ----
     tracing::info!("processing task started");
 
     let sanitizer = DefaultPrivacyAirGap;
     let router = DecisionRouter::default();
+    let profile_summarizer = ProfileSummarizer::from_env()
+        .map_err(|error| anyhow::anyhow!("profile summarizer configuration failed: {error}"))?;
+    let mut profile_summary_worker =
+        ProfileSummaryWorker::new(profile_summarizer, profile_summary_interval_windows());
     let policy = PolicyEngine::default();
     let executor = DefaultActionExecutor::new();
     let lifecycle = ActionLifecycle::new(&policy, &executor);
@@ -244,6 +248,8 @@ pub async fn run() -> anyhow::Result<()> {
     let window_dur = Duration::from_secs(WINDOW_DURATION_SECS);
     let mut window = WindowAggregator::new(WINDOW_DURATION_SECS, timestamp_ms());
     let mut raw_stats = RawEventStats::default();
+    let model_memory_config = ModelMemoryConfig::from_env();
+    let mut model_memory = ModelMemoryStore::load_or_default(&model_memory_config);
     let mut window_deadline = Instant::now() + window_dur;
     let mut window_ordinal = 0u32;
 
@@ -277,10 +283,15 @@ pub async fn run() -> anyhow::Result<()> {
                 pipeline::process_window(
                     window_ordinal,
                     &ctx,
-                    &router,
-                    &lifecycle,
                     &window_stats,
-                    trace_recorder.as_mut(),
+                    &mut WindowProcessingDeps {
+                        router: &router,
+                        lifecycle: &lifecycle,
+                        memory: &mut model_memory,
+                        memory_config: &model_memory_config,
+                        profile_summary_worker: Some(&mut profile_summary_worker),
+                        trace_recorder: trace_recorder.as_mut(),
+                    },
                 );
             }
             break;
@@ -306,10 +317,15 @@ pub async fn run() -> anyhow::Result<()> {
                 pipeline::process_window(
                     window_ordinal,
                     &ctx,
-                    &router,
-                    &lifecycle,
                     &window_stats,
-                    trace_recorder.as_mut(),
+                    &mut WindowProcessingDeps {
+                        router: &router,
+                        lifecycle: &lifecycle,
+                        memory: &mut model_memory,
+                        memory_config: &model_memory_config,
+                        profile_summary_worker: Some(&mut profile_summary_worker),
+                        trace_recorder: trace_recorder.as_mut(),
+                    },
                 );
                 window_ordinal += 1;
             }
@@ -324,6 +340,13 @@ pub async fn run() -> anyhow::Result<()> {
     Ok(())
 }
 
+fn profile_summary_interval_windows() -> u32 {
+    std::env::var(PROFILE_SUMMARY_INTERVAL_ENV)
+        .ok()
+        .and_then(|value| value.parse::<u32>().ok())
+        .filter(|value| *value > 0)
+        .unwrap_or(10)
+}
 fn timestamp_ms() -> i64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)

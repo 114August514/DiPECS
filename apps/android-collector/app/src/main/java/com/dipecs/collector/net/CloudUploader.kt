@@ -40,7 +40,8 @@ object CloudUploader {
             }
 
             val mode = CollectorPreferences.uploadMode(appContext)
-            val events = EventStore(appContext).readRecent(RECENT_EVENT_LIMIT)
+            val store = EventStore(appContext)
+            val events = store.readRecent(RECENT_EVENT_LIMIT)
             if (events.isEmpty()) {
                 EventRepository.recordInternal(appContext, "upload_skipped", "No events to upload")
                 return@execute
@@ -51,6 +52,7 @@ object CloudUploader {
                 .put("mode", mode)
                 .put("reason", reason)
                 .put("generatedAtMs", System.currentTimeMillis())
+                .put("batch", batchMetadata(appContext, store, events.size))
                 .put("events", JSONArray(events))
 
             runCatching {
@@ -74,6 +76,44 @@ object CloudUploader {
                 )
             }
         }
+    }
+
+    private fun batchMetadata(context: Context, store: EventStore, eventCount: Int): JSONObject {
+        val stats = store.stats()
+        return JSONObject()
+            .put("eventLimit", RECENT_EVENT_LIMIT)
+            .put("eventCount", eventCount)
+            .put(
+                "collector",
+                JSONObject()
+                    .put("running", CollectorPreferences.isCollectorRunning(context))
+                    .put("lastStartedMs", CollectorPreferences.collectorLastStartedMs(context))
+                    .put("lastStoppedMs", CollectorPreferences.collectorLastStoppedMs(context))
+                    .put("lastHeartbeatMs", CollectorPreferences.lastHeartbeatMs(context)),
+            )
+            .put(
+                "sources",
+                JSONObject()
+                    .put("usageStats", CollectorPreferences.isUsageEnabled(context))
+                    .put("notificationListener", CollectorPreferences.isNotificationEnabled(context))
+                    .put("accessibilityService", CollectorPreferences.isAccessibilityEnabled(context))
+                    .put("deviceContext", CollectorPreferences.isDeviceContextEnabled(context)),
+            )
+            .put(
+                "trace",
+                JSONObject()
+                    .put("totalRows", stats.totalRows)
+                    .put("fileSizeBytes", stats.fileSizeBytes)
+                    .put("rawEventRows", stats.rawEventRows)
+                    .put("rawEventNullRows", stats.rawEventNullRows)
+                    .put("parseErrors", stats.parseErrors)
+                    .put("latestParseError", stats.latestParseError ?: JSONObject.NULL)
+                    .put("latestTimestampMs", stats.latestTimestampMs ?: JSONObject.NULL)
+                    .put("latestRawEventKind", stats.latestRawEventKind ?: JSONObject.NULL)
+                    .put("sourceCounts", JSONObject(stats.sourceCounts))
+                    .put("eventTypeCounts", JSONObject(stats.eventTypeCounts))
+                    .put("rawEventKindCounts", JSONObject(stats.rawEventKindCounts)),
+            )
     }
 
     private fun tokenForMode(context: Context, mode: String): String? {
@@ -129,7 +169,7 @@ object CloudUploader {
         }
     }
 
-    private fun validateUploadEndpoint(endpoint: String): URL {
+    internal fun validateUploadEndpoint(endpoint: String): URL {
         val url = URL(endpoint)
         require(url.protocol == "https") { "Upload endpoint must use HTTPS" }
         val host = url.host?.lowercase().orEmpty()

@@ -22,6 +22,10 @@
             </intent-filter>
         </activity>
 
+        <activity android:name=".DashboardActivity" android:exported="false" />
+        <activity android:name=".SourcesActivity" android:exported="false" />
+        <activity android:name=".ConsoleActivity" android:exported="false" />
+
         <service
             android:name=".services.CollectorForegroundService"
             android:exported="false"

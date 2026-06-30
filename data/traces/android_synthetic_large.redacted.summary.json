@@ -1,0 +1,48 @@
+{
+  "label": "synthetic_android_redacted_trace",
+  "synthetic": true,
+  "redacted": true,
+  "rows": 2400,
+  "seed": 20260628,
+  "output": "data/traces/android_synthetic_large.redacted.jsonl",
+  "eventTypeCounts": {
+    "app_transition": 600,
+    "context_heartbeat": 300,
+    "keep_alive_job_executed": 30,
+    "keep_alive_scheduled": 49,
+    "notification_interaction": 300,
+    "notification_posted": 400,
+    "own_resources_prewarmed": 46,
+    "prefetch_started": 46,
+    "prefetch_succeeded": 34,
+    "rawEvent:nonNull": 1830,
+    "rawEvent:null": 570,
+    "release_memory_completed": 48,
+    "screen_state": 200,
+    "user_visible_action_posted": 47,
+    "view_clicked": 73,
+    "view_focused": 83,
+    "view_selected": 78,
+    "window_state_changed": 66
+  },
+  "sourceCounts": {
+    "AccessibilityCollectorService": 300,
+    "ActionExecutorBridge": 300,
+    "CollectorForegroundService": 200,
+    "NotificationCollectorService": 700,
+    "UsageCollector": 600,
+    "device_context": 300
+  },
+  "rawEventKindCounts": {
+    "AppTransition": 600,
+    "NotificationInteraction": 300,
+    "NotificationPosted": 400,
+    "ScreenState": 200,
+    "SystemState": 330
+  },
+  "notes": [
+    "Generated data is synthetic and must not be reported as real-device evidence.",
+    "Notification title/text, accessibility text, socket tokens, cache paths, and action targets are redacted.",
+    "Rows with rawEvent:null model screening/internal rows and are skipped by Rust production ingress."
+  ]
+}

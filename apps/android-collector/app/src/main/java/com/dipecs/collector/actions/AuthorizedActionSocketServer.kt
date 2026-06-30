@@ -5,7 +5,6 @@ import com.dipecs.collector.storage.CollectorPreferences
 import com.dipecs.collector.storage.EventRepository
 import java.io.IOException
 import java.io.InputStreamReader
-import java.io.OutputStreamWriter
 import java.net.InetAddress
 import java.net.ServerSocket
 import java.net.Socket
@@ -196,48 +195,53 @@ class AuthorizedActionSocketServer(
                     )
                     return@onSuccess
                 }
-                if (!isAuthorized(json)) {
-                    recordAuthFailure()
-                    EventRepository.recordInternal(
-                        context,
-                        "authorized_action_socket_rejected",
-                        "AuthorizedAction socket auth failed",
-                        JSONObject().put("port", port),
-                    )
-                    return@onSuccess
+                when (validatePayload(json, authToken)) {
+                    AuthVerdict.AUTH_TOKEN_MISSING_OR_INVALID -> {
+                        recordAuthFailure()
+                        EventRepository.recordInternal(
+                            context,
+                            "authorized_action_socket_rejected",
+                            "AuthorizedAction socket auth failed",
+                            JSONObject().put("port", port),
+                        )
+                        return@onSuccess
+                    }
+                    AuthVerdict.PING -> {
+                        failedAuthCount.set(0)
+                        rejectUntilMs.set(0)
+                        sendPong(client)
+                        EventRepository.recordInternal(
+                            context,
+                            "authorized_action_socket_ping",
+                            "Ping received, pong sent",
+                            JSONObject().put("port", port),
+                        )
+                        return@onSuccess
+                    }
+                    AuthVerdict.ACTION_WINDOW_MISSING_OR_EXPIRED -> {
+                        recordAuthFailure()
+                        EventRepository.recordInternal(
+                            context,
+                            "authorized_action_socket_stale",
+                            "AuthorizedAction socket payload missing or expired freshness window",
+                            JSONObject().put("port", port),
+                        )
+                        return@onSuccess
+                    }
+                    AuthVerdict.ACTION_SIGNATURE_INVALID -> {
+                        recordAuthFailure()
+                        EventRepository.recordInternal(
+                            context,
+                            "authorized_action_socket_bad_signature",
+                            "AuthorizedAction socket payload signature failed",
+                            JSONObject().put("port", port),
+                        )
+                        return@onSuccess
+                    }
+                    AuthVerdict.ACTION_AUTHORIZED -> Unit
                 }
                 failedAuthCount.set(0)
                 rejectUntilMs.set(0)
-                if (json.optString("message_type") == "ping") {
-                    sendPong(client)
-                    EventRepository.recordInternal(
-                        context,
-                        "authorized_action_socket_ping",
-                        "Ping received, pong sent",
-                        JSONObject().put("port", port),
-                    )
-                    return@onSuccess
-                }
-                if (!hasFreshActionWindow(json)) {
-                    recordAuthFailure()
-                    EventRepository.recordInternal(
-                        context,
-                        "authorized_action_socket_stale",
-                        "AuthorizedAction socket payload missing or expired freshness window",
-                        JSONObject().put("port", port),
-                    )
-                    return@onSuccess
-                }
-                if (!hasValidActionSignature(json)) {
-                    recordAuthFailure()
-                    EventRepository.recordInternal(
-                        context,
-                        "authorized_action_socket_bad_signature",
-                        "AuthorizedAction socket payload signature failed",
-                        JSONObject().put("port", port),
-                    )
-                    return@onSuccess
-                }
                 val dispatched = ActionExecutorBridge.dispatchAuthorizedActionJson(
                     context,
                     json,
@@ -267,9 +271,12 @@ class AuthorizedActionSocketServer(
 
     private fun sendPong(client: Socket) {
         runCatching {
-            val writer = OutputStreamWriter(client.getOutputStream(), Charsets.UTF_8)
-            writer.write("""{"status":"ok","message":"pong"}""")
-            writer.flush()
+            val payload = """{"status":"ok","message":"pong"}"""
+                .toByteArray(Charsets.UTF_8)
+            val output = client.getOutputStream()
+            output.write(payload)
+            output.flush()
+            client.shutdownOutput()
         }.onFailure { error ->
             EventRepository.recordInternal(
                 context,
@@ -294,82 +301,11 @@ class AuthorizedActionSocketServer(
             if (payload.length > MAX_PAYLOAD_CHARS) {
                 throw PayloadTooLargeException()
             }
+            val text = payload.toString().trim()
+            if (text.isNotEmpty() && runCatching { JSONObject(text) }.isSuccess) {
+                return text
+            }
         }
-    }
-
-    private fun isAuthorized(payload: JSONObject): Boolean {
-        val supplied = payload.optString(AUTH_TOKEN_FIELD).takeIf { it.isNotBlank() }
-            ?: return false
-        return constantTimeEquals(supplied, authToken)
-    }
-
-    private fun hasFreshActionWindow(payload: JSONObject): Boolean {
-        if (!payload.has("action") || payload.isNull("action")) {
-            return false
-        }
-        val issuedAtMs = payload.optLong(ISSUED_AT_FIELD, 0L)
-        val expiresAtMs = payload.optLong(EXPIRES_AT_FIELD, 0L)
-        if (issuedAtMs <= 0L || expiresAtMs <= 0L || expiresAtMs <= issuedAtMs) {
-            return false
-        }
-        if (expiresAtMs - issuedAtMs > MAX_ACTION_TTL_MS) {
-            return false
-        }
-        val now = System.currentTimeMillis()
-        return now + CLOCK_SKEW_MS >= issuedAtMs && now - CLOCK_SKEW_MS <= expiresAtMs
-    }
-
-    private fun hasValidActionSignature(payload: JSONObject): Boolean {
-        val supplied = payload.optString(ACTION_SIGNATURE_FIELD).takeIf { it.isNotBlank() }
-            ?: return false
-        val issuedAtMs = payload.optLong(ISSUED_AT_FIELD, 0L)
-        val expiresAtMs = payload.optLong(EXPIRES_AT_FIELD, 0L)
-        val action = payload.optJSONObject("action") ?: return false
-        val actionType = action.optString("action_type").takeIf { it.isNotBlank() }
-            ?: return false
-        val target = if (action.has("target") && !action.isNull("target")) {
-            action.optString("target")
-        } else {
-            ""
-        }
-        val urgency = action.optString("urgency").takeIf { it.isNotBlank() }
-            ?: return false
-        val canonical = canonicalActionSignatureInput(
-            issuedAtMs = issuedAtMs,
-            expiresAtMs = expiresAtMs,
-            actionType = actionType,
-            target = target,
-            urgency = urgency,
-        )
-        val expected = hmacSha256Hex(authToken, canonical)
-        return constantTimeEquals(supplied.lowercase(), expected)
-    }
-
-    private fun canonicalActionSignatureInput(
-        issuedAtMs: Long,
-        expiresAtMs: Long,
-        actionType: String,
-        target: String,
-        urgency: String,
-    ): String =
-        "dipecs.android.action.v1\n" +
-            "issued_at_ms:$issuedAtMs\n" +
-            "expires_at_ms:$expiresAtMs\n" +
-            "action_type:${actionType.length}:$actionType\n" +
-            "target:${target.length}:$target\n" +
-            "urgency:${urgency.length}:$urgency"
-
-    private fun hmacSha256Hex(key: String, message: String): String {
-        val mac = Mac.getInstance("HmacSHA256")
-        mac.init(SecretKeySpec(key.toByteArray(Charsets.UTF_8), "HmacSHA256"))
-        return mac.doFinal(message.toByteArray(Charsets.UTF_8))
-            .joinToString(separator = "") { byte -> "%02x".format(byte) }
-    }
-
-    private fun constantTimeEquals(left: String, right: String): Boolean {
-        val leftBytes = left.toByteArray(Charsets.UTF_8)
-        val rightBytes = right.toByteArray(Charsets.UTF_8)
-        return MessageDigest.isEqual(leftBytes, rightBytes)
     }
 
     private fun recordAuthFailure() {
@@ -383,6 +319,14 @@ class AuthorizedActionSocketServer(
         System.currentTimeMillis() < rejectUntilMs.get()
 
     private class PayloadTooLargeException : IOException()
+
+    internal enum class AuthVerdict {
+        AUTH_TOKEN_MISSING_OR_INVALID,
+        PING,
+        ACTION_WINDOW_MISSING_OR_EXPIRED,
+        ACTION_SIGNATURE_INVALID,
+        ACTION_AUTHORIZED,
+    }
 
     companion object {
         const val LOOPBACK_HOST = "127.0.0.1"
@@ -399,5 +343,115 @@ class AuthorizedActionSocketServer(
         private val CLOCK_SKEW_MS = TimeUnit.SECONDS.toMillis(30)
         private val SOCKET_READ_TIMEOUT_MS = TimeUnit.SECONDS.toMillis(5)
         private val AUTH_BACKOFF_MS = TimeUnit.SECONDS.toMillis(30)
+
+        internal fun validatePayload(payload: JSONObject, authToken: String): AuthVerdict {
+            if (!isAuthorized(payload, authToken)) {
+                return AuthVerdict.AUTH_TOKEN_MISSING_OR_INVALID
+            }
+            if (payload.optString("message_type") == "ping") {
+                return AuthVerdict.PING
+            }
+            if (!hasFreshActionWindow(payload)) {
+                return AuthVerdict.ACTION_WINDOW_MISSING_OR_EXPIRED
+            }
+            if (!hasValidActionSignature(payload, authToken)) {
+                return AuthVerdict.ACTION_SIGNATURE_INVALID
+            }
+            return AuthVerdict.ACTION_AUTHORIZED
+        }
+
+        private fun isAuthorized(payload: JSONObject, authToken: String): Boolean {
+            val supplied = payload.optString(AUTH_TOKEN_FIELD).takeIf { it.isNotBlank() }
+                ?: return false
+            return constantTimeEquals(supplied, authToken)
+        }
+
+        private fun hasFreshActionWindow(payload: JSONObject): Boolean {
+            if (!payload.has("action") || payload.isNull("action")) {
+                return false
+            }
+            val issuedAtMs = payload.optLong(ISSUED_AT_FIELD, 0L)
+            val expiresAtMs = payload.optLong(EXPIRES_AT_FIELD, 0L)
+            if (issuedAtMs <= 0L || expiresAtMs <= 0L || expiresAtMs <= issuedAtMs) {
+                return false
+            }
+            if (expiresAtMs - issuedAtMs > MAX_ACTION_TTL_MS) {
+                return false
+            }
+            val now = System.currentTimeMillis()
+            return now + CLOCK_SKEW_MS >= issuedAtMs && now - CLOCK_SKEW_MS <= expiresAtMs
+        }
+
+        private fun hasValidActionSignature(payload: JSONObject, authToken: String): Boolean {
+            val supplied = payload.optString(ACTION_SIGNATURE_FIELD).takeIf { it.isNotBlank() }
+                ?: return false
+            val issuedAtMs = payload.optLong(ISSUED_AT_FIELD, 0L)
+            val expiresAtMs = payload.optLong(EXPIRES_AT_FIELD, 0L)
+            val action = payload.optJSONObject("action") ?: return false
+            val actionType = action.optString("action_type").takeIf { it.isNotBlank() }
+                ?: return false
+            val target = if (action.has("target") && !action.isNull("target")) {
+                action.optString("target")
+            } else {
+                ""
+            }
+            val urgency = action.optString("urgency").takeIf { it.isNotBlank() }
+                ?: return false
+            val canonical = canonicalActionSignatureInput(
+                issuedAtMs = issuedAtMs,
+                expiresAtMs = expiresAtMs,
+                actionType = actionType,
+                target = target,
+                urgency = urgency,
+            )
+            val expected = hmacSha256Hex(authToken, canonical)
+            return constantTimeEquals(supplied.lowercase(), expected)
+        }
+
+        internal fun actionSignature(
+            authToken: String,
+            issuedAtMs: Long,
+            expiresAtMs: Long,
+            actionType: String,
+            target: String,
+            urgency: String,
+        ): String =
+            hmacSha256Hex(
+                authToken,
+                canonicalActionSignatureInput(
+                    issuedAtMs = issuedAtMs,
+                    expiresAtMs = expiresAtMs,
+                    actionType = actionType,
+                    target = target,
+                    urgency = urgency,
+                ),
+            )
+
+        private fun canonicalActionSignatureInput(
+            issuedAtMs: Long,
+            expiresAtMs: Long,
+            actionType: String,
+            target: String,
+            urgency: String,
+        ): String =
+            "dipecs.android.action.v1\n" +
+                "issued_at_ms:$issuedAtMs\n" +
+                "expires_at_ms:$expiresAtMs\n" +
+                "action_type:${actionType.length}:$actionType\n" +
+                "target:${target.length}:$target\n" +
+                "urgency:${urgency.length}:$urgency"
+
+        private fun hmacSha256Hex(key: String, message: String): String {
+            val mac = Mac.getInstance("HmacSHA256")
+            mac.init(SecretKeySpec(key.toByteArray(Charsets.UTF_8), "HmacSHA256"))
+            return mac.doFinal(message.toByteArray(Charsets.UTF_8))
+                .joinToString(separator = "") { byte -> "%02x".format(byte) }
+        }
+
+        private fun constantTimeEquals(left: String, right: String): Boolean {
+            val leftBytes = left.toByteArray(Charsets.UTF_8)
+            val rightBytes = right.toByteArray(Charsets.UTF_8)
+            return MessageDigest.isEqual(leftBytes, rightBytes)
+        }
     }
 }

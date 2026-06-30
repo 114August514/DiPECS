@@ -5,6 +5,13 @@
 
 本文记录当前已经落地的 Android action bridge。更早文档中关于 WorkManager、通用 ActionResult、静默预热第三方应用的内容已经过期。
 
+Deferred items for v0.2:
+
+- `SuggestedAction.params` remains deferred until an action needs structured arguments beyond `target`.
+- SAF URI prefetch is implemented through `uri:content://...` targets.
+- `DipecsCollectorApp` is won't-do for v0.2 because the current services and repositories do not need process-wide lifecycle hooks.
+- WorkManager remains later work; the current prototype accepts foreground service plus bounded single-thread executors.
+
 ## 相关文件
 
 | 文件 | 职责 |

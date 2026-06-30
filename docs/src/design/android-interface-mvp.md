@@ -166,7 +166,7 @@ pub enum AppTransition {
 
 - 通知正文在 `PrivacyAirGap` 内转成 `TextHint` 和 `SemanticHint`, 原文不越过脱敏边界。
 - `WindowAggregator` 按 10 秒窗口聚合上下文。
-- `DecisionRouter` 当前可通过 `RuleBasedBackend` 根据 `FileMention`、前台切换、屏幕状态、系统状态生成低风险意图；后续可接 LocalEvaluator / CloudLlm。
+- `DecisionRouter` 当前可通过 `RuleBasedBackend` 和 `LocalEvaluatorBackend` 根据 `FileMention`、前台切换、屏幕状态、系统状态生成低风险意图；复杂窗口可在本地评估后按配置接入 CloudLlm。
 - `PolicyEngine` 和 `ActionExecutor` 能记录低风险动作结果。
 
 因此当前写作结论是: Android MVP 的接口边界应优先把 `apps/android-collector` 观测到的 `UsageStatsManager -> AppTransitionRawEvent` 和 `NotificationListenerService -> NotificationRawEvent` 接入 `aios-collector`; eBPF、fanotify 和 system image 路线作为后续 system 下沉能力增强。

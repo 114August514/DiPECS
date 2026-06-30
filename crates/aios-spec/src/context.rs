@@ -1,8 +1,8 @@
-//! 上下文窗口 — "what to send to the LLM"
+//! Context window and model input types.
 //!
-//! 脱敏后的 SanitizedEvent 按时间窗口聚合,
-//! 形成发送给 Cloud LLM 的结构化上下文。
-//! 这是 DiPECS daemon 向上的核心接口。
+//! Sanitized events are aggregated into `StructuredContext`. Cloud and local
+//! model backends may also receive privacy-preserving behavior memory through
+//! `ModelInput`.
 
 use serde::{Deserialize, Serialize};
 
@@ -11,43 +11,106 @@ use crate::event::{
 };
 use crate::sanitized::SanitizedEvent;
 
-/// 时间窗口内的脱敏上下文
-///
-/// 这是 aios-agent 发送给 Cloud LLM 的唯一数据格式。
+/// Sanitized context within a time window.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StructuredContext {
-    /// 窗口唯一 ID
     pub window_id: String,
-    /// 窗口起始时间 (epoch ms)
     pub window_start_ms: i64,
-    /// 窗口结束时间 (epoch ms)
     pub window_end_ms: i64,
-    /// 窗口持续的秒数
     pub duration_secs: u32,
-    /// 窗口内的事件序列 (按时间排序, 已脱敏)
     pub events: Vec<SanitizedEvent>,
-    /// 窗口聚合摘要 (帮助 LLM 快速理解)
     pub summary: ContextSummary,
 }
 
-/// 窗口聚合摘要
+/// Complete input made available to model backends.
+///
+/// `current_context` remains the only required field. The other fields are
+/// derived after the privacy air-gap from prior sanitized windows and audit
+/// records, so raw notification text, file paths, and other local PII still do
+/// not cross the model boundary.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ModelInput {
+    pub current_context: StructuredContext,
+    pub behavior_profile: UserBehaviorProfile,
+    pub recent_feedback: Vec<RecentDecisionRecord>,
+}
+
+impl ModelInput {
+    pub fn current_only(current_context: StructuredContext) -> Self {
+        Self {
+            current_context,
+            behavior_profile: UserBehaviorProfile::default(),
+            recent_feedback: Vec::new(),
+        }
+    }
+}
+
+/// Rolling, privacy-preserving summary of observed user behavior.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct UserBehaviorProfile {
+    pub summary: String,
+    pub observation_windows: u32,
+    pub frequent_foreground_apps: Vec<(String, u32)>,
+    pub frequent_notifying_apps: Vec<(String, u32)>,
+    pub frequent_semantic_hints: Vec<(SemanticHint, u32)>,
+    pub action_successes: Vec<(String, u32)>,
+    pub action_denials: Vec<(String, u32)>,
+    pub action_failures: Vec<(String, u32)>,
+    pub last_updated_window_id: Option<String>,
+}
+
+/// Detailed but bounded record of recent model decisions and local outcomes.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RecentDecisionRecord {
+    pub window_id: String,
+    pub window_start_ms: i64,
+    pub window_end_ms: i64,
+    pub foreground_apps: Vec<String>,
+    pub notified_apps: Vec<String>,
+    pub semantic_hints: Vec<SemanticHint>,
+    pub route: String,
+    pub model: String,
+    pub intent_count: u32,
+    pub rationale_tags: Vec<String>,
+    pub backend_error: Option<String>,
+    pub action_outcomes: Vec<ActionFeedbackRecord>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ActionFeedbackRecord {
+    pub action_type: String,
+    pub target: Option<String>,
+    pub terminal: String,
+    pub correctness: FeedbackCorrectness,
+    pub correctness_evidence: String,
+    pub denial_reason: Option<String>,
+    pub error: Option<String>,
+    pub outcome_summary: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum FeedbackCorrectness {
+    LikelyCorrect,
+    PredictionHit,
+    PredictionMiss,
+    PolicyRejected,
+    ExecutionFailed,
+    NeutralNoOp,
+    Unknown,
+}
+
+/// Aggregated summary of a context window.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ContextSummary {
-    /// 窗口内的前台 app 序列 (按时间顺序, 去重)
     pub foreground_apps: Vec<String>,
-    /// 收到通知的 app 列表 (去重)
     pub notified_apps: Vec<String>,
-    /// 触发的语义标签汇总 (去重)
     pub all_semantic_hints: Vec<SemanticHint>,
-    /// 文件活动汇总 (扩展名类别 → 次数)
     pub file_activity: Vec<(ExtensionCategory, u32)>,
-    /// 系统状态快照 (取窗口内的最新值)
     pub latest_system_status: Option<SystemStatusSnapshot>,
-    /// 来源能力等级
     pub source_tier: SourceTier,
 }
 
-/// 系统状态快照
+/// Latest system status snapshot in a window.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SystemStatusSnapshot {
     pub battery_pct: Option<u8>,

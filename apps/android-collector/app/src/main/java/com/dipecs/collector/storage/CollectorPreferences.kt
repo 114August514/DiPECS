@@ -4,12 +4,14 @@ import android.content.Context
 import android.content.SharedPreferences
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
+import com.dipecs.collector.BuildConfig
 import java.security.SecureRandom
 
 object CollectorPreferences {
     const val MODE_MOCK = "mock"
     const val MODE_LLM = "llm"
     const val DEFAULT_ACTION_SOCKET_PORT = 46321
+    const val DEBUG_ACTION_SOCKET_TOKEN = "dipecs-dev-emulator-shared-token-00000000"
 
     private const val LEGACY_PREFS_NAME = "dipecs_collector"
     private const val SECURE_PREFS_NAME = "dipecs_collector_secure"
@@ -37,6 +39,7 @@ object CollectorPreferences {
     private const val KEY_ACTION_SOCKET_STATUS_MS = "action_socket_status_ms"
     private const val KEY_LAST_EXPORT_PATH = "last_export_path"
     private const val KEY_LAST_EXPORT_MS = "last_export_ms"
+    private const val DEBUG_TOKEN_PROPERTY = "debug.dipecs.token"
 
     @Volatile
     private var legacyMigrationDone = false
@@ -99,7 +102,7 @@ object CollectorPreferences {
                 return existing
             }
 
-            val generated = generateSocketToken()
+            val generated = initialActionSocketToken()
             val saved = securePrefs.edit()
                 .putString(KEY_ACTION_SOCKET_TOKEN, generated)
                 .commit()
@@ -261,6 +264,26 @@ object CollectorPreferences {
             }
             legacyMigrationDone = true
         }
+    }
+
+    private fun initialActionSocketToken(): String {
+        if (BuildConfig.DEBUG) {
+            return debugInjectedToken() ?: DEBUG_ACTION_SOCKET_TOKEN
+        }
+        return generateSocketToken()
+    }
+
+    private fun debugInjectedToken(): String? {
+        if (!BuildConfig.DEBUG) {
+            return null
+        }
+        return runCatching {
+            val clazz = Class.forName("android.os.SystemProperties")
+            val getter = clazz.getMethod("get", String::class.java)
+            (getter.invoke(null, DEBUG_TOKEN_PROPERTY) as? String)
+                ?.trim()
+                ?.takeIf { it.isNotBlank() }
+        }.getOrNull()
     }
 
     private fun generateSocketToken(): String {

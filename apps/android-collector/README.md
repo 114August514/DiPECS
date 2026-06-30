@@ -67,6 +67,19 @@ load the exported sanitized JSONL plus replay/audit NDJSON. The dashboard is
 static and local-only; it summarizes event kinds, `rawEvent` coverage, replay
 stages, and policy/audit decisions without rendering sensitive raw text.
 
+When real-device data is not available, use the deterministic synthetic sample
+instead:
+
+```bash
+python tools/generate_synthetic_android_trace.py --rows 2400
+cargo run -p aios-cli -- replay data/traces/android_synthetic_large.redacted.jsonl \
+  --stages policy \
+  --audit data/evaluation/android_synthetic_large.audit.ndjson
+```
+
+This fixture is large enough for dashboard and replay demos, but every row is
+marked `synthetic: true` and must not be described as a real-device capture.
+
 ## Rust Daemon Ingress
 
 `dipecsd` can continuously consume an append-only Android trace file:
@@ -89,17 +102,60 @@ Rows with `rawEvent: null` are skipped. Rows with a valid Rust `RawEvent`
 shape are wrapped as `CollectorEnvelope` with `SourceTier::PublicApi` and sent
 through the normal daemon pipeline.
 
+## Emulator Automation
+
+For Android Studio emulator validation on Windows, use the repository script:
+
+```powershell
+.\scripts\start-android-emulator.ps1
+```
+
+The script checks the Android SDK, installs the API 35 Google APIs x86_64 image
+if needed, creates the `dipecs_emu` AVD, starts the emulator, waits for boot,
+installs the debug APK, configures `adb forward tcp:46321 tcp:46321`, starts the
+app, starts the debug collector through an adb-only debug activity, and pings
+the action socket with a built-in TCP health check. Use `-Headless` for
+CI-style runs or `-SkipHealthCheck` when you only need APK install/forwarding.
 ## Authorized Action Socket
 
 The localhost action socket requires an `auth_token` field in every payload.
-The Android app stores the token in encrypted app preferences. The status panel
-only shows a redacted token; use **Copy Action Socket Token** when you need to
-pass it to local tooling. The CLI command is a ping/health-check and does not
-dispatch an action:
+Release builds generate a random token on first launch and store it in
+`EncryptedSharedPreferences`. The status panel only shows a redacted token; use
+**Copy Action Socket Token** when you need to pass the release token to local tooling.
+
+For Android Studio emulator validation, debug builds avoid the token bootstrap
+chicken-and-egg problem. On first launch, if no token has been stored yet, the
+app uses this fixed development token:
+
+```bash
+dipecs-dev-emulator-shared-token-00000000
+```
+
+The repository `.env.example` uses the same value:
+
+```bash
+DIPECS_ANDROID_ACTION_BRIDGE_ENABLED=true
+DIPECS_ANDROID_ACTION_BRIDGE_TOKEN=dipecs-dev-emulator-shared-token-00000000
+```
+
+You can override the debug token before the first app launch with adb:
+
+```bash
+adb shell setprop debug.dipecs.token my-local-debug-token
+```
+
+If the app has already generated or stored a token, clear app data or reinstall
+before changing the debug token:
+
+```bash
+adb shell pm clear com.dipecs.collector
+```
+
+The CLI command is a ping/health-check and does not dispatch an action:
 
 ```bash
 cargo run -p aios-cli -- send-authorized-action \
-  --auth-token <token-copied-from-app> \
+  --auth-token dipecs-dev-emulator-shared-token-00000000 \
   --host 127.0.0.1 \
   --port 46321
 ```
@@ -108,7 +164,7 @@ When `aios-action` forwards approved actions directly, set:
 
 ```bash
 DIPECS_ANDROID_ACTION_BRIDGE_ENABLED=true
-DIPECS_ANDROID_ACTION_BRIDGE_TOKEN=<token-copied-from-app>
+DIPECS_ANDROID_ACTION_BRIDGE_TOKEN=dipecs-dev-emulator-shared-token-00000000
 ```
 
 Dispatched action payloads must include all of the following:

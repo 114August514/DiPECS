@@ -54,6 +54,13 @@ Rules:
   `work:collector_heartbeat`.
 - For ReleaseMemory, use app-owned cache targets such as `cache:prefetch`.
 - Use short snake_case rationale tags.
+- The user message contains `model_input_json` with:
+  - `current_context`: the current sanitized window.
+  - `behavior_profile`: long-running privacy-preserving habit summary.
+  - `recent_feedback`: recent decisions plus local policy/execution outcomes.
+- Prefer current_context for immediate facts, use behavior_profile for stable
+  tendencies, and use recent_feedback to avoid repeating recently denied,
+  failed, or low-value actions.
 "#;
 
 pub(super) fn cloud_llm_enabled() -> bool {

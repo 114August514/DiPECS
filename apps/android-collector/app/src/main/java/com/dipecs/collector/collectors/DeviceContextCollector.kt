@@ -1,9 +1,12 @@
 package com.dipecs.collector.collectors
 
 import android.app.NotificationManager
+import android.bluetooth.BluetoothManager
+import android.bluetooth.BluetoothProfile
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.media.AudioDeviceInfo
 import android.media.AudioManager
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
@@ -33,8 +36,10 @@ object DeviceContextCollector {
         }
 
         val audioManager = appContext.getSystemService(AudioManager::class.java)
+        val bluetoothManager = appContext.getSystemService(BluetoothManager::class.java)
         val notificationManager = appContext.getSystemService(NotificationManager::class.java)
         val powerManager = appContext.getSystemService(PowerManager::class.java)
+        val headphoneConnected = audioManager?.hasConnectedHeadphone() ?: false
 
         return DeviceContext(
             timezone = TimeZone.getDefault().id,
@@ -49,6 +54,9 @@ object DeviceContextCollector {
                 else -> "unknown"
             },
             doNotDisturbMode = runCatching { notificationManager?.currentInterruptionFilter }.getOrNull(),
+            locationType = "Unknown",
+            headphoneConnected = headphoneConnected,
+            bluetoothConnected = bluetoothManager?.hasConnectedBluetoothDevice() ?: headphoneConnected,
         )
     }
 
@@ -65,4 +73,29 @@ object DeviceContextCollector {
             else -> "other"
         }
     }
+
+    private fun AudioManager.hasConnectedHeadphone(): Boolean =
+        getDevices(AudioManager.GET_DEVICES_OUTPUTS).any { device ->
+            when (device.type) {
+                AudioDeviceInfo.TYPE_WIRED_HEADPHONES,
+                AudioDeviceInfo.TYPE_WIRED_HEADSET,
+                AudioDeviceInfo.TYPE_USB_HEADSET,
+                AudioDeviceInfo.TYPE_BLUETOOTH_A2DP,
+                AudioDeviceInfo.TYPE_BLUETOOTH_SCO
+                -> true
+                else -> false
+            }
+        }
+
+    private fun BluetoothManager.hasConnectedBluetoothDevice(): Boolean =
+        runCatching {
+            val adapter = adapter ?: return@runCatching false
+            listOf(
+                BluetoothProfile.A2DP,
+                BluetoothProfile.HEADSET,
+                BluetoothProfile.GATT,
+            ).any { profile ->
+                adapter.getProfileConnectionState(profile) == BluetoothProfile.STATE_CONNECTED
+            }
+        }.getOrDefault(false)
 }

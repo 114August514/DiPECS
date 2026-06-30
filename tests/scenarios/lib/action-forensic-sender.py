@@ -27,7 +27,12 @@ action:"<AuthorizedAction JSON 字符串>"}`。认证标签 HMAC-SHA256 覆盖 f
 成立;它不替代、也不修改生产发送路径。daemon 真发那一轨的真实表现(大概率 empty)由
 脚本如实记录,不被本旁证掩盖。
 
-用法: action-forensic-sender.py <host> <port> <token> [delay_sec]
+用法: action-forensic-sender.py <host> <port> <token> [delay_sec] [action_type] [target] [urgency]
+  默认 action_type=KeepAlive target=work:collector_heartbeat urgency=Immediate(向后兼容原 KeepAlive 调用)。
+  其余可转发类型按 AndroidAdapter::classify / ActionExecutorBridge.dispatch 取各自合法 target:
+    ReleaseMemory  cache:prefetch     (CacheTrimmer → release_memory_completed)
+    PreWarmProcess own:warmup         (OwnResourceWarmer → own_resources_prewarmed)
+    PrefetchFile   url:https://…      (AccessibleContentPrefetcher → prefetch_started → succeeded/failed,需网络)
 退出码: 0=已发送(payload 已写出并延迟后关闭) 非0=连接/发送失败
 """
 import hashlib
@@ -76,7 +81,8 @@ def canonical_execute_envelope_input(issued_at_ms, expires_at_ms, action_json):
 
 def main():
     if len(sys.argv) < 4:
-        print("usage: action-forensic-sender.py <host> <port> <token> [delay_sec]",
+        print("usage: action-forensic-sender.py <host> <port> <token> [delay_sec] "
+              "[action_type] [target] [urgency]",
               file=sys.stderr)
         return 2
     host = sys.argv[1]
@@ -86,7 +92,12 @@ def main():
 
     issued_at_ms = int(time.time() * 1000)
     expires_at_ms = issued_at_ms + PAYLOAD_TTL_MS
-    action_type, target, urgency = "KeepAlive", "work:collector_heartbeat", "Immediate"
+    # 可选位置参数:类型/目标/紧迫度。默认 KeepAlive 心跳,保持原调用向后兼容。
+    # 设备 dispatch 只读 action_type+target;urgency 仅随 action 字节进 canonical HMAC,
+    # 取何值都被设备按收到的同一段字节重算校验。
+    action_type = sys.argv[5] if len(sys.argv) > 5 else "KeepAlive"
+    target = sys.argv[6] if len(sys.argv) > 6 else "work:collector_heartbeat"
+    urgency = sys.argv[7] if len(sys.argv) > 7 else "Immediate"
 
     action_json = build_action_json(issued_at_ms, action_type, target, urgency)
     canonical = canonical_execute_envelope_input(issued_at_ms, expires_at_ms, action_json)
@@ -124,8 +135,8 @@ def main():
             pass
     finally:
         s.close()
-    print(f"forensic payload sent ({len(payload)} bytes, hmac={tag[:12]}..., "
-          f"delay={delay}s{verdict})")
+    print(f"forensic payload sent ({len(payload)} bytes, action={action_type} target={target}, "
+          f"hmac={tag[:12]}..., delay={delay}s{verdict})")
     return 0
 
 

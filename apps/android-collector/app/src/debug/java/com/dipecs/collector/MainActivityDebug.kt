@@ -1,5 +1,6 @@
 package com.dipecs.collector
 
+import android.app.Activity
 import android.widget.EditText
 import android.widget.LinearLayout
 import com.dipecs.collector.actions.ActionExecutorBridge
@@ -8,69 +9,39 @@ import com.dipecs.collector.storage.CollectorPreferences
 import com.dipecs.collector.storage.EventRepository
 import org.json.JSONObject
 
-/**
- * Debug-only extension that adds the manual AuthorizedAction execution panel to
- * [MainActivity]. This code lives in the debug source set so release builds do
- * not expose a UI that can bypass the core lifecycle and forge an action.
- */
-fun MainActivity.addAuthorizedActionCard(root: LinearLayout) {
-    val content = LinearLayout(this).apply {
-        orientation = LinearLayout.VERTICAL
-    }
+fun Activity.addAuthorizedActionCard(container: LinearLayout) {
+    val content = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
 
-    val authorizedActionInput = EditText(this).apply {
+    val input = EditText(this).apply {
         hint = """{"intent_id":"demo","action":{"action_type":"PrefetchFile","target":"url:https://example.test/feed.json","urgency":"IdleTime"},"authorized_at_ms":0}"""
-        minLines = 4
-        maxLines = 8
+        minLines = 4; maxLines = 8
         setText(CollectorPreferences.authorizedActionJson(this@addAuthorizedActionCard))
     }
     content.addView(sectionLabel("AuthorizedAction JSON"))
-    content.addView(authorizedActionInput)
-    content.addView(rowButton("Save AuthorizedAction JSON") {
-        CollectorPreferences.setAuthorizedActionJson(this, authorizedActionInput.text.toString())
-        EventRepository.recordInternal(
-            this,
-            "authorized_action_saved",
-            "AuthorizedAction JSON saved",
-        )
-        toast("AuthorizedAction JSON saved")
-        refreshStatus()
+    content.addView(input)
+    content.addView(primaryButton("保存 JSON") {
+        CollectorPreferences.setAuthorizedActionJson(this, input.text.toString())
+        EventRepository.recordInternal(this, "authorized_action_saved", "JSON saved")
+        toast("已保存")
     })
-    content.addView(rowButton("Run AuthorizedAction Now") {
-        val payload = authorizedActionInput.text.toString().trim()
+    content.addView(primaryButton("立即执行") {
+        val payload = input.text.toString().trim()
         CollectorPreferences.setAuthorizedActionJson(this, payload)
         val dispatched = runCatching { JSONObject(payload) }
-            .map { json ->
-                ActionExecutorBridge.dispatchAuthorizedActionJson(
-                    this,
-                    json,
-                    reason = "manual_authorized_action",
-                )
-            }
+            .map { json -> ActionExecutorBridge.dispatchAuthorizedActionJson(this, json, reason = "manual_authorized_action") }
             .getOrElse { error ->
-                EventRepository.recordInternal(
-                    this,
-                    "authorized_action_rejected",
-                    error.message ?: "Invalid AuthorizedAction JSON",
-                    JSONObject().put("payloadBytes", payload.toByteArray(Charsets.UTF_8).size),
-                )
+                EventRepository.recordInternal(this, "authorized_action_rejected",
+                    error.message ?: "Invalid JSON",
+                    JSONObject().put("payloadBytes", payload.toByteArray(Charsets.UTF_8).size))
                 false
             }
-        if (dispatched) {
-            toast("AuthorizedAction queued")
-        } else {
-            toast("AuthorizedAction rejected")
-        }
-        refreshStatus()
+        toast(if (dispatched) "已加入队列" else "已拒绝")
     })
-    content.addView(rowButton("Run AuthorizedAction Via Service") {
-        val payload = authorizedActionInput.text.toString().trim()
+    content.addView(secondaryButton("通过服务执行") {
+        val payload = input.text.toString().trim()
         CollectorPreferences.setAuthorizedActionJson(this, payload)
-        startCollectorService(
-            action = DebugServiceActions.ACTION_EXECUTE_AUTHORIZED_ACTION,
-            authorizedActionJson = payload,
-        )
-        toast("AuthorizedAction service dispatch queued")
+        startCollectorService(action = DebugServiceActions.ACTION_EXECUTE_AUTHORIZED_ACTION, authorizedActionJson = payload)
+        toast("服务调度已加入队列")
     })
-    root.addView(card("Authorized action bridge (debug)", content))
+    container.addView(card("授权动作调试（仅 debug）", content))
 }

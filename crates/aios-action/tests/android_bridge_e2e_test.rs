@@ -68,7 +68,7 @@ fn context_with_apps(apps: &[&str]) -> StructuredContext {
     }
 }
 
-fn keepalive_batch() -> IntentBatch {
+fn single_action_batch(action_type: ActionType, target: &str) -> IntentBatch {
     IntentBatch {
         window_id: "w1".into(),
         intents: vec![Intent {
@@ -77,8 +77,8 @@ fn keepalive_batch() -> IntentBatch {
             confidence: 0.9,
             risk_level: RiskLevel::Low,
             suggested_actions: vec![SuggestedAction {
-                action_type: ActionType::KeepAlive,
-                target: Some("work:collector_heartbeat".into()),
+                action_type,
+                target: Some(target.into()),
                 urgency: ActionUrgency::Immediate,
             }],
             rationale_tags: vec![],
@@ -137,64 +137,88 @@ fn recompute_envelope_hmac(
 }
 
 #[test]
-fn forwarded_action_envelope_and_ok_maps_to_succeeded() {
-    let (port, rx) = spawn_mock_bridge(
-        br#"{"status":"ok","summary":"android_dispatched:KeepAlive","latency_us":11}"#,
-    );
-    let policy = PolicyEngine::default();
-    let adapter = adapter_for(port);
-    let lifecycle = ActionLifecycle::new(&policy, &adapter);
-    let records = lifecycle.run(
-        0,
-        &keepalive_batch(),
-        DecisionRoute::RuleBased,
-        None,
-        &permissive_capability(),
-        &context_with_apps(&["com.example.app"]),
-    );
+fn forwarded_actions_envelope_and_ok_maps_to_succeeded() {
+    // 遍历 AndroidAdapter::classify 下所有可转发的 action 类型,逐型钉死:execute 信封
+    // 形状、canonical HMAC、内嵌 action_type==Rust Debug 串(防 serde rename 让 Serialize
+    // 与 Debug 分叉)、设备 ok→Succeeded。NoOp 永不转发(本地 stub),故不在内。
+    let cases = [
+        (ActionType::KeepAlive, "work:collector_heartbeat"),
+        (ActionType::ReleaseMemory, "cache:prefetch"),
+        (ActionType::PrefetchFile, "url:https://example.test/a.json"),
+        (ActionType::PreWarmProcess, "own:warmup"),
+    ];
 
-    let payload = rx
-        .recv_timeout(Duration::from_secs(5))
-        .expect("mock bridge should receive the forwarded envelope");
-    let v: Value = serde_json::from_str(&payload).expect("payload is valid JSON");
+    for (action_type, target) in cases {
+        let (port, rx) =
+            spawn_mock_bridge(br#"{"status":"ok","summary":"android_executed","latency_us":7}"#);
+        let policy = PolicyEngine::default();
+        let adapter = adapter_for(port);
+        let lifecycle = ActionLifecycle::new(&policy, &adapter);
+        let records = lifecycle.run(
+            0,
+            &single_action_batch(action_type.clone(), target),
+            DecisionRoute::RuleBased,
+            None,
+            &permissive_capability(),
+            &context_with_apps(&["com.example.app"]),
+        );
 
-    // 线信封形状(aios_spec::bridge::BridgeExecuteRequest)。
-    assert_eq!(v["message_type"], "execute");
-    let issued = v["issued_at_ms"].as_i64().expect("issued_at_ms present");
-    let expires = v["expires_at_ms"].as_i64().expect("expires_at_ms present");
-    assert!(expires > issued, "expires must be after issued");
-    let action = v["action"]
-        .as_str()
-        .expect("action carried as the serialized AuthorizedAction string");
-    assert!(
-        action.contains("intent_id") && action.contains("KeepAlive"),
-        "action must be the serialized AuthorizedAction",
-    );
-    // 认证标签 == 对 canonical(freshness window + length-prefixed action)的独立重算。
-    let tag = v["auth"]["hmac_sha256"].as_str().expect("hmac present");
-    assert_eq!(tag.len(), 64, "SHA-256 HMAC hex is 64 chars");
-    assert_eq!(
-        tag,
-        recompute_envelope_hmac(TOKEN, issued, expires, action),
-        "envelope HMAC must equal HMAC over the canonical execute input",
-    );
+        let payload = rx
+            .recv_timeout(Duration::from_secs(5))
+            .unwrap_or_else(|_| panic!("mock bridge should receive envelope for {action_type:?}"));
+        let v: Value = serde_json::from_str(&payload).expect("payload is valid JSON");
 
-    // 设备 {status:ok} → Succeeded,summary 透传设备上报值。
-    assert_eq!(records.len(), 1);
-    assert!(
-        matches!(records[0].terminal, ActionState::Succeeded),
-        "device ok must map to Succeeded, got {:?}",
-        records[0].terminal,
-    );
-    assert_eq!(
-        records[0]
-            .outcome
-            .as_ref()
-            .expect("succeeded action has outcome")
-            .summary,
-        "android_dispatched:KeepAlive",
-        "summary must carry the device-reported value",
-    );
+        // 线信封形状(aios_spec::bridge::BridgeExecuteRequest)。
+        assert_eq!(v["message_type"], "execute", "{action_type:?}");
+        let issued = v["issued_at_ms"].as_i64().expect("issued_at_ms present");
+        let expires = v["expires_at_ms"].as_i64().expect("expires_at_ms present");
+        assert!(
+            expires > issued,
+            "{action_type:?}: expires must be after issued"
+        );
+        let action = v["action"]
+            .as_str()
+            .expect("action carried as the serialized AuthorizedAction string");
+        // 认证标签 == 对 canonical(freshness window + length-prefixed action)的独立重算。
+        let tag = v["auth"]["hmac_sha256"].as_str().expect("hmac present");
+        assert_eq!(
+            tag.len(),
+            64,
+            "{action_type:?}: SHA-256 HMAC hex is 64 chars"
+        );
+        assert_eq!(
+            tag,
+            recompute_envelope_hmac(TOKEN, issued, expires, action),
+            "{action_type:?}: envelope HMAC must equal HMAC over canonical execute input",
+        );
+        // 内嵌 action_type 字符串 == Rust Debug 串。
+        let action_value: Value =
+            serde_json::from_str(action).expect("action string is itself valid JSON");
+        assert_eq!(
+            action_value["action"]["action_type"]
+                .as_str()
+                .expect("action_type is a string"),
+            format!("{action_type:?}"),
+            "embedded action_type must match Debug string for {action_type:?}",
+        );
+
+        // 设备 {status:ok} → Succeeded,summary 透传设备上报值。
+        assert_eq!(records.len(), 1, "{action_type:?}: one audit record");
+        assert!(
+            matches!(records[0].terminal, ActionState::Succeeded),
+            "{action_type:?}: device ok must map to Succeeded, got {:?}",
+            records[0].terminal,
+        );
+        assert_eq!(
+            records[0]
+                .outcome
+                .as_ref()
+                .expect("succeeded action has outcome")
+                .summary,
+            "android_executed",
+            "{action_type:?}: summary must carry the device-reported value",
+        );
+    }
 }
 
 #[test]
@@ -205,7 +229,7 @@ fn device_rejection_maps_to_failed() {
     let lifecycle = ActionLifecycle::new(&policy, &adapter);
     let records = lifecycle.run(
         0,
-        &keepalive_batch(),
+        &single_action_batch(ActionType::KeepAlive, "work:collector_heartbeat"),
         DecisionRoute::RuleBased,
         None,
         &permissive_capability(),

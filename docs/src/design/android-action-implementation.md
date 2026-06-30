@@ -16,7 +16,8 @@ Deferred items for v0.2:
 
 | 文件 | 职责 |
 | --- | --- |
-| `crates/aios-action/src/lib.rs` | `DefaultActionExecutor`、Android bridge env、target 白名单、HMAC payload。 |
+| `crates/aios-action/src/lib.rs` | `DefaultActionExecutor` — 纯确定性 stub，不访问网络、环境变量或 Android。 |
+| `crates/aios-action/src/android_adapter.rs` | `AndroidAdapter` — Android bridge env、target 白名单、HMAC 载荷、TCP 请求/响应协议。 |
 | `apps/android-collector/.../actions/AuthorizedActionSocketServer.kt` | localhost socket、token、TTL、HMAC、rate limit。 |
 | `apps/android-collector/.../actions/ActionExecutorBridge.kt` | action type 分发。 |
 | `apps/android-collector/.../actions/AccessibleContentPrefetcher.kt` | `PrefetchFile` 实现。 |
@@ -34,7 +35,7 @@ DIPECS_ANDROID_ACTION_BRIDGE_PORT=46321
 DIPECS_ANDROID_ACTION_BRIDGE_TOKEN=<token-from-android-app>
 ```
 
-未启用时，`DefaultActionExecutor` 只返回本地 stub outcome。
+未启用时，daemon 启动期选择 `DefaultActionExecutor`（纯本地 stub），不包含 Android bridge 逻辑。
 
 ## Payload 字段
 

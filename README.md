@@ -80,10 +80,11 @@ Core boundaries:
   `StructuredContext`.
 - Decision backends output only `IntentBatch`; action execution accepts only
   `AuthorizedAction`.
-- Android action socket payloads require `auth_token`. Dispatched actions also
-  require a short freshness window and an HMAC-SHA256 `action_signature` over
-  the action summary; the token is stored in Android `EncryptedSharedPreferences`
-  and is injected by CLI/bridge tooling.
+- Android action socket pings require `auth_token`; `aios-action` dispatch uses
+  an execute envelope with a short freshness window and HMAC-SHA256 over the
+  freshness window plus length-prefixed serialized `AuthorizedAction`. The
+  shared token is stored in Android `EncryptedSharedPreferences` and is injected
+  by CLI/bridge tooling.
 
 ## Quick Start
 

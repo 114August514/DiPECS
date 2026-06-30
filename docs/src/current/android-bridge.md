@@ -38,13 +38,16 @@ Android `AuthorizedActionSocketServer` 监听：
 
 基础保护：
 
-- token 必填，常量时间比较。
+- ping payload 需要 `auth_token`，并做常量时间比较。
+- Rust `aios-action` dispatch 使用 `message_type: "execute"` envelope。
 - payload 最大 64 KiB。
 - 读超时。
 - auth 失败退避。
 - 最大 client 线程和 pending client 限制。
-- action payload 需要 `issued_at_ms` / `expires_at_ms` freshness window。
-- action payload 需要 `action_signature` HMAC-SHA256。
+- execute envelope 需要 `issued_at_ms` / `expires_at_ms` freshness window。
+- execute envelope 需要 `auth.hmac_sha256`，覆盖 freshness window 和
+  length-prefixed serialized `AuthorizedAction`。
+- Android 返回 JSON status，Rust 只把 `status: "ok"` 映射为 forwarded。
 
 CLI 的 `send-authorized-action` 当前只是 ping/health-check，不派发动作。
 

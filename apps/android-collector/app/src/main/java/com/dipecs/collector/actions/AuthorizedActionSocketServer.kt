@@ -5,6 +5,7 @@ import com.dipecs.collector.storage.CollectorPreferences
 import com.dipecs.collector.storage.EventRepository
 import java.io.IOException
 import java.io.InputStreamReader
+import java.io.OutputStreamWriter
 import java.net.InetAddress
 import java.net.ServerSocket
 import java.net.Socket
@@ -140,6 +141,7 @@ class AuthorizedActionSocketServer(
     }
 
     private fun handleClient(client: Socket) {
+        val startedAtNs = System.nanoTime()
         val payload = try {
             readPayload(client).trim()
         } catch (error: PayloadTooLargeException) {
@@ -175,6 +177,12 @@ class AuthorizedActionSocketServer(
 
         if (payload.isBlank()) {
             recordAuthFailure()
+            sendBridgeResponse(
+                client,
+                BridgeExecuteProtocol.STATUS_REJECTED,
+                error = "empty payload",
+                startedAtNs = startedAtNs,
+            )
             EventRepository.recordInternal(
                 context,
                 "authorized_action_socket_empty",
@@ -186,6 +194,10 @@ class AuthorizedActionSocketServer(
 
         runCatching { JSONObject(payload) }
             .onSuccess { json ->
+                if (BridgeExecuteProtocol.isExecuteEnvelope(json)) {
+                    handleExecuteEnvelope(client, json, startedAtNs)
+                    return@onSuccess
+                }
                 if (isRateLimited()) {
                     EventRepository.recordInternal(
                         context,
@@ -258,6 +270,12 @@ class AuthorizedActionSocketServer(
             }
             .onFailure { error ->
                 recordAuthFailure()
+                sendBridgeResponse(
+                    client,
+                    BridgeExecuteProtocol.STATUS_REJECTED,
+                    error = "invalid json",
+                    startedAtNs = startedAtNs,
+                )
                 EventRepository.recordInternal(
                     context,
                     "authorized_action_socket_invalid_json",
@@ -267,6 +285,96 @@ class AuthorizedActionSocketServer(
                         .put("port", port),
                 )
             }
+    }
+
+    private fun handleExecuteEnvelope(
+        client: Socket,
+        json: JSONObject,
+        startedAtNs: Long,
+    ) {
+        if (isRateLimited()) {
+            sendBridgeResponse(
+                client,
+                BridgeExecuteProtocol.STATUS_REJECTED,
+                error = "auth temporarily rate limited",
+                startedAtNs = startedAtNs,
+            )
+            EventRepository.recordInternal(
+                context,
+                "authorized_action_socket_rate_limited",
+                "AuthorizedAction socket auth temporarily rate limited",
+                JSONObject().put("port", port).put("protocol", "bridge_execute"),
+            )
+            return
+        }
+
+        when (val verified = BridgeExecuteProtocol.verifyExecuteEnvelope(json, authToken)) {
+            is BridgeExecuteProtocol.Verification.Accepted -> {
+                failedAuthCount.set(0)
+                rejectUntilMs.set(0)
+                val dispatchResult = runCatching {
+                    ActionExecutorBridge.dispatchAuthorizedActionJson(
+                        context,
+                        verified.authorizedAction,
+                        reason = "bridge_execute",
+                    )
+                }
+                val dispatched = dispatchResult.getOrDefault(false)
+                if (dispatched) {
+                    val actionType = verified.authorizedAction
+                        .optJSONObject("action")
+                        ?.optString("action_type")
+                        ?.takeIf { it.isNotBlank() }
+                        ?: "unknown"
+                    sendBridgeResponse(
+                        client,
+                        BridgeExecuteProtocol.STATUS_OK,
+                        summary = "android_dispatched:$actionType",
+                        startedAtNs = startedAtNs,
+                    )
+                    EventRepository.recordInternal(
+                        context,
+                        "authorized_action_socket_execute_ok",
+                        "Bridge execute request dispatched",
+                        JSONObject()
+                            .put("port", port)
+                            .put("actionType", actionType),
+                    )
+                } else {
+                    sendBridgeResponse(
+                        client,
+                        BridgeExecuteProtocol.STATUS_ERROR,
+                        error = dispatchResult.exceptionOrNull()?.message
+                            ?: "authorized action was not dispatched",
+                        startedAtNs = startedAtNs,
+                    )
+                    EventRepository.recordInternal(
+                        context,
+                        "authorized_action_socket_dispatch_failed",
+                        dispatchResult.exceptionOrNull()?.message
+                            ?: "Bridge execute request was authorized but not dispatched",
+                        JSONObject().put("port", port),
+                    )
+                }
+            }
+            is BridgeExecuteProtocol.Verification.Rejected -> {
+                recordAuthFailure()
+                sendBridgeResponse(
+                    client,
+                    BridgeExecuteProtocol.STATUS_REJECTED,
+                    error = verified.reason,
+                    startedAtNs = startedAtNs,
+                )
+                EventRepository.recordInternal(
+                    context,
+                    "authorized_action_socket_execute_rejected",
+                    "Bridge execute request rejected",
+                    JSONObject()
+                        .put("port", port)
+                        .put("reason", verified.reason),
+                )
+            }
+        }
     }
 
     private fun sendPong(client: Socket) {
@@ -283,6 +391,35 @@ class AuthorizedActionSocketServer(
                 "authorized_action_socket_pong_failed",
                 error.message ?: "Failed to send pong",
                 JSONObject().put("port", port),
+            )
+        }
+    }
+
+    private fun sendBridgeResponse(
+        client: Socket,
+        status: String,
+        summary: String? = null,
+        error: String? = null,
+        startedAtNs: Long,
+    ) {
+        runCatching {
+            val response = BridgeExecuteProtocol.responseJson(
+                status = status,
+                summary = summary,
+                error = error,
+                latencyUs = TimeUnit.NANOSECONDS.toMicros(System.nanoTime() - startedAtNs),
+            )
+            val writer = OutputStreamWriter(client.getOutputStream(), Charsets.UTF_8)
+            writer.write(response.toString())
+            writer.flush()
+        }.onFailure { failure ->
+            EventRepository.recordInternal(
+                context,
+                "authorized_action_socket_response_failed",
+                failure.message ?: "Failed to send bridge response",
+                JSONObject()
+                    .put("port", port)
+                    .put("status", status),
             )
         }
     }
@@ -453,5 +590,113 @@ class AuthorizedActionSocketServer(
             val rightBytes = right.toByteArray(Charsets.UTF_8)
             return MessageDigest.isEqual(leftBytes, rightBytes)
         }
+    }
+}
+
+internal object BridgeExecuteProtocol {
+    const val MESSAGE_TYPE_EXECUTE = "execute"
+    const val STATUS_OK = "ok"
+    const val STATUS_REJECTED = "rejected"
+    const val STATUS_ERROR = "error"
+
+    private const val MESSAGE_TYPE_FIELD = "message_type"
+    private const val AUTH_FIELD = "auth"
+    private const val HMAC_FIELD = "hmac_sha256"
+    private const val ACTION_FIELD = "action"
+    private const val ISSUED_AT_FIELD = "issued_at_ms"
+    private const val EXPIRES_AT_FIELD = "expires_at_ms"
+    private val MAX_ENVELOPE_TTL_MS = TimeUnit.MINUTES.toMillis(5)
+    private val ENVELOPE_CLOCK_SKEW_MS = TimeUnit.SECONDS.toMillis(30)
+
+    sealed class Verification {
+        data class Accepted(val authorizedAction: JSONObject) : Verification()
+        data class Rejected(val reason: String) : Verification()
+    }
+
+    fun isExecuteEnvelope(payload: JSONObject): Boolean =
+        payload.optString(MESSAGE_TYPE_FIELD) == MESSAGE_TYPE_EXECUTE
+
+    fun verifyExecuteEnvelope(payload: JSONObject, authToken: String): Verification {
+        val actionJson = (payload.opt(ACTION_FIELD) as? String)?.takeIf { it.isNotBlank() }
+            ?: return Verification.Rejected("missing action")
+        val issuedAtMs = payload.optLong(ISSUED_AT_FIELD, 0L)
+        val expiresAtMs = payload.optLong(EXPIRES_AT_FIELD, 0L)
+        validateFreshnessWindow(issuedAtMs, expiresAtMs)?.let { reason ->
+            return Verification.Rejected(reason)
+        }
+        val suppliedHmac = payload.optJSONObject(AUTH_FIELD)
+            ?.optString(HMAC_FIELD)
+            ?.takeIf { it.isNotBlank() }
+            ?: return Verification.Rejected("missing hmac")
+        val expectedHmac = hmacSha256Hex(
+            authToken,
+            canonicalExecuteEnvelopeInput(issuedAtMs, expiresAtMs, actionJson),
+        )
+        if (!constantTimeEquals(suppliedHmac.lowercase(), expectedHmac)) {
+            return Verification.Rejected("bad hmac")
+        }
+        val authorizedAction = runCatching { JSONObject(actionJson) }.getOrElse {
+            return Verification.Rejected("invalid action json")
+        }
+        if (authorizedAction.optJSONObject(ACTION_FIELD) == null) {
+            return Verification.Rejected("authorized action missing action object")
+        }
+        return Verification.Accepted(authorizedAction)
+    }
+
+    fun canonicalExecuteEnvelopeInput(
+        issuedAtMs: Long,
+        expiresAtMs: Long,
+        actionJson: String,
+    ): String =
+        "dipecs.android.bridge.execute.v1\n" +
+            "issued_at_ms:$issuedAtMs\n" +
+            "expires_at_ms:$expiresAtMs\n" +
+            "action:${actionJson.toByteArray(Charsets.UTF_8).size}:$actionJson"
+
+    private fun validateFreshnessWindow(issuedAtMs: Long, expiresAtMs: Long): String? {
+        if (issuedAtMs <= 0L || expiresAtMs <= 0L || expiresAtMs <= issuedAtMs) {
+            return "missing or invalid freshness window"
+        }
+        if (expiresAtMs - issuedAtMs > MAX_ENVELOPE_TTL_MS) {
+            return "freshness window too long"
+        }
+        val now = System.currentTimeMillis()
+        if (now + ENVELOPE_CLOCK_SKEW_MS < issuedAtMs || now - ENVELOPE_CLOCK_SKEW_MS > expiresAtMs) {
+            return "expired freshness window"
+        }
+        return null
+    }
+
+    fun responseJson(
+        status: String,
+        summary: String? = null,
+        error: String? = null,
+        latencyUs: Long? = null,
+    ): JSONObject {
+        val response = JSONObject().put("status", status)
+        if (summary != null) {
+            response.put("summary", summary)
+        }
+        if (latencyUs != null) {
+            response.put("latency_us", latencyUs)
+        }
+        if (error != null) {
+            response.put("error", error)
+        }
+        return response
+    }
+
+    fun hmacSha256Hex(key: String, message: String): String {
+        val mac = Mac.getInstance("HmacSHA256")
+        mac.init(SecretKeySpec(key.toByteArray(Charsets.UTF_8), "HmacSHA256"))
+        return mac.doFinal(message.toByteArray(Charsets.UTF_8))
+            .joinToString(separator = "") { byte -> "%02x".format(byte) }
+    }
+
+    private fun constantTimeEquals(left: String, right: String): Boolean {
+        val leftBytes = left.toByteArray(Charsets.UTF_8)
+        val rightBytes = right.toByteArray(Charsets.UTF_8)
+        return MessageDigest.isEqual(leftBytes, rightBytes)
     }
 }

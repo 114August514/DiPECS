@@ -3,7 +3,9 @@
 //! This stays in `aios-daemon` because daemonization and signal wiring are
 //! executable runtime concerns, not collection, decision, or action logic.
 
-use std::{io, process};
+#[cfg(target_os = "linux")]
+use std::io;
+use std::process;
 
 /// Move the current process into daemon mode with `fork` + `setsid`.
 ///

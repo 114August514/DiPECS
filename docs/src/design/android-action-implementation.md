@@ -37,31 +37,35 @@ DIPECS_ANDROID_ACTION_BRIDGE_TOKEN=<token-from-android-app>
 
 未启用时，daemon 启动期选择 `DefaultActionExecutor`（纯本地 stub），不包含 Android bridge 逻辑。
 
-## Payload 字段
+## Execute Envelope
 
-`aios-action` 序列化 `AuthorizedAction` 后追加：
+`aios-action` 序列化 `AuthorizedAction` 后，把 JSON 字符串放入 execute
+envelope：
 
 ```json
 {
-  "auth_token": "...",
+  "message_type": "execute",
   "issued_at_ms": 0,
   "expires_at_ms": 0,
-  "action_signature": "hex-hmac-sha256"
+  "action": "{\"action\":{...}}",
+  "auth": {
+    "hmac_sha256": "hex-hmac-sha256"
+  }
 }
 ```
 
 签名输入是 length-prefixed canonical string：
 
 ```text
-dipecs.android.action.v1
+dipecs.android.bridge.execute.v1
 issued_at_ms:<issued>
 expires_at_ms:<expires>
-action_type:<len>:<ActionType>
-target:<len>:<target>
-urgency:<len>:<Urgency>
+action:<utf8-byte-len>:<serialized AuthorizedAction JSON>
 ```
 
-Android 侧用相同规则验证 HMAC。
+Android 侧用相同规则验证 HMAC、freshness window 和 action JSON。dispatch 后
+返回 JSON status；Rust 只把 `status: "ok"` 映射为 forwarded outcome，并把
+Android 返回的 `summary` / `latency_us` 写入 `ActionOutcome`。
 
 ## Action dispatch
 

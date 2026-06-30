@@ -101,10 +101,14 @@ Ping:
 真实 action dispatch:
 
 - 必须由 Rust `ActionLifecycle` 生成 `AuthorizedAction`。
-- `aios-action` 注入 `auth_token`、`issued_at_ms`、`expires_at_ms` 和 `action_signature`。
-- `action_signature` 是 HMAC-SHA256，覆盖 action type、target、urgency 和 freshness window。
-- Android 在 dispatch 前校验 token、freshness window 和 signature。
-- 缺签名、签名不匹配、过期或 TTL 过长都会拒绝。
+- `aios-action` 发送 `message_type: "execute"` envelope，包含
+  `issued_at_ms`、`expires_at_ms`、serialized `AuthorizedAction` 字符串和
+  `auth.hmac_sha256`。
+- `auth.hmac_sha256` 是 HMAC-SHA256，覆盖 freshness window 和
+  length-prefixed action JSON。
+- Android 在 dispatch 前校验 freshness window、HMAC 和 action JSON。
+- 缺 HMAC、HMAC 不匹配、过期、TTL 过长或 action malformed 都会拒绝。
+- Android 返回 JSON status；Rust 只把 `status: "ok"` 视为 forwarded。
 
 ## Android-Safe Action Targets
 

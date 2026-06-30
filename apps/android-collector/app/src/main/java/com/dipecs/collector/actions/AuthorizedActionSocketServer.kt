@@ -312,30 +312,26 @@ class AuthorizedActionSocketServer(
             is BridgeExecuteProtocol.Verification.Accepted -> {
                 failedAuthCount.set(0)
                 rejectUntilMs.set(0)
-                val dispatchResult = runCatching {
-                    ActionExecutorBridge.dispatchAuthorizedActionJson(
-                        context,
-                        verified.authorizedAction,
-                        reason = "bridge_execute",
-                    )
+                val actionObj = verified.authorizedAction.optJSONObject("action")
+                val actionType = actionObj
+                    ?.optString("action_type")
+                    ?.takeIf { it.isNotBlank() }
+                    ?: "NoOp"
+                val target = actionObj?.let { obj ->
+                    if (obj.has("target") && !obj.isNull("target")) obj.optString("target") else null
                 }
-                val dispatched = dispatchResult.getOrDefault(false)
-                if (dispatched) {
-                    val actionType = verified.authorizedAction
-                        .optJSONObject("action")
-                        ?.optString("action_type")
-                        ?.takeIf { it.isNotBlank() }
-                        ?: "unknown"
+                val result = executeSystemAction(actionType, target, "bridge_execute")
+                if (result.success) {
                     sendBridgeResponse(
                         client,
                         BridgeExecuteProtocol.STATUS_OK,
-                        summary = "android_dispatched:$actionType",
+                        summary = result.summary,
                         startedAtNs = startedAtNs,
                     )
                     EventRepository.recordInternal(
                         context,
                         "authorized_action_socket_execute_ok",
-                        "Bridge execute request dispatched",
+                        "Bridge execute request dispatched: $actionType → ${result.summary}",
                         JSONObject()
                             .put("port", port)
                             .put("actionType", actionType),
@@ -344,15 +340,15 @@ class AuthorizedActionSocketServer(
                     sendBridgeResponse(
                         client,
                         BridgeExecuteProtocol.STATUS_ERROR,
-                        error = dispatchResult.exceptionOrNull()?.message
-                            ?: "authorized action was not dispatched",
+                        summary = result.summary,
+                        error = result.error,
                         startedAtNs = startedAtNs,
                     )
                     EventRepository.recordInternal(
                         context,
                         "authorized_action_socket_dispatch_failed",
-                        dispatchResult.exceptionOrNull()?.message
-                            ?: "Bridge execute request was authorized but not dispatched",
+                        result.error
+                            ?: "Bridge execute request not dispatched: $actionType",
                         JSONObject().put("port", port),
                     )
                 }
@@ -375,6 +371,58 @@ class AuthorizedActionSocketServer(
                 )
             }
         }
+    }
+
+    // ── System action dispatch ─────────────────────
+
+    private fun executeSystemAction(
+        actionType: String,
+        target: String?,
+        reason: String,
+    ): SystemActionExecutors.ActionResult {
+        return when (actionType) {
+            "PreWarmProcess" -> {
+                val t = target ?: "own:resources"
+                SystemActionExecutors.prewarmProcess(context, t, reason)
+            }
+            "PrefetchFile" -> {
+                val t = target
+                if (t.isNullOrBlank()) {
+                    SystemActionExecutors.ActionResult(
+                        success = false, summary = "prefetch_no_target",
+                        latencyUs = 0, error = "PrefetchFile requires a target")
+                } else {
+                    var result: SystemActionExecutors.ActionResult? = null
+                    SystemActionExecutors.prefetchFile(context, t, reason) { r ->
+                        result = r
+                    }
+                    result ?: SystemActionExecutors.ActionResult(
+                        success = true, summary = "prefetch_enqueued",
+                        latencyUs = 0, error = null)
+                }
+            }
+            "KeepAlive" -> {
+                val t = target ?: "work:collector_heartbeat"
+                SystemActionExecutors.keepAlive(context, t, reason)
+            }
+            "ReleaseMemory" -> {
+                SystemActionExecutors.releaseMemory(context, target, reason)
+            }
+            "NoOp" -> {
+                SystemActionExecutors.noOp(context, reason)
+            }
+            else -> {
+                SystemActionExecutors.ActionResult(
+                    success = false,
+                    summary = "unsupported_action",
+                    latencyUs = 0,
+                    error = "Unknown action type: $actionType")
+            }
+        }
+    }
+
+    private fun recordEvent(eventType: String, message: String, extra: JSONObject = JSONObject()) {
+        EventRepository.recordInternal(context, eventType, message, extra)
     }
 
     private fun sendPong(client: Socket) {

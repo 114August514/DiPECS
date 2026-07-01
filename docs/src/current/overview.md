@@ -6,7 +6,7 @@
 
 DiPECS 当前是一个 Android/Linux AIOS 原型。它把本地信号采集、隐私脱敏、上下文聚合、决策路由、策略审查和授权动作执行拆成独立边界，避免原始 Android 事件直接进入模型或动作执行器。
 
-当前默认运行路径不是“云端 LLM 主导”。`DecisionRouter` 默认优先使用本地 `RuleBasedBackend`；`CloudLlmBackend` 只有在环境变量启用且配置完整时才参与路由。云端失败会回落到本地规则，连续错误触发熔断后进入 `FallbackNoOpBackend`。
+当前默认运行路径不是“云端 LLM 主导”。`DecisionRouter` 默认优先使用本地 `RuleBasedBackend`；当窗口带有本地可行动信号或云端未启用/不可用时，会路由到 `LocalEvaluatorBackend`；`CloudLlmBackend` 只有在环境变量启用且配置完整时才参与路由。云端失败会回落到本地规则，连续错误触发熔断后进入 `FallbackNoOpBackend`。
 
 ## 当前主链路
 
@@ -37,7 +37,7 @@ Android collector JSONL / daemon system sources / replay fixture
 | Daemon 采集 | `/proc` 进程差分、系统状态快照、Android JSONL tail。 |
 | Binder/eBPF | 只有 `BinderProbe` 接口和检测 stub；当前不产生真实 Binder 事件。 |
 | 隐私边界 | `RawEvent` 只在 collector-core 边界内存在；模型后端只接收 `StructuredContext`。 |
-| 决策 | `RuleBasedBackend`、可选 `CloudLlmBackend`、`FallbackNoOpBackend`。 |
+| 决策 | `RuleBasedBackend`、`LocalEvaluatorBackend`、可选 `CloudLlmBackend`、`FallbackNoOpBackend`。 |
 | 策略 | `PolicyEngine` 做风险、置信度、能力、urgency、target-in-context 检查。 |
 | 动作治理 | `ActionLifecycle` 是 `AuthorizedAction` 唯一构造点，每个建议动作产出一条终态 `AuditRecord`。 |
 | 动作执行 | `DefaultActionExecutor` 默认本地 stub；启用 Android bridge 后转发 Android-safe target。 |

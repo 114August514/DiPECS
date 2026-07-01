@@ -1,7 +1,7 @@
 # DiPECS
 
 [![Rust](https://img.shields.io/badge/Rust-1.95.0-orange)](rust-toolchain.toml)
-[![Android API](https://img.shields.io/badge/Android%20API-33-green)](scripts/setup-env.sh)
+[![Android targetSdk](https://img.shields.io/badge/Android%20targetSdk-35-green)](apps/android-collector/app/build.gradle.kts)
 [![NDK](https://img.shields.io/badge/NDK-r27d-green)](scripts/setup-env.sh)
 [![License](https://img.shields.io/badge/License-Apache--2.0-blue)](LICENSE)
 
@@ -16,7 +16,9 @@ action executors.
 Implemented:
 
 - `aios-spec` defines `RawEvent`, `CollectorEnvelope`, `SanitizedEvent`,
-  `StructuredContext`, `IntentBatch`, `CapabilityLevel`, and `AuthorizedAction`.
+  `StructuredContext`, `IntentBatch`, and `CapabilityLevel`.
+- `aios-core` constructs the non-forgeable `AuthorizedAction` through
+  `ActionLifecycle`; `aios-action` only receives it.
 - `apps/android-collector` is the Android public-API collector. Promoted sources
   write Rust-compatible `rawEvent` JSONL rows; optional sources remain available
   for interface screening.

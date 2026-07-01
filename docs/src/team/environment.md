@@ -81,6 +81,9 @@ NDK 仅交叉编译 Android target 时需要；不碰 Android 的成员可以跳
    aarch64-linux-android33-clang --version
    ```
 
+   注意：这是 Rust daemon 交叉编译当前使用的链接器 API 级别；Android app 自身的
+   `compileSdk`/`targetSdk` 为 35，`minSdk` 为 26。
+
 以上 L0–L2 也可以一键执行：
 
 ```bash

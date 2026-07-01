@@ -21,7 +21,8 @@ Android / daemon / replay sources
   -> AuditRecord
 ```
 
-Cloud LLM 是可选后端；默认路径由本地 `RuleBasedBackend` 和保守 fallback 支撑。
+Cloud LLM 是可选后端；默认路径由本地 `RuleBasedBackend`、`LocalEvaluatorBackend`
+和保守 fallback 支撑。
 
 ---
 

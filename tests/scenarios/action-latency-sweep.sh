@@ -61,9 +61,14 @@ measure_action() {
 
   local device_us
   device_us="$(printf '%s' "$line" | python3 -c '
-import sys, json
+import sys, json, re
 try:
-    data = json.load(sys.stdin)
+    text = sys.stdin.read()
+    m = re.search(r"device=({.*})", text)
+    if not m:
+        print("NA")
+        sys.exit(0)
+    data = json.loads(m.group(1))
     v = data.get("latency_us")
     print(int(v) if isinstance(v, (int, float)) and v is not None else "NA")
 except Exception:

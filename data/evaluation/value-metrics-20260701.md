@@ -81,12 +81,15 @@ target-in-context 等多重规则进行二阶审查,防止越权执行。
 - `tests/scenarios/action-loop-e2e.sh`:真机/模拟器 EXECUTED 验证
 - `tests/scenarios/action-latency-sweep.sh`:设备侧动作确认延迟(需 emulator/真机)
 
-| 动作类型 | 设备终态审计事件 | 状态 |
-| --- | --- | --- |
-| KeepAlive | `keep_alive_scheduled` → `keep_alive_job_executed` | EXECUTED |
-| ReleaseMemory | `release_memory_completed` | EXECUTED |
-| PreWarmProcess | `own_resources_prewarmed` | EXECUTED |
-| PrefetchFile | `prefetch_started` → `prefetch_succeeded` | EXECUTED |
+| 动作类型 | 设备终态审计事件 | 设备确认延迟(us) | 状态 |
+| --- | --- | --- | --- |
+| KeepAlive | `keep_alive_scheduled` → `keep_alive_job_executed` | 21343 | EXECUTED |
+| ReleaseMemory | `release_memory_completed` | 13409 | EXECUTED |
+| PreWarmProcess | `own_resources_prewarmed` | 31231 | EXECUTED |
+| PrefetchFile | `prefetch_started` → `prefetch_succeeded` | 1069 | EXECUTED |
+
+**环境**:Android Emulator `dipecs_e2e`,host x86_64,`adb forward tcp:46321 tcp:46321`。
+**注**:PrefetchFile 为异步派发,回执仅代表已入队,因此延迟显著低于同步动作。
 
 **价值**:不是"代码里能调用",而是四类可转发动作在真实 Android 环境中均被设备确认
 并执行,链路(`AndroidAdapter` → execute 信封 → HMAC 校验 → dispatch → handler)完整闭环。
@@ -116,9 +119,9 @@ target-in-context 等多重规则进行二阶审查,防止越权执行。
 - **隐私**:放"naive prompt 63KB / DiPECS 645B" + "22 leaks / 0 leaks" 对比。
 - **资源**:放"1631 events / 128 ms / 10.8MB RSS" 三数字。
 - **治理**:放 policy_engine_test 20/20 + denial reasons 列表。
-- **真机执行**:放 EXECUTED ×4 表格 + 设备回执截图/trace 链接。
+- **UX 动作延迟**:放四类型设备确认延迟(KeepAlive ~21ms,ReleaseMemory ~13ms,PreWarm ~31ms,Prefetch ~1ms)。
 
-## 8. 待补充(需 emulator/真机)
+## 8. 已补充
 
-- `tests/scenarios/action-latency-sweep.sh`:设备侧动作确认延迟(us 级)尚未本轮运行,
-  需在启动 emulator 后执行以补充 UX 延迟数据。
+- `tests/scenarios/action-latency-sweep.sh`:已在 Android Emulator `dipecs_e2e` 上运行,
+  四类动作设备侧确认延迟见第 5 节表格。

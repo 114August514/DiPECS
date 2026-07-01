@@ -62,9 +62,10 @@ DIPECS_RUNTIME_TRACE_OUTPUT=data/evaluation/runtime.ndjson
 │        -> ModelMemoryStore.model_input(ctx)                  │
 │        -> DecisionRouter.evaluate_model_input                │
 │        -> ActionLifecycle                                    │
-│        -> ModelMemoryStore.update()                          │
-│        -> ProfileSummarizer                                  │
+│        -> ModelMemoryStore.observe_window(...)               │
 │        -> RuntimeTraceRecorder                               │
+│                                                              │
+│  (ProfileSummaryWorker runs in background between windows)   │
 └──────────────────────────────────────────────────────────────┘
 ```
 
@@ -81,11 +82,10 @@ DIPECS_RUNTIME_TRACE_OUTPUT=data/evaluation/runtime.ndjson
 
 Android JSONL 只有在传入 `--android-trace-jsonl` 或设置 `DIPECS_ANDROID_TRACE_JSONL` 时启用。
 
-processing loop 等待三类事件：
+processing loop 等待两类事件：
 
-1. shutdown signal
-2. `bus.recv_raw()`
-3. window deadline
+1. `bus.recv_raw()`
+2. window deadline
 
 收到 raw event 时：
 
@@ -94,6 +94,8 @@ RawEvent + SourceTier
   -> sanitizer.sanitize_with_tier(...)
   -> window.push(SanitizedEvent)
 ```
+
+当 collection task 被通知关闭时，会 drop raw events sender；processing loop 在 channel close 后处理完当前窗口再退出。
 
 ## 窗口处理
 
@@ -106,8 +108,12 @@ WindowAggregator.close(...)
   -> DecisionRouter.evaluate_model_input(input)
   -> CapabilityLevel::for_route(route)
   -> ActionLifecycle.run(window_ordinal, batch, route, backend_error, capability, ctx)
-  -> ModelMemoryStore.update(...)
+  -> ModelMemoryStore.observe_window(ctx, decision, audit_records)
 ```
+
+`process_window` 还会在每个窗口边界前后轮询 `ProfileSummaryWorker`：
+已完成的后台摘要任务会被 join 并写回 `ModelMemoryStore.llm_summary`，
+随后按需启动新的后台摘要任务。
 
 `process_window` 会统计：
 

@@ -24,7 +24,7 @@ crates/
 aios-spec
   ├─ aios-collector
   ├─ aios-core
-  ├─ aios-agent
+  │   └─ aios-agent
   └─ aios-action (also depends on aios-core)
 
 aios-collector ─┐
@@ -32,10 +32,10 @@ aios-core ──────┼─ aios-daemon
 aios-agent ─────┤
 aios-action ────┘
 
-aios-cli 复用 collector/core/agent/action 做离线 replay
+aios-cli 复用 core/agent/action 做离线 replay
 ```
 
-`aios-action` 额外依赖 `aios-core`（为了 `ActionAdapter` trait 和 `AuthorizedAction` 类型），其余 library-layer crates 只依赖 `aios-spec`。
+`aios-action` 和 `aios-agent` 都额外依赖 `aios-core`（前者为了 `ActionAdapter` trait 和 `AuthorizedAction` 类型，后者为了 `ModelMemoryStore`、`PolicyEngine` 等）。其余 library-layer crates 只依赖 `aios-spec`。
 
 ## `aios-spec`
 
@@ -111,7 +111,7 @@ aios-cli 复用 collector/core/agent/action 做离线 replay
 
 | 文件 | 职责 |
 | --- | --- |
-| `main.rs` | `replay` 和 `send-authorized-action` CLI。当前 socket 命令只做 ping。 |
+| `main.rs` | `replay`、`send-authorized-action`、`send-action` CLI。 |
 | `replay.rs` | JSONL replay、stage output、canonical audit hash。 |
 | `android_bridge.rs` | Android socket ping/health-check。 |
 
@@ -133,8 +133,8 @@ aios-cli 复用 collector/core/agent/action 做离线 replay
 | `actions/AccessibleContentPrefetcher.kt` | `url:https://` / `uri:content://` prefetch。 |
 | `actions/ActionMaintenanceScheduler.kt` | `KeepAlive(work:*)` 的 JobScheduler 实现。 |
 | `actions/CacheTrimmer.kt` | `ReleaseMemory(cache:*)` 的 app-owned cache 清理。 |
-| `actions/OwnResourceWarmer.kt` | `PreWarmProcess(own:*)` 的自身资源预热。 |
-| `actions/SystemActionExecutors.kt` | 系统级 action 执行器（预装 app 预热等）。 |
+| `actions/SystemActionExecutors.kt` | 系统级 action 执行器（需要 platform 签名/root 时才能启用完整能力）。 |
+| `actions/SystemPrewarmActivity.kt` | 系统预装 app / 自身资源预热 activity。 |
 | `actions/SystemPrewarmActivity.kt` | 系统预装 app 预热 activity。 |
 | `actions/UserVisibleActionNotifier.kt` | 用户可见动作提示（非静默执行的安全确认）。 |
 

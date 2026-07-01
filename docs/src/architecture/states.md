@@ -23,11 +23,11 @@ WaitRawOrDeadline
 
 | 阶段 | 触发 | 主要代码 | 输出 |
 | --- | --- | --- | --- |
-| `WaitRawOrDeadline` | `tokio::select!` 等待 raw event / shutdown / deadline | `aios-daemon/src/lib.rs` | `ProcessingEvent` |
+| `WaitRawOrDeadline` | `tokio::select!` 等待 raw event / deadline | `aios-daemon/src/lib.rs` | `ProcessingEvent` |
 | `SanitizeRawEvent` | 收到 `IngestedRawEvent` | `DefaultPrivacyAirGap::sanitize_with_tier` | `SanitizedEvent` |
 | `BufferSanitizedEvent` | 脱敏完成 | `WindowAggregator::push` | 当前窗口 buffer |
 | `CloseWindow` | deadline 或 raw channel close | `WindowAggregator::close` | `StructuredContext` |
-| `Decide` | window closed | `DecisionRouter::evaluate` | `DecisionBackendResult` |
+| `Decide` | window closed | `DecisionRouter::evaluate_model_input` | `DecisionBackendResult` |
 | `GovernActions` | decision returned | `ActionLifecycle::run` | `Vec<AuditRecord>` |
 | `RecordWindow` | action governance finished | `RuntimeTraceRecorder` / tracing | runtime NDJSON / logs |
 

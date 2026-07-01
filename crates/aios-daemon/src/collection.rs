@@ -10,7 +10,7 @@
 
 use std::collections::HashMap;
 use std::path::PathBuf;
-use std::time::{Duration, SystemTime};
+use std::time::{Duration, Instant};
 
 use aios_collector::{
     android_jsonl::AndroidJsonlTailer,
@@ -51,6 +51,10 @@ pub(crate) async fn run_collection_loop(
 ) {
     tracing::info!("collection task started");
     loop {
+        // shutdown 只在两次 poll 之间被检查; source.poll() 是同步 I/O, 必须保持有界——
+        // 一次长阻塞会同时拖住采集与「靠通道关闭收尾」的处理任务的优雅停机。若某采集器
+        // 可能长阻塞, 应改走 spawn_blocking, 而不是在处理循环加 shutdown 分支(那会重新
+        // 引入丢最后一个未满窗口的 bug)。
         let now = timestamp_ms();
         for event in source.poll(now) {
             if raw_tx.send(event).await.is_err() {
@@ -59,10 +63,15 @@ pub(crate) async fn run_collection_loop(
             }
         }
         // 每 tick 结束检查一次 shutdown(非阻塞);先 poll 后检查,保证收到停机信号
-        // 前当前 tick 已产生的事件都已推进通道。
-        if shutdown_rx.try_recv().is_ok() {
-            tracing::info!("collection task shutting down");
-            return;
+        // 前当前 tick 已产生的事件都已推进通道。只有 Empty(确无信号)才继续;收到信号
+        // (Ok)、sender 全 drop(Closed)、漏读(Lagged)都收尾——否则信号任务异常退出后
+        // 本循环会永远空转(release 下 panic=abort 兜底, 但 debug 下会真挂)。
+        match shutdown_rx.try_recv() {
+            Err(broadcast::error::TryRecvError::Empty) => {},
+            _ => {
+                tracing::info!("collection task shutting down");
+                return;
+            },
         }
         tokio::time::sleep(poll_interval).await;
     }
@@ -74,8 +83,10 @@ pub(crate) struct SystemRawEventSource {
     android_tailer: Option<AndroidJsonlTailer>,
     binder_probe: BinderProbe,
     prev_proc_snapshots: HashMap<u32, proc_reader::ProcSnapshot>,
-    last_sys_poll: SystemTime,
-    last_android_jsonl_poll: SystemTime,
+    // 轮询节奏用单调钟 (Instant) 度量,不受墙钟 NTP 跳变影响 (墙钟向后跳会让
+    // duration_since 持续 Err→ZERO,采样一直被跳过直到墙钟追回)。None = 尚未采过,立即触发。
+    last_sys_poll: Option<Instant>,
+    last_android_jsonl_poll: Option<Instant>,
 }
 
 impl SystemRawEventSource {
@@ -93,9 +104,8 @@ impl SystemRawEventSource {
             android_tailer: android_trace_jsonl.map(AndroidJsonlTailer::new),
             binder_probe,
             prev_proc_snapshots: HashMap::new(),
-            last_sys_poll: SystemTime::now() - Duration::from_secs(SYS_POLL_INTERVAL_SECS),
-            last_android_jsonl_poll: SystemTime::now()
-                - Duration::from_millis(ANDROID_JSONL_POLL_INTERVAL_MS),
+            last_sys_poll: None,
+            last_android_jsonl_poll: None,
         }
     }
 }
@@ -104,10 +114,11 @@ impl RawEventSource for SystemRawEventSource {
     fn poll(&mut self, now_ms: i64) -> Vec<IngestedRawEvent> {
         let mut events = Vec::new();
 
-        // /proc polling (每 tick)
+        // /proc polling (每 tick)。scan_all() 的 Vec 之后不再用,直接 into_iter 移动进
+        // map,省掉每 tick 上百次 ProcSnapshot 全量 clone(10Hz×数百进程的分配器抖动)。
         let snapshots = ProcReader::scan_all();
         let curr_map: HashMap<u32, proc_reader::ProcSnapshot> =
-            snapshots.iter().map(|s| (s.pid, s.clone())).collect();
+            snapshots.into_iter().map(|s| (s.pid, s)).collect();
         let changed = proc_reader::diff_snapshots(&self.prev_proc_snapshots, &curr_map);
         for snap in &changed {
             events.push(self.ingress.accept_internal(
@@ -119,11 +130,9 @@ impl RawEventSource for SystemRawEventSource {
         self.prev_proc_snapshots = curr_map;
 
         // System state collection (节奏: 每 SYS_POLL_INTERVAL_SECS)
-        if SystemTime::now()
-            .duration_since(self.last_sys_poll)
-            .unwrap_or_default()
-            .as_secs()
-            >= SYS_POLL_INTERVAL_SECS
+        if self
+            .last_sys_poll
+            .is_none_or(|t| t.elapsed().as_secs() >= SYS_POLL_INTERVAL_SECS)
         {
             let sys_event = SystemStateCollector::snapshot(now_ms);
             events.push(self.ingress.accept_internal(
@@ -131,7 +140,7 @@ impl RawEventSource for SystemRawEventSource {
                 "SystemStateCollector",
                 now_ms,
             ));
-            self.last_sys_poll = SystemTime::now();
+            self.last_sys_poll = Some(Instant::now());
         }
 
         // Binder event polling (每 tick)
@@ -147,10 +156,9 @@ impl RawEventSource for SystemRawEventSource {
         // 这是 phase-1 app 的生产桥:app 负责公开 Android API 采集,Rust 负责
         // schema 校验与下游隐私管线。
         if let Some(tailer) = self.android_tailer.as_mut() {
-            if SystemTime::now()
-                .duration_since(self.last_android_jsonl_poll)
-                .unwrap_or_default()
-                >= Duration::from_millis(ANDROID_JSONL_POLL_INTERVAL_MS)
+            if self
+                .last_android_jsonl_poll
+                .is_none_or(|t| t.elapsed() >= Duration::from_millis(ANDROID_JSONL_POLL_INTERVAL_MS))
             {
                 match tailer.poll() {
                     Ok(envelopes) => {
@@ -171,7 +179,7 @@ impl RawEventSource for SystemRawEventSource {
                         );
                     },
                 }
-                self.last_android_jsonl_poll = SystemTime::now();
+                self.last_android_jsonl_poll = Some(Instant::now());
             }
         }
 

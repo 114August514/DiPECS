@@ -221,6 +221,9 @@ pub(crate) async fn run_processing_loop(
     let mut window_deadline = Instant::now() + window_duration;
 
     loop {
+        // 刻意不设 shutdown 分支: 优雅停机靠「采集侧 drop sender → 通道关闭 → recv() 返回
+        // None → flush 最后窗口再退」(见 collection::run_collection_loop)。若在此加一条收到
+        // 信号即退的臂, 会重新引入本设计要避免的「丢最后一个未满窗口」bug。
         let processing_event = tokio::select! {
             maybe = raw_rx.recv() => match maybe {
                 // Box only affects this local dispatch enum's size; the raw

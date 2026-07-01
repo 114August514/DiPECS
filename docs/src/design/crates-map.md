@@ -1,7 +1,7 @@
 # 代码地图
 
 > Status: Current  
-> Last verified: 2026-06-30
+> Last verified: 2026-07-01
 
 本文是源码导览。历史交付、slides 和 release notes 中的模块名可能已经变化，以本页为准。
 
@@ -25,7 +25,7 @@ aios-spec
   ├─ aios-collector
   ├─ aios-core
   ├─ aios-agent
-  └─ aios-action
+  └─ aios-action (also depends on aios-core)
 
 aios-collector ─┐
 aios-core ──────┼─ aios-daemon
@@ -34,6 +34,8 @@ aios-action ────┘
 
 aios-cli 复用 collector/core/agent/action 做离线 replay
 ```
+
+`aios-action` 额外依赖 `aios-core`（为了 `ActionAdapter` trait 和 `AuthorizedAction` 类型），其余 library-layer crates 只依赖 `aios-spec`。
 
 ## `aios-spec`
 
@@ -120,20 +122,41 @@ aios-cli 复用 collector/core/agent/action 做离线 replay
 | `storage/EventStore.kt` | append-only `actions.jsonl` 写入、导出、清理。 |
 | `model/AndroidRawEventMapper.kt` | Kotlin 事件到 Rust `RawEvent` JSON shape 的映射。 |
 | `collectors/UsageCollector.kt` | `UsageStatsManager` 采集。 |
+| `collectors/DeviceContextCollector.kt` | 设备上下文采集（电量、网络、屏幕等）。 |
 | `services/NotificationCollectorService.kt` | 通知到达/移除采集。 |
 | `services/CollectorForegroundService.kt` | heartbeat、collector lifecycle、manual action service entry。 |
+| `services/AccessibilityCollectorService.kt` | AccessibilityService 采集入口（screening source）。 |
+| `services/ActionMaintenanceJobService.kt` | `KeepAlive(work:*)` 的 JobService 实现。 |
+| `services/BootReceiver.kt` | 开机自启 collector。 |
 | `actions/AuthorizedActionSocketServer.kt` | localhost action socket、token、TTL、HMAC、rate limit。 |
-| `actions/ActionExecutorBridge.kt` | Android-side action dispatch。 |
+| `actions/ActionExecutorBridge.kt` | Android-side action dispatch（含 `handleExecuteEnvelope` / `BridgeExecuteProtocol`）。 |
 | `actions/AccessibleContentPrefetcher.kt` | `url:https://` / `uri:content://` prefetch。 |
 | `actions/ActionMaintenanceScheduler.kt` | `KeepAlive(work:*)` 的 JobScheduler 实现。 |
 | `actions/CacheTrimmer.kt` | `ReleaseMemory(cache:*)` 的 app-owned cache 清理。 |
 | `actions/OwnResourceWarmer.kt` | `PreWarmProcess(own:*)` 的自身资源预热。 |
+| `actions/SystemActionExecutors.kt` | 系统级 action 执行器（预装 app 预热等）。 |
+| `actions/SystemPrewarmActivity.kt` | 系统预装 app 预热 activity。 |
+| `actions/UserVisibleActionNotifier.kt` | 用户可见动作提示（非静默执行的安全确认）。 |
+
+## 测试脚本 (tests/scenarios)
+
+| 路径 | 职责 |
+| --- | --- |
+| `action-loop-e2e.sh` | 动作回路模拟器 end-to-end 验证。 |
+| `emulator-e2e.sh` | Android 模拟器端到端采集验证。 |
+| `lib/action-loop-stages.sh` | 动作回路分阶段验证逻辑。 |
+| `lib/action-loop-selftest.sh` | 动作回路 selftest。 |
+| `lib/emulator-e2e-stages.sh` | 模拟器分阶段验证逻辑。 |
+| `lib/emulator-e2e-selftest.sh` | 模拟器 selftest。 |
+| `lib/action-forensic-sender.py` | 动作取证消息发送器（mock socket）。 |
 
 ## 数据与实验
 
 | 路径 | 职责 |
 | --- | --- |
 | `data/traces/` | replay / golden fixture。 |
+| `data/evaluation/` | 动作回路和模拟器 e2e 评估结果（.md / .ndjson 报告）。 |
+| `data/schemas/` | CollectorEnvelope / RawEvent 等 JSON schema。 |
 | `lab4/` | 课程 Lab4 llama.cpp、RPC、Ray 实验；不是 DiPECS runtime 主链路。 |
 | `docs/src/` | MkDocs 文档。 |
 | `docs/academic-src/` | LaTeX 学术报告源。 |

@@ -1,7 +1,7 @@
 # 架构概览
 
 > Status: Current summary  
-> Last verified: 2026-06-30  
+> Last verified: 2026-07-01  
 > 具体运行细节见 [当前实现](../current/overview.md)。
 
 DiPECS 采用机制-策略分离。机制层负责采集、脱敏、聚合、审计和受控执行；策略层只能基于脱敏上下文生成意图和建议动作。
@@ -13,7 +13,7 @@ aios-spec
   ├─ aios-collector
   ├─ aios-core
   ├─ aios-agent
-  └─ aios-action
+  └─ aios-action (also depends on aios-core)
 
 aios-collector ─┐
 aios-core ──────┼─ aios-daemon
@@ -55,6 +55,14 @@ apps/android-collector / daemon sources / replay JSONL
 | Execution | `DefaultActionExecutor` / `OfflineAdapter` 都实现 `ActionAdapter`。 |
 | Audit | 每个 `ActionCoord` 恰好产出一条终态 `AuditRecord`。 |
 
+## 验证与回归
+
+| 机制 | 说明 |
+| --- | --- |
+| Golden Trace | `aios-core::trace_engine` 基于 fixture 做确定性 replay 验证。 |
+| Action-Loop 模拟器 | `tests/scenarios/action-loop-e2e.sh` 通过 mock-socket 做动作回路端到端验证。 |
+| Emulator E2E | `tests/scenarios/emulator-e2e.sh` 在 Android 模拟器上验证采集链路。 |
+
 ## 已实现与预留
 
 | 主题 | 当前事实 |
@@ -64,7 +72,8 @@ apps/android-collector / daemon sources / replay JSONL
 | Cloud LLM | 可选，默认关闭；配置错误或失败会回落到本地规则。 |
 | Binder/eBPF | 接口存在但真实 eBPF 未实现；`poll()` 当前无事件。 |
 | fanotify / system image | spec 和文档预留，非主线实现。 |
-| Android actions | 已有安全子集：prefetch、cache trim、maintenance job、自身资源 warmup、用户可见提示。 |
+| Android actions | 已有安全子集：prefetch、cache trim、maintenance job、自身资源 warmup、系统预装预热、用户可见提示。 |
+| Action-Loop 验证 | mock-socket e2e 测试 + 模拟器分阶段验证脚本已实现。 |
 
 ## 文档阅读建议
 

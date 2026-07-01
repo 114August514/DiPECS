@@ -91,7 +91,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4.2.2
         with:
-          lfs: true
+          lfs: true # cargo bench --all-targets 会执行读取 jsonl 语料的集成测试(如 noop_rate_test),需取真实 LFS 内容而非指针
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
       - name: Run Benchmarks

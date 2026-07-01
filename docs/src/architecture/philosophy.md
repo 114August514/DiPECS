@@ -115,5 +115,5 @@ apps/android-collector / daemon sources
 - **`tests/scenarios/`** — 端到端验证脚本（action-loop 模拟器 + emulator e2e），mock-socket 全套回路验证
 - **`data/evaluation/`** — 动作回路和模拟器 e2e 评估结果存档
 - **`aios-cli`** — 调试组的"时光机"。系统崩溃时一帧帧重放失败过程，定位错误 Action
-- **`docs/src/design/rfc`** — 架构组的"刹车闸"。防止接口每天变化导致项目无法编译
+- **`docs/src/rfc`** — 架构组的"刹车闸"。防止接口每天变化导致项目无法编译
 - **`scripts/setup-env.sh`** — 新人的"入职礼"。10 分钟内跑通 Hello World

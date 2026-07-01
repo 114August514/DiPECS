@@ -23,7 +23,7 @@ sudo apt install build-essential pkg-config libssl-dev lld
 
 - `build-essential`：gcc、make 等基础构建工具
 - `pkg-config` + `libssl-dev`：TLS / crypto 库（tokio、reqwest 等 crate 的传递依赖）
-- `lld`：LLVM 链接器（`.cargo/config.toml` 中对 `x86_64-unknown-linux-gnu` 和 Android target 都指定了 `-fuse-ld=lld`）
+- `lld`：LLVM 链接器（`.cargo/config.toml` 中对 `x86_64-unknown-linux-gnu` 和 `aarch64-linux-android` 指定了 `-fuse-ld=lld`）
 
 ### L1 — Rust 工具链
 

@@ -153,6 +153,8 @@ nav:
     - 中期演示:
       - Slidev 源码: slides/midterm/slides.md
       - 答辩 Q&A: slides/midterm/QA.md
+    - 期末演示:
+      - Slidev 源码: slides/final/slides.md
   - 参考资料:
     - refs/index.md
     - Schema 参考: refs/schemas.md

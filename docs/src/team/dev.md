@@ -120,9 +120,11 @@ adb logcat -s dipecs
 ## 添加新的 Skill / Action
 
 1. 在 `aios-spec/src/intent.rs` 定义新的 `IntentType` 和 `ActionType`
-2. 在 `aios-agent/src/backends/rule_based.rs` 添加触发规则, 或新增实现 `DecisionBackend` 的后端
-3. 在 `aios-action/src/lib.rs` 的 `DefaultActionExecutor::execute()` 添加执行分支
-4. 更新 `policy_engine_test.rs` 覆盖新动作的风险等级
+2. 在 `aios-agent/src/backends/rule_based.rs` 添加触发规则，或新增实现 `DecisionBackend` 的后端
+3. 在 `aios-action/src/lib.rs` 的 `DefaultActionExecutor::execute()` 添加本地 stub 分支
+4. 如需要转发到 Android，更新 `aios-action/src/android_adapter.rs` 的 `classify()` 路由和
+   `apps/android-collector/.../actions/SystemActionExecutors.kt` 的实现
+5. 更新 `policy_engine_test.rs` 覆盖新动作的风险等级和能力边界
 
 ## 常见问题
 
@@ -130,7 +132,7 @@ adb logcat -s dipecs
 A: 测试覆盖了各模块的单元行为，但 daemon 需要 tokio runtime 启动。检查 `RUST_LOG=debug` 输出，确认 mpsc channel 没有提前 drop。
 
 **Q: Android 交叉编译报链接错误？**
-A: 确认 `scripts/setup-env.sh` 已执行，`ANDROID_NDK_HOME` 指向 NDK r27d，且 `CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER` 已被设置。检查 `.cargo/config.toml` 的 target 配置。
+A: 确认 `scripts/setup-env.sh` 已执行，`ANDROID_NDK_HOME` 指向 NDK r27d，且 NDK 的 LLVM bin 目录已加入 `PATH`（这样 `aarch64-linux-android33-clang` 和 `x86_64-linux-android33-clang` 可被找到）。检查 `.cargo/config.toml` 的 target 配置。
 
 **Q: Golden Trace 回放不一致？**
 A: PrivacyAirGap 必须是纯函数——相同 RawEvent 输入必须产生相同 SanitizedEvent 输出。检查是否有非确定性来源（时间戳、UUID 生成），这些应使用 trace 中记录的值而非实时生成。

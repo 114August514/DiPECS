@@ -193,7 +193,7 @@ cargo test -p aios-agent --lib cloud_llm::cloud_bench_tests::smoke   -- --ignore
 cargo test -p aios-agent --lib cloud_llm::cloud_bench_tests::latency  -- --ignored --nocapture
 ```
 
-**Smoke 结果 (4 场景 × 1 次)：**
+**Smoke 结果 (6 场景 × 1 次)：**
 
 | 场景 | 延迟 | 决策 |
 |------|-----:|------|
@@ -201,6 +201,38 @@ cargo test -p aios-agent --lib cloud_llm::cloud_bench_tests::latency  -- --ignor
 | low-battery | 6.2s | Idle |
 | morning-routine | 14.2s | CheckNotification, HandleFile |
 | rich-workflow | 10.0s | SwitchToApp |
+| privacy-sensitive | — | 待下次 smoke 运行更新 |
+| multi-app-switching | — | 待下次 smoke 运行更新 |
+
+> DeepSeek v4-flash 延迟在 5-15s 范围，成功率 100%。复杂场景 (morning-routine) 返回多意图决策。
+
+### 多应用并发场景
+
+> 问题：CloudLlmBackend 在多个 App 同时活跃时能否正确感知上下文多样性？
+
+**场景设计 (data/traces/scenarios/multi-app-switching.jsonl)：**
+
+1000 条事件，覆盖 7 个包名 (`com.example.chat`, `com.example.mail`, `com.example.docs`, `com.example.browser`, `com.example.bank`, `com.example.calendar`, `com.android.settings`)，包含 AppTransition (前后台切换)、NotificationPosted (通知)、SystemState (系统状态) 三种事件类型。模拟用户在多个 App 之间频繁切换的真实使用模式。
+
+**上下文构建验证 (2 个，CI 自动)：**
+
+| 测试 | 验证 |
+|------|------|
+| `multi_app_context_has_app_diversity` | foreground_apps ≥ 3, notified_apps ≥ 2, 来自 ≥ 3 个不同 package 的事件, AppTransition 与 Notification 事件类型齐全, SystemState 被正确捕获 |
+| `single_app_scenarios_work` | 验证 circuit-breaker / low-battery / rich-workflow 场景在 `build_context` 改写后仍正确工作 |
+
+**`build_context` 改进：**
+
+| 改进点 | 之前 | 之后 |
+|--------|------|------|
+| 事件类型 | 全部视为 Notification | 正确解析 AppTransition / Notification / SystemState |
+| foreground_apps | 硬编码 `["com.example.app"]` | 从 AppTransition::Foreground 实际提取并去重 |
+| notified_apps | 硬编码 `["com.example.chat"]` | 从 NotificationPosted 实际提取并去重 |
+| 语义提示 | 固定 [FileMention, ImageMention, LinkAttachment] | 从 raw_title / raw_text 扫描关键词推导 |
+| 系统状态 | 不提取 | 从 SystemState 事件提取电池/网络/响铃模式 |
+| 事件数量 | 最多 5 条 | 最多 60 条 |
+
+多应用场景下，单次调用即可触及 `build_context` 的全部分支，确保重构不破坏已有功能。下一次 `smoke` 运行将产生包含 6 场景的 cloud-scenarios JSON 数据集。
 
 **Latency Benchmark (5 轮，morning-routine)：**
 
@@ -210,8 +242,6 @@ cargo test -p aios-agent --lib cloud_llm::cloud_bench_tests::latency  -- --ignor
 | p50 | 11.3s |
 | p95 | 13.0s |
 | success_rate | 100% |
-
-> DeepSeek v4-flash 延迟在 5-15s 范围，成功率 100%。复杂场景 (morning-routine) 返回多意图决策。
 
 ---
 
@@ -258,6 +288,16 @@ data/evaluation/
   resource-overhead-emulator-20260701-131525.json   资源开销 (10 采样)
   ux-metrics-emulator-20260701-151856.json          UX 指标 (5 采样)
   stability-emulator-canonical.json                 稳定性 (8 采样)
+  cloud-scenarios-20260716-084010.json              云端场景烟雾测试 (4 场景，待更新为 6)
+  cloud-latency-20260716-084110.json                云端延迟基准 (5 轮)
+
+data/traces/scenarios/
+  circuit-breaker.jsonl              单 app，断路器触发场景
+  low-battery.jsonl                  单 app，低电量场景
+  morning-routine.jsonl              单 app，早晨多通知场景
+  rich-workflow.jsonl                单 app，文档协作场景
+  privacy-sensitive.jsonl            单 app，隐私敏感场景
+  multi-app-switching.jsonl          多 app (7 包名)，频繁切换场景 — 1000 条
 
 crates/aios-cli/tests/
   resource_overhead_dataset_test.rs    资源开销测试 (5)
@@ -266,6 +306,6 @@ crates/aios-cli/tests/
 
 crates/aios-agent/src/backends/cloud_llm/mod.rs
   latency_tests                       云端延迟对比 (1, ignored)
-  cloud_bench_tests                   云端 benchmark + smoke (2, ignored)
+  cloud_bench_tests                   云端 benchmark + smoke + 上下文验证 (4, 2 ignored)
   mock_cloud_e2e_tests                E2E mock 测试 (4)
 ```

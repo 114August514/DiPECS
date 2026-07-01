@@ -190,6 +190,7 @@ mod latency_tests {
 
 #[cfg(test)]
 mod cloud_bench_tests {
+    use std::collections::{BTreeSet, HashSet};
     use std::env;
     use std::fs;
     use std::io::BufRead;
@@ -200,8 +201,9 @@ mod cloud_bench_tests {
     use crate::backends::cloud_llm::config::{CloudLlmConfig, CloudProvider};
     use crate::DecisionBackend;
     use aios_spec::{
-        ContextSummary, SanitizedEvent, SanitizedEventType, ScriptHint, SemanticHint, SourceTier,
-        StructuredContext, TextHint,
+        AppTransition, ContextSummary, ExtensionCategory, LocationType, NetworkType, RingerMode,
+        SanitizedEvent, SanitizedEventType, ScriptHint, SemanticHint, SourceTier,
+        StructuredContext, SystemStatusSnapshot, TextHint,
     };
 
     fn project_root() -> PathBuf {
@@ -226,65 +228,234 @@ mod cloud_bench_tests {
     }
 
     fn build_context(events: &[serde_json::Value]) -> StructuredContext {
-        let hints = vec![
-            SemanticHint::FileMention,
-            SemanticHint::ImageMention,
-            SemanticHint::LinkAttachment,
-        ];
-        let sanitized: Vec<SanitizedEvent> = events
-            .iter()
-            .filter_map(|e| {
-                let re = e.get("rawEvent")?;
-                let pkg = re
-                    .pointer("/NotificationPosted/sourcePackage")
-                    .or_else(|| re.pointer("/ActivityLaunch/sourcePackage"))
+        let mut sanitized: Vec<SanitizedEvent> = Vec::new();
+        let mut foreground_apps: BTreeSet<String> = BTreeSet::new();
+        let mut notified_apps: BTreeSet<String> = BTreeSet::new();
+        let mut all_hints: HashSet<SemanticHint> = HashSet::new();
+        let mut latest_system_status: Option<SystemStatusSnapshot> = None;
+
+        for e in events.iter().take(60) {
+            let ts = e.get("timestampMs").and_then(|v| v.as_i64()).unwrap_or(0);
+            let eid = e
+                .get("eventId")
+                .and_then(|v| v.as_str())
+                .unwrap_or("?")
+                .to_string();
+            let re = match e.get("rawEvent") {
+                Some(v) => v,
+                None => continue,
+            };
+
+            if let Some(app_trans) = re.get("AppTransition") {
+                let pkg_name = app_trans
+                    .get("package_name")
                     .and_then(|v| v.as_str())
                     .unwrap_or("com.unknown.app");
-                Some(SanitizedEvent {
-                    event_id: format!(
-                        "evt-{}",
-                        e.get("sequence").and_then(|v| v.as_u64()).unwrap_or(0)
-                    ),
-                    timestamp_ms: e.get("capturedAtMs").and_then(|v| v.as_i64()).unwrap_or(0),
+                let activity = app_trans
+                    .get("activity_class")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string());
+                let transition = match app_trans.get("transition").and_then(|v| v.as_str()) {
+                    Some("Foreground") => {
+                        foreground_apps.insert(pkg_name.to_string());
+                        AppTransition::Foreground
+                    },
+                    Some("Background") => AppTransition::Background,
+                    _ => continue,
+                };
+                sanitized.push(SanitizedEvent {
+                    event_id: eid,
+                    timestamp_ms: ts,
+                    event_type: SanitizedEventType::AppTransition {
+                        package_name: pkg_name.to_string(),
+                        activity_class: activity,
+                        transition,
+                    },
+                    source_tier: SourceTier::PublicApi,
+                    app_package: Some(pkg_name.to_string()),
+                    uid: None,
+                });
+            } else if let Some(notif) = re.get("NotificationPosted") {
+                let pkg_name = notif
+                    .get("package_name")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("com.unknown.app");
+                let category = notif
+                    .get("category")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string());
+                let channel_id = notif
+                    .get("channel_id")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string());
+                let raw_title = notif
+                    .get("raw_title")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("");
+                let raw_text = notif.get("raw_text").and_then(|v| v.as_str()).unwrap_or("");
+                let is_ongoing = notif
+                    .get("is_ongoing")
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(false);
+
+                notified_apps.insert(pkg_name.to_string());
+                let hints = derive_semantic_hints(raw_title, raw_text);
+                for h in &hints {
+                    all_hints.insert(h.clone());
+                }
+
+                sanitized.push(SanitizedEvent {
+                    event_id: eid,
+                    timestamp_ms: ts,
                     event_type: SanitizedEventType::Notification {
-                        source_package: pkg.to_string(),
-                        category: Some("msg".into()),
-                        channel_id: None,
+                        source_package: pkg_name.to_string(),
+                        category,
+                        channel_id,
                         title_hint: TextHint {
-                            length_chars: 24,
-                            script: ScriptHint::Latin,
+                            length_chars: raw_title.chars().count(),
+                            script: classify_script(raw_title),
                             is_emoji_only: false,
                         },
                         text_hint: TextHint {
-                            length_chars: 80,
-                            script: ScriptHint::Latin,
+                            length_chars: raw_text.chars().count(),
+                            script: classify_script(raw_text),
                             is_emoji_only: false,
                         },
-                        semantic_hints: hints.clone(),
-                        is_ongoing: false,
+                        semantic_hints: hints,
+                        is_ongoing,
                         group_key: None,
                     },
                     source_tier: SourceTier::PublicApi,
-                    app_package: Some(pkg.to_string()),
+                    app_package: Some(pkg_name.to_string()),
                     uid: None,
-                })
-            })
-            .take(5)
+                });
+            } else if let Some(sys) = re.get("SystemState") {
+                let battery = sys
+                    .get("battery_pct")
+                    .and_then(|v| v.as_u64())
+                    .map(|v| v as u8);
+                let is_charging = sys
+                    .get("is_charging")
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(false);
+                let network = match sys.get("network").and_then(|v| v.as_str()) {
+                    Some("Wifi") => NetworkType::Wifi,
+                    Some("Cellular") => NetworkType::Cellular,
+                    Some("Offline") => NetworkType::Offline,
+                    _ => NetworkType::Unknown,
+                };
+                let ringer_mode = match sys.get("ringer_mode").and_then(|v| v.as_str()) {
+                    Some("Vibrate") => RingerMode::Vibrate,
+                    Some("Silent") => RingerMode::Silent,
+                    _ => RingerMode::Normal,
+                };
+                latest_system_status = Some(SystemStatusSnapshot {
+                    battery_pct: battery,
+                    is_charging,
+                    network: network.clone(),
+                    ringer_mode: ringer_mode.clone(),
+                    location_type: LocationType::Unknown,
+                    headphone_connected: false,
+                });
+                sanitized.push(SanitizedEvent {
+                    event_id: eid,
+                    timestamp_ms: ts,
+                    event_type: SanitizedEventType::SystemStatus {
+                        battery_pct: battery,
+                        is_charging,
+                        network,
+                        ringer_mode,
+                        location_type: LocationType::Unknown,
+                        headphone_connected: false,
+                    },
+                    source_tier: SourceTier::PublicApi,
+                    app_package: None,
+                    uid: None,
+                });
+            }
+        }
+
+        let fg: Vec<String> = foreground_apps.into_iter().collect();
+        let notified: Vec<String> = notified_apps.into_iter().collect();
+        let hints: Vec<SemanticHint> = all_hints.into_iter().collect();
+        let file_activity: Vec<(ExtensionCategory, u32)> = hints
+            .contains(&SemanticHint::FileMention)
+            .then_some((ExtensionCategory::Unknown, 1u32))
+            .into_iter()
             .collect();
+
+        let win_start = sanitized.first().map(|e| e.timestamp_ms).unwrap_or(0);
+        let win_end = sanitized
+            .last()
+            .map(|e| e.timestamp_ms)
+            .unwrap_or(win_start + 60_000);
+        let duration = ((win_end - win_start) as f64 / 1000.0).max(1.0) as u32;
+
         StructuredContext {
             window_id: "cloud-bench".into(),
-            window_start_ms: 0,
-            window_end_ms: 60_000,
-            duration_secs: 60,
+            window_start_ms: win_start,
+            window_end_ms: win_end,
+            duration_secs: duration,
             events: sanitized,
             summary: ContextSummary {
-                foreground_apps: vec!["com.example.app".into()],
-                notified_apps: vec!["com.example.chat".into()],
+                foreground_apps: fg,
+                notified_apps: notified,
                 all_semantic_hints: hints,
-                file_activity: vec![],
-                latest_system_status: None,
+                file_activity,
+                latest_system_status,
                 source_tier: SourceTier::PublicApi,
             },
+        }
+    }
+
+    fn derive_semantic_hints(title: &str, text: &str) -> Vec<SemanticHint> {
+        let combined = format!("{title} {text}");
+        let lower = combined.to_lowercase();
+        let mut hints: Vec<SemanticHint> = Vec::new();
+
+        if lower.contains(".pdf")
+            || lower.contains(".doc")
+            || lower.contains(".xls")
+            || lower.contains(".pptx")
+            || lower.contains(".txt")
+            || lower.contains(".csv")
+            || lower.contains(".zip")
+            || lower.contains(".apk")
+            || lower.contains("file")
+            || lower.contains("attach")
+            || lower.contains("document")
+        {
+            hints.push(SemanticHint::FileMention);
+        }
+        if lower.contains(".png")
+            || lower.contains(".jpg")
+            || lower.contains(".gif")
+            || lower.contains(".svg")
+            || lower.contains(".webp")
+            || lower.contains("image")
+            || lower.contains("photo")
+            || lower.contains("picture")
+            || lower.contains("screenshot")
+            || lower.contains("img ")
+        {
+            hints.push(SemanticHint::ImageMention);
+        }
+        if lower.contains("http://") || lower.contains("https://") || lower.contains("link") {
+            hints.push(SemanticHint::LinkAttachment);
+        }
+        hints
+    }
+
+    fn classify_script(text: &str) -> ScriptHint {
+        let has_cjk = text.chars().any(|c| {
+            ('\u{4E00}'..='\u{9FFF}').contains(&c)
+                || ('\u{3040}'..='\u{309F}').contains(&c)
+                || ('\u{30A0}'..='\u{30FF}').contains(&c)
+        });
+        if has_cjk {
+            ScriptHint::Hanzi
+        } else {
+            ScriptHint::Latin
         }
     }
 
@@ -442,6 +613,8 @@ mod cloud_bench_tests {
             "low-battery",
             "morning-routine",
             "rich-workflow",
+            "privacy-sensitive",
+            "multi-app-switching",
         ];
 
         println!("\n=== Cloud Decision Multi-Scenario Smoke ===");
@@ -483,11 +656,117 @@ mod cloud_bench_tests {
             "status": "measured_live_api",
             "environment": {"provider":"deepseek","model":"deepseek-v4-flash","scenarios":scenarios},
             "results": results,
-            "thresholds": {"min_scenarios":4},
-            "conclusion": {"accepted": results.iter().all(|r| !r["error"].as_bool().unwrap())},
+            "thresholds": {"min_scenarios":6},
+            "conclusion": {"accepted": results.iter().all(|r| !r["error"].as_bool().unwrap()) && results.len() >= 6},
         });
         fs::write(&p, serde_json::to_string_pretty(&d).unwrap()).unwrap();
         println!("\nWrote {}", p.display());
+    }
+
+    /// Validates that build_context correctly extracts multi-app diversity
+    /// from scenario JSONL files. No API key needed.
+    #[test]
+    fn multi_app_context_has_app_diversity() {
+        let events = load_scenario_events("multi-app-switching");
+        let ctx = build_context(&events);
+
+        // Should have AppTransition events, not just Notifications
+        let app_transitions: Vec<_> = ctx
+            .events
+            .iter()
+            .filter(|e| matches!(e.event_type, SanitizedEventType::AppTransition { .. }))
+            .collect();
+        assert!(
+            app_transitions.len() >= 3,
+            "multi-app scenario should have >= 3 AppTransition events, got {}",
+            app_transitions.len()
+        );
+
+        // Should have Notification events
+        let notifications: Vec<_> = ctx
+            .events
+            .iter()
+            .filter(|e| matches!(e.event_type, SanitizedEventType::Notification { .. }))
+            .collect();
+        assert!(
+            !notifications.is_empty(),
+            "multi-app scenario should have Notification events"
+        );
+
+        // Should have multiple foreground apps (the key multi-app assertion)
+        assert!(
+            ctx.summary.foreground_apps.len() >= 3,
+            "multi-app scenario should have >= 3 foreground apps, got {:?}",
+            ctx.summary.foreground_apps
+        );
+
+        // Should have multiple notified apps
+        assert!(
+            ctx.summary.notified_apps.len() >= 2,
+            "multi-app scenario should have >= 2 notified apps, got {:?}",
+            ctx.summary.notified_apps
+        );
+
+        // Should have events from multiple different packages
+        let packages: BTreeSet<&str> = ctx
+            .events
+            .iter()
+            .filter_map(|e| e.app_package.as_deref())
+            .collect();
+        assert!(
+            packages.len() >= 3,
+            "multi-app scenario should have events from >= 3 packages, got {:?}",
+            packages
+        );
+
+        // Should have non-empty semantic hints
+        assert!(
+            !ctx.summary.all_semantic_hints.is_empty(),
+            "should have semantic hints"
+        );
+
+        // Should have system status if scenario includes SystemState events
+        let raw_has_sys = events.iter().any(|e| {
+            e.get("rawEvent")
+                .and_then(|re| re.get("SystemState"))
+                .is_some()
+        });
+        if raw_has_sys {
+            assert!(
+                ctx.summary.latest_system_status.is_some(),
+                "should capture SystemState when scenario contains SystemState events"
+            );
+        }
+
+        // Duration should be non-zero
+        assert!(ctx.duration_secs > 0, "duration should be > 0");
+
+        // Window should span actual event timestamps
+        assert!(
+            ctx.window_end_ms > ctx.window_start_ms,
+            "window_end should be after window_start"
+        );
+    }
+
+    /// Validates that single-app scenarios still work correctly with the new build_context.
+    #[test]
+    fn single_app_scenarios_work() {
+        for scenario in &["circuit-breaker", "low-battery", "rich-workflow"] {
+            let events = load_scenario_events(scenario);
+            let ctx = build_context(&events);
+            assert!(
+                !ctx.events.is_empty(),
+                "scenario {scenario}: should have events"
+            );
+            assert!(
+                ctx.duration_secs > 0,
+                "scenario {scenario}: duration should be > 0"
+            );
+            assert!(
+                !ctx.summary.all_semantic_hints.is_empty(),
+                "scenario {scenario}: should have semantic hints"
+            );
+        }
     }
 }
 

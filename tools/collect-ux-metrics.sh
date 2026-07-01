@@ -102,7 +102,54 @@ get_top_metrics() {
   echo "$1 $2 $3"
 }
 
-# ── sample recording (inline python3 = WSL Python, can read WSL temp paths) ──
+# ── system baseline (DiPECS stopped, measure system state) ──
+
+get_system_free_ram() {
+  local mem
+  mem="$(adb_cmd shell cat /proc/meminfo 2>/dev/null | grep MemAvailable | awk '{print $2}' || echo 0)"
+  echo "${mem:-0}"
+}
+
+system_baseline_sample() {
+  local mode="$1" idx="$2"
+  local free_ram ts
+  stop_collector
+  sleep 3
+  free_ram="$(get_system_free_ram)"
+  ts="$(date -u +%s%3N)"
+  python3 - "$idx" "$ts" "$mode" "$free_ram" <<'PY'
+import json, sys
+idx, ts, mode, free_ram = sys.argv[1:]
+obj = {
+  "sample_index": int(idx),
+  "timestamp_ms": int(ts),
+  "mode": mode,
+  "system_free_ram_kb": int(float(free_ram)),
+}
+print(json.dumps(obj, ensure_ascii=False))
+PY
+}
+
+collect_system_baseline() {
+  local mode="$1" tmp="$2"
+  echo "Collecting $mode ($SAMPLES_PER_MODE samples, ${SAMPLE_INTERVAL_SECS}s interval)" >&2
+  : > "$tmp"
+  for ((i=0; i<SAMPLES_PER_MODE; i++)); do
+    local sample
+    sample="$(system_baseline_sample "$mode" "$i")"
+    echo "$sample" >> "$tmp"
+    python3 - "$sample" <<'PY' >&2
+import json, sys
+s = json.loads(sys.argv[1])
+print(f"  {s['mode']}[{s['sample_index']}] free_ram={s['system_free_ram_kb']}KB")
+PY
+    if [[ "$i" -lt $((SAMPLES_PER_MODE - 1)) ]]; then
+      sleep "$SAMPLE_INTERVAL_SECS"
+    fi
+  done
+}
+
+# ── sample recording ──
 
 startup_sample() {
   local mode="$1" idx="$2" before="$3"
@@ -223,20 +270,21 @@ timestamp="$(date +%Y%m%d-%H%M%S)"
 tmpdir="$(mktemp -d)"
 trap 'rm -rf "$tmpdir"' EXIT
 
-# 1. True cold startup (no DiPECS service, no PreWarm — simulates user without DiPECS)
+# 0. System baseline (DiPECS force-stopped — "without DiPECS" reference)
 stop_collector
+collect_system_baseline no_dipecs_baseline "$tmpdir/system.jsonl"
+
+# 1. True cold startup (no DiPECS — simulates user launching app from cold)
 collect_startup_mode cold_startup none "$tmpdir/cold.jsonl"
 
 # 2. DiPECS + PreWarm startup (service running, PreWarm before each launch)
-#    Must re-start service before each sample (cold_startup leaves it force-stopped)
 collect_startup_mode prewarm_startup prewarm "$tmpdir/prewarm.jsonl"
 
-# 3. Baseline jank
+# 3. DiPECS running, baseline jank
 start_collector
 collect_jank_mode baseline_jank none "$tmpdir/baseline_jank.jsonl"
 
-# 4. Post-release jank
-start_collector
+# 4. DiPECS + ReleaseMemory jank
 collect_jank_mode post_release_jank release "$tmpdir/post_release.jsonl"
 
 # ── assemble dataset (WSL Python for file access) ──
@@ -246,13 +294,14 @@ md_path="$OUT_DIR/ux-metrics-emulator-$timestamp.md"
 adb_serial="$(adb_cmd get-serialno | tr -d '\r')"
 
 python3 - \
+  "$tmpdir/system.jsonl" \
   "$tmpdir/cold.jsonl" "$tmpdir/prewarm.jsonl" \
   "$tmpdir/baseline_jank.jsonl" "$tmpdir/post_release.jsonl" \
   "$json_path" "$md_path" "$timestamp" \
   "$SAMPLE_INTERVAL_SECS" "$SAMPLES_PER_MODE" "$PACKAGE" "$adb_serial" <<'PY'
 import json, sys, pathlib, datetime
 
-cold_p, prewarm_p, base_jank_p, release_jank_p, json_path, md_path, timestamp, interval, samples_per, package, adb_serial = sys.argv[1:]
+sys_p, cold_p, prewarm_p, base_jank_p, release_jank_p, json_path, md_path, timestamp, interval, samples_per, package, adb_serial = sys.argv[1:]
 
 def load_run(path, mode):
     samples = [json.loads(line) for line in open(path, encoding="utf-8") if line.strip()]
@@ -266,8 +315,10 @@ def load_run(path, mode):
         return round(max(float(s.get(key) or 0) for s in samples), 3)
 
     startup_keys = any("startup_total_time_ms" in s for s in samples)
+    system_keys = any("system_free_ram_kb" in s for s in samples)
     summary = {
         "avg_startup_total_time_ms": avg("startup_total_time_ms") if startup_keys else None,
+        "avg_system_free_ram_kb": avg("system_free_ram_kb") if system_keys else None,
         "avg_cpu_pct": avg("cpu_pct"),
         "avg_rss_mb": avg("rss_mb"),
         "max_rss_mb": maximum("rss_mb"),
@@ -280,6 +331,7 @@ def load_run(path, mode):
     }
     return {"mode": mode, "samples": samples, "summary": summary}
 
+sys_base = load_run(sys_p, "no_dipecs_baseline")
 cold = load_run(cold_p, "cold_startup")
 prewarm = load_run(prewarm_p, "prewarm_startup")
 base_jank = load_run(base_jank_p, "baseline_jank")
@@ -328,10 +380,22 @@ data = {
         "max_rss_mb": 250.0,
         "max_pss_mb": 80.0,
     },
-    "runs": [cold, prewarm, base_jank, release_jank],
+    "runs": [sys_base, cold, prewarm, base_jank, release_jank],
     "ux_deltas": {
         "prewarm_vs_cold": prewarm_delta,
         "release_vs_baseline": release_delta,
+    },
+    "comparison": {
+        "without_dipecs": {
+            "system_free_ram_kb_avg": sys_base["summary"].get("avg_system_free_ram_kb", 0),
+            "cold_startup_ms": cold["summary"]["avg_startup_total_time_ms"],
+            "cold_startup_jank_pct": cold["summary"]["avg_jank_pct"],
+        },
+        "with_dipecs": {
+            "prewarm_startup_ms": prewarm["summary"]["avg_startup_total_time_ms"],
+            "baseline_jank_pct": base_jank["summary"]["avg_jank_pct"],
+            "post_release_jank_pct": release_jank["summary"]["avg_jank_pct"],
+        },
     },
     "conclusion": {
         "accepted": True,

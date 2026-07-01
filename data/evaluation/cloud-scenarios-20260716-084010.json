@@ -1,0 +1,56 @@
+{
+  "conclusion": {
+    "accepted": true
+  },
+  "dataset_id": "cloud-scenarios-20260716-084010",
+  "environment": {
+    "model": "deepseek-v4-flash",
+    "provider": "deepseek",
+    "scenarios": [
+      "circuit-breaker",
+      "low-battery",
+      "morning-routine",
+      "rich-workflow"
+    ]
+  },
+  "results": [
+    {
+      "error": false,
+      "intents": [
+        "Idle"
+      ],
+      "latency_ms": 9180,
+      "scenario": "circuit-breaker"
+    },
+    {
+      "error": false,
+      "intents": [
+        "Idle"
+      ],
+      "latency_ms": 6213,
+      "scenario": "low-battery"
+    },
+    {
+      "error": false,
+      "intents": [
+        "CheckNotification(\"com.unknown.app\")",
+        "HandleFile(Image)"
+      ],
+      "latency_ms": 14175,
+      "scenario": "morning-routine"
+    },
+    {
+      "error": false,
+      "intents": [
+        "SwitchToApp(\"com.example.chat\")"
+      ],
+      "latency_ms": 10012,
+      "scenario": "rich-workflow"
+    }
+  ],
+  "schema_version": "dipecs.cloud_scenarios.v1",
+  "status": "measured_live_api",
+  "thresholds": {
+    "min_scenarios": 4
+  }
+}

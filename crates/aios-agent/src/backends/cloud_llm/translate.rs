@@ -285,10 +285,10 @@ struct ModelAction {
 mod tests {
     use super::{
         infer_prefetch_category, infer_prefetch_target, normalize_prefetch_target,
-        translate_action, ModelAction, ModelIntent,
+        parse_model_output, translate_action, translate_intents, ModelAction, ModelIntent,
     };
     use crate::backends::prefetch_target::default_prefetch_target;
-    use aios_spec::{ActionType, ExtensionCategory};
+    use aios_spec::{ActionType, ExtensionCategory, IntentType};
 
     #[test]
     fn normalize_prefetch_target_adds_url_prefix() {
@@ -341,6 +341,61 @@ mod tests {
     }
 
     #[test]
+    fn parse_model_output_rejects_invalid_json() {
+        let err = parse_model_output("not json").unwrap_err();
+        assert!(err.contains("valid JSON"), "got: {err}");
+    }
+
+    #[test]
+    fn parse_model_output_rejects_empty_content() {
+        let err = parse_model_output("   ").unwrap_err();
+        assert!(err.contains("valid JSON"), "got: {err}");
+    }
+
+    #[test]
+    fn translate_intents_empty_returns_idle() {
+        let intents = translate_intents(vec![]).unwrap();
+        assert_eq!(intents.len(), 1);
+        assert!(matches!(intents[0].intent_type, IntentType::Idle));
+        assert!(matches!(
+            intents[0].suggested_actions[0].action_type,
+            ActionType::NoOp
+        ));
+    }
+
+    #[test]
+    fn translate_intents_rejects_unknown_intent_type() {
+        let out = parse_model_output(r#"{"intents":[{"intent_type":"UnknownIntent","target":null,"confidence":0.8,"risk_level":"Low","actions":[]}]}"#).unwrap();
+        let err = translate_intents(out.intents).unwrap_err();
+        assert!(err.contains("unsupported intent_type"), "got: {err}");
+    }
+
+    #[test]
+    fn translate_intents_rejects_unknown_action_type() {
+        let out = parse_model_output(r#"{"intents":[{"intent_type":"Idle","target":null,"confidence":0.8,"risk_level":"Low","actions":[{"action_type":"ExplodeDevice","target":null,"urgency":null}]}]}"#).unwrap();
+        let err = translate_intents(out.intents).unwrap_err();
+        assert!(err.contains("unsupported action_type"), "got: {err}");
+    }
+
+    #[test]
+    fn translate_intents_rejects_unknown_risk_level() {
+        let out = parse_model_output(r#"{"intents":[{"intent_type":"Idle","target":null,"confidence":0.8,"risk_level":"Critical","actions":[]}]}"#).unwrap();
+        let err = translate_intents(out.intents).unwrap_err();
+        assert!(err.contains("unsupported risk_level"), "got: {err}");
+    }
+
+    #[test]
+    fn translate_intents_clamps_confidence() {
+        let out = parse_model_output(r#"{"intents":[{"intent_type":"Idle","target":null,"confidence":1.5,"risk_level":"Low","actions":[]}]}"#).unwrap();
+        let intents = translate_intents(out.intents).unwrap();
+        assert_eq!(intents[0].confidence, 1.0);
+
+        let out = parse_model_output(r#"{"intents":[{"intent_type":"Idle","target":null,"confidence":-0.3,"risk_level":"Low","actions":[]}]}"#).unwrap();
+        let intents = translate_intents(out.intents).unwrap();
+        assert_eq!(intents[0].confidence, 0.0);
+    }
+
+    #[test]
     fn infer_prefetch_target_for_handle_file_uses_extension_category() {
         let intent = ModelIntent {
             intent_type: "HandleFile".into(),
@@ -358,5 +413,12 @@ mod tests {
             target,
             default_prefetch_target(&ExtensionCategory::Document, Some("com.example.files"))
         );
+    }
+
+    #[test]
+    fn translate_intents_rejects_unknown_urgency() {
+        let out = parse_model_output(r#"{"intents":[{"intent_type":"Idle","target":null,"confidence":0.8,"risk_level":"Low","actions":[{"action_type":"NoOp","target":null,"urgency":"Sometime"}]}]}"#).unwrap();
+        let err = translate_intents(out.intents).unwrap_err();
+        assert!(err.contains("unsupported urgency"), "got: {err}");
     }
 }

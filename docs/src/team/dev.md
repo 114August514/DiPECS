@@ -115,7 +115,7 @@ adb logcat -s dipecs
 2. 在 `aios-spec/src/sanitized.rs` 定义对应的 `SanitizedEvent` 变体
 3. 在 `aios-core` 的 `PrivacyAirGap` 实现脱敏规则
 4. 在 `aios-collector` 添加采集逻辑
-5. 添加测试（参考 `privacy_airgap_test.rs`）
+5. 添加测试（参考 `privacy_airgap_test.rs` 结构验证、`privacy_leak_test.rs` JSON 子串扫描、`privacy_airgap_property_test.rs` 属性测试）
 
 ## 添加新的 Skill / Action
 

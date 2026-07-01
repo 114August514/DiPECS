@@ -18,8 +18,8 @@ use aios_core::context_builder::WindowAggregator;
 use aios_core::privacy_airgap::DefaultPrivacyAirGap;
 use aios_spec::traits::PrivacySanitizer;
 use aios_spec::{
-    FsAccessEvent, FsAccessType, NotificationAction, NotificationInteractionRawEvent,
-    NotificationRawEvent, RawEvent,
+    BinderTxEvent, FsAccessEvent, FsAccessType, NotificationAction,
+    NotificationInteractionRawEvent, NotificationRawEvent, ProcState, ProcStateEvent, RawEvent,
 };
 
 /// One leak-test row: a raw input and the substrings that must not appear in
@@ -55,6 +55,43 @@ fn fs(timestamp: i64, path: &str) -> RawEvent {
         file_path: path.into(),
         access_type: FsAccessType::OpenRead,
         bytes_transferred: Some(4096),
+    })
+}
+
+fn binder(timestamp: i64, service: &str, method: &str, uid: u32) -> RawEvent {
+    RawEvent::BinderTransaction(BinderTxEvent {
+        timestamp_ms: timestamp,
+        source_pid: 100,
+        source_uid: uid,
+        target_service: service.into(),
+        target_method: method.into(),
+        is_oneway: true,
+        payload_size: 512,
+    })
+}
+
+fn proc_state(timestamp: i64, pkg: &str) -> RawEvent {
+    RawEvent::ProcStateChange(ProcStateEvent {
+        timestamp_ms: timestamp,
+        pid: 42,
+        uid: 10123,
+        package_name: Some(pkg.into()),
+        vm_rss_kb: 102400,
+        vm_swap_kb: 0,
+        threads: 8,
+        oom_score: 0,
+        io_read_mb: 100,
+        io_write_mb: 50,
+        state: ProcState::Running,
+    })
+}
+
+fn interaction(timestamp: i64, pkg: &str, key: &str) -> RawEvent {
+    RawEvent::NotificationInteraction(NotificationInteractionRawEvent {
+        timestamp_ms: timestamp,
+        package_name: pkg.into(),
+        notification_key: key.into(),
+        action: NotificationAction::Tapped,
     })
 }
 
@@ -120,6 +157,64 @@ fn leak_cases() -> Vec<Case> {
                 "/storage/emulated/0/DCIM",
                 "Camera/IMG_",
             ],
+        },
+        // ===== 之前缺失的 variant =====
+        Case {
+            name: "notification-interaction-key-tag",
+            raw: interaction(
+                7000,
+                "com.example.chat",
+                "0|com.example.chat|42|alice-private-thread|10042",
+            ),
+            forbidden: vec!["alice-private-thread", "0|com.example.chat|42|alice"],
+        },
+        Case {
+            name: "notification-interaction-key-contact-name",
+            raw: interaction(8000, "com.whatsapp", "0|com.whatsapp|99|Zhang San|10099"),
+            forbidden: vec!["Zhang San", "0|com.whatsapp|99|Zhang"],
+        },
+        Case {
+            name: "binder-share-intent-method",
+            raw: binder(
+                9000,
+                "activity",
+                "shareContentWithTarget_com.example.mail",
+                10123,
+            ),
+            // target_service ("activity") MAY appear in output;
+            // target_method MUST NOT — only the derived InteractionType survives
+            forbidden: vec!["shareContentWithTarget", "com.example.mail"],
+        },
+        Case {
+            name: "proc-state-package-is-metadata",
+            raw: proc_state(10000, "com.bank.secret"),
+            // package_name IS deliberately preserved as metadata (app_package field),
+            // so it appears in JSON. But raw numerical fields (pid, uid) must be
+            // present as structured fields, not raw bytes.
+            // This variant has no free-form text, so the "leak" check here
+            // verifies vm_rss_kb raw value does not appear (only vm_rss_mb survives).
+            forbidden: vec!["vm_rss_kb"],
+        },
+        Case {
+            name: "notification-unicode-edge-cases",
+            raw: notif(
+                11000,
+                "com.example",
+                "Hello\u{200B}World",
+                "\u{202E}backwards",
+            ),
+            // Zero-width space and RTL override must not survive
+            forbidden: vec!["\u{200B}", "\u{202E}"],
+        },
+        Case {
+            name: "notification-emoji-pii-mix",
+            raw: notif(
+                12000,
+                "com.tencent.mm",
+                "👋 张三",
+                "💰转账 5000元 已到账 💰",
+            ),
+            forbidden: vec!["张三", "转账", "5000元"],
         },
     ]
 }

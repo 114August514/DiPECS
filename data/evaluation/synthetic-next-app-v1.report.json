@@ -1,0 +1,233 @@
+{
+  "schema_version": "dipecs.next_app_benchmark.v1",
+  "dataset_id": "synthetic-next-app-v1",
+  "source": "synthetic",
+  "config": {
+    "window_secs": 10,
+    "horizon_secs": 30,
+    "label_definition": "first foreground transition within the horizon whose package differs from the app current at window end",
+    "eligibility_definition": "actual_next_app is present in the current window's foreground or notified app set after removing current_app"
+  },
+  "inputs": [
+    "data/traces/scenarios/multi-app-switching.jsonl",
+    "data/traces/scenarios/morning-routine.jsonl",
+    "data/traces/scenarios/rich-workflow.jsonl"
+  ],
+  "total_windows": 946,
+  "eligible_windows": 178,
+  "context_supported_switch_coverage_pct": 23.298,
+  "exclusions": {
+    "eligible": 178,
+    "label_not_observable": 586,
+    "no_future_switch": 182
+  },
+  "aggregate": {
+    "rule_based": {
+      "eligible_windows": 178,
+      "predicted_windows": 167,
+      "top1_hits": 109,
+      "top3_hits": 117,
+      "top1_accuracy_pct": 61.236,
+      "top3_accuracy_pct": 65.73,
+      "prediction_coverage_pct": 93.82,
+      "conditional_top1_accuracy_pct": 65.269,
+      "wrong_prediction_rate_pct": 34.731,
+      "no_prediction_rate_pct": 6.18,
+      "mean_reciprocal_rank": 0.635,
+      "macro_top1_accuracy_pct": 60.704,
+      "macro_top3_accuracy_pct": 65.225,
+      "latency_us": {
+        "mean": 2.579,
+        "p50": 2,
+        "p95": 4
+      }
+    },
+    "local_evaluator": {
+      "eligible_windows": 178,
+      "predicted_windows": 131,
+      "top1_hits": 78,
+      "top3_hits": 112,
+      "top1_accuracy_pct": 43.82,
+      "top3_accuracy_pct": 62.921,
+      "prediction_coverage_pct": 73.596,
+      "conditional_top1_accuracy_pct": 59.542,
+      "wrong_prediction_rate_pct": 40.458,
+      "no_prediction_rate_pct": 26.404,
+      "mean_reciprocal_rank": 0.531,
+      "macro_top1_accuracy_pct": 43.823,
+      "macro_top3_accuracy_pct": 64.309,
+      "latency_us": {
+        "mean": 19.82,
+        "p50": 16,
+        "p95": 54
+      }
+    }
+  },
+  "scenarios": [
+    {
+      "scenario": "multi-app-switching",
+      "windows": 227,
+      "future_switch_windows": 209,
+      "eligible_windows": 52,
+      "exclusions": {
+        "eligible": 52,
+        "label_not_observable": 157,
+        "no_future_switch": 18
+      },
+      "backends": {
+        "rule_based": {
+          "eligible_windows": 52,
+          "predicted_windows": 48,
+          "top1_hits": 27,
+          "top3_hits": 30,
+          "top1_accuracy_pct": 51.923,
+          "top3_accuracy_pct": 57.692,
+          "prediction_coverage_pct": 92.308,
+          "conditional_top1_accuracy_pct": 56.25,
+          "wrong_prediction_rate_pct": 43.75,
+          "no_prediction_rate_pct": 7.692,
+          "mean_reciprocal_rank": 0.548,
+          "macro_top1_accuracy_pct": null,
+          "macro_top3_accuracy_pct": null,
+          "latency_us": {
+            "mean": 3.942,
+            "p50": 3,
+            "p95": 5
+          }
+        },
+        "local_evaluator": {
+          "eligible_windows": 52,
+          "predicted_windows": 48,
+          "top1_hits": 23,
+          "top3_hits": 46,
+          "top1_accuracy_pct": 44.231,
+          "top3_accuracy_pct": 88.462,
+          "prediction_coverage_pct": 92.308,
+          "conditional_top1_accuracy_pct": 47.917,
+          "wrong_prediction_rate_pct": 52.083,
+          "no_prediction_rate_pct": 7.692,
+          "mean_reciprocal_rank": 0.659,
+          "macro_top1_accuracy_pct": null,
+          "macro_top3_accuracy_pct": null,
+          "latency_us": {
+            "mean": 34.096,
+            "p50": 28,
+            "p95": 87
+          }
+        }
+      }
+    },
+    {
+      "scenario": "morning-routine",
+      "windows": 270,
+      "future_switch_windows": 218,
+      "eligible_windows": 65,
+      "exclusions": {
+        "eligible": 65,
+        "label_not_observable": 153,
+        "no_future_switch": 52
+      },
+      "backends": {
+        "rule_based": {
+          "eligible_windows": 65,
+          "predicted_windows": 61,
+          "top1_hits": 42,
+          "top3_hits": 46,
+          "top1_accuracy_pct": 64.615,
+          "top3_accuracy_pct": 70.769,
+          "prediction_coverage_pct": 93.846,
+          "conditional_top1_accuracy_pct": 68.852,
+          "wrong_prediction_rate_pct": 31.148,
+          "no_prediction_rate_pct": 6.154,
+          "mean_reciprocal_rank": 0.677,
+          "macro_top1_accuracy_pct": null,
+          "macro_top3_accuracy_pct": null,
+          "latency_us": {
+            "mean": 2.092,
+            "p50": 2,
+            "p95": 3
+          }
+        },
+        "local_evaluator": {
+          "eligible_windows": 65,
+          "predicted_windows": 46,
+          "top1_hits": 29,
+          "top3_hits": 37,
+          "top1_accuracy_pct": 44.615,
+          "top3_accuracy_pct": 56.923,
+          "prediction_coverage_pct": 70.769,
+          "conditional_top1_accuracy_pct": 63.043,
+          "wrong_prediction_rate_pct": 36.957,
+          "no_prediction_rate_pct": 29.231,
+          "mean_reciprocal_rank": 0.505,
+          "macro_top1_accuracy_pct": null,
+          "macro_top3_accuracy_pct": null,
+          "latency_us": {
+            "mean": 14.969,
+            "p50": 15,
+            "p95": 26
+          }
+        }
+      }
+    },
+    {
+      "scenario": "rich-workflow",
+      "windows": 449,
+      "future_switch_windows": 337,
+      "eligible_windows": 61,
+      "exclusions": {
+        "eligible": 61,
+        "label_not_observable": 276,
+        "no_future_switch": 112
+      },
+      "backends": {
+        "rule_based": {
+          "eligible_windows": 61,
+          "predicted_windows": 58,
+          "top1_hits": 40,
+          "top3_hits": 41,
+          "top1_accuracy_pct": 65.574,
+          "top3_accuracy_pct": 67.213,
+          "prediction_coverage_pct": 95.082,
+          "conditional_top1_accuracy_pct": 68.966,
+          "wrong_prediction_rate_pct": 31.034,
+          "no_prediction_rate_pct": 4.918,
+          "mean_reciprocal_rank": 0.664,
+          "macro_top1_accuracy_pct": null,
+          "macro_top3_accuracy_pct": null,
+          "latency_us": {
+            "mean": 1.934,
+            "p50": 2,
+            "p95": 3
+          }
+        },
+        "local_evaluator": {
+          "eligible_windows": 61,
+          "predicted_windows": 37,
+          "top1_hits": 26,
+          "top3_hits": 29,
+          "top1_accuracy_pct": 42.623,
+          "top3_accuracy_pct": 47.541,
+          "prediction_coverage_pct": 60.656,
+          "conditional_top1_accuracy_pct": 70.27,
+          "wrong_prediction_rate_pct": 29.73,
+          "no_prediction_rate_pct": 39.344,
+          "mean_reciprocal_rank": 0.451,
+          "macro_top1_accuracy_pct": null,
+          "macro_top3_accuracy_pct": null,
+          "latency_us": {
+            "mean": 12.82,
+            "p50": 12,
+            "p95": 23
+          }
+        }
+      }
+    }
+  ],
+  "limitations": [
+    "All labels are derived from deterministic synthetic traces, not real-user behavior.",
+    "Accuracy is reported only for context-supported switches; coverage reports how selective that cohort is.",
+    "Latency is measured during this run and is not byte-deterministic across machines.",
+    "No backend weights are tuned on this benchmark."
+  ]
+}

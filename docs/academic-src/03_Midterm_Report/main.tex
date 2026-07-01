@@ -18,10 +18,10 @@
 
 \begin{dipecsabstract}
 \noindent\textbf{\zihao{-4} 摘要：}\zihao{-5}
-DiPECS 是一个面向 Android/Linux 端侧环境的意图预测与动作治理原型。
-中期阶段，项目完成了 Rust 核心类型体系、隐私空气隙、窗口聚合、规则式意图生成、策略校验、动作执行骨架、动作总线和离线测试框架；Android 侧完成了 UsageStats、通知和基础系统状态等采集方向的原型验证。
-验证表明，在 Android 公开 API 和 Rust 核心链路基础上，可以建立一条可脱敏、可聚合、可决策、可审查、可回放的数据流。
-下一阶段重点是打通 Android 到 Rust 的生产入口、完善 golden trace/replay、接入真实云端后端，并验证低风险动作是否带来可测的系统收益。
+\textbf{目的：}汇报 DiPECS 中期阶段的核心进展，验证 Rust 核心类型体系、隐私空气隙、窗口聚合、规则式意图生成、策略校验、动作执行骨架和离线测试框架是否已形成可运行链路。
+\textbf{方法：}以 Android 13（API 33）为中期开发基线，采用 Rust + Kotlin 工程路线，通过单元测试、离线 replay 和 Android 公开 API 原型验证各模块行为。
+\textbf{结果：}中期已完成核心类型、隐私脱敏、窗口聚合、规则决策、策略校验、动作总线、动作执行骨架和 golden trace/replay 测试框架；Android 侧完成了 UsageStats、通知和基础系统状态的采集验证；数据流已具备可脱敏、可聚合、可决策、可审查、可回放能力。
+\textbf{结论：}项目已跨越从概念到可运行原型的阶段，下一阶段需优先打通 Android 到 Rust 的生产入口、完善 golden trace/replay、接入真实云端后端，并验证低风险动作是否带来可测系统收益。
 
 \vspace{0.5em}
 \noindent\textbf{\zihao{-4} 关键词：}\zihao{-5} 中期进展；Android 端侧系统；事件驱动架构；隐私空气隙；机制与策略分离
@@ -69,7 +69,7 @@ $\rightarrow$ 策略校验 $\rightarrow$ 本地优化执行 $\rightarrow$ 结果
     \dtr
     策略校验 & PolicyEngine 根据风险、置信度、能力等级和动作类型判断是否允许执行。 \\
     \dtr
-    本地执行 & 只执行低风险优化，如 KeepAlive、Prewarm/Prefetch 的安全子集或记录 hint。 \\
+    本地执行 & 只执行低风险优化，如 KeepAlive、PreWarm / Prefetch 的安全子集或记录 hint。 \\
     \dtr
     结果记录 & 通过 trace、audit record 和 golden replay 验证行为是否可复现、可审计。 \\
     \bottomrule
@@ -143,6 +143,42 @@ $\rightarrow$ 策略校验 $\rightarrow$ 本地优化执行 $\rightarrow$ 结果
 即使模型输出了动作，本地也会根据风险等级、置信度、动作白名单和上下文 target 检查决定是否授权。
 
 \section{中期成果}\label{sec:achievements}
+
+\subsection{里程碑状态}\label{subsec:milestones}
+
+表 \ref{tab:milestones} 汇总了中期阶段主要里程碑的完成情况。
+
+\begin{dipecstable}{中期阶段主要里程碑}{tab:milestones}
+  \begin{tabular}{P{5.0cm}P{2.0cm}P{5.2cm}}
+    \toprule
+    \rowcolor{gray!15}\textbf{里程碑} & \textbf{状态} & \textbf{说明} \\
+    \midrule
+    核心事件类型与 schema 定义 & 完成 & \texttt{RawEvent}、\texttt{SanitizedEvent}、\texttt{StructuredContext}、\texttt{IntentBatch} 等类型已定型。 \\
+    \dtr
+    \texttt{PrivacyAirGap} 隐私脱敏 & 完成 & 敏感字段不进入后续后端，回归测试覆盖泄漏场景。 \\
+    \dtr
+    \texttt{WindowAggregator} 窗口聚合 & 完成 & 事件序列可聚合为统一上下文。 \\
+    \dtr
+    RuleBased 规则意图生成 & 完成 & 本地规则基线可输出候选意图。 \\
+    \dtr
+    \texttt{PolicyEngine} 策略校验 & 完成 & 风险、置信度、capability、target 检查已落地。 \\
+    \dtr
+    \texttt{ActionLifecycle} 动作执行骨架 & 完成 & proposal、verdict、dispatch、终态审计链路已通。 \\
+    \dtr
+    \texttt{ActionBus} 动作总线 & 完成 & 采集与处理异步解耦。 \\
+    \dtr
+    GoldenTrace / replay 框架 & 骨架完成 & 数据结构与离线 replay 方向已确定，待扩充数据集并纳入回归。 \\
+    \dtr
+    Android 公开 API 采集验证 & 完成 & UsageStats、NotificationListener、设备状态已原型验证。 \\
+    \dtr
+    Android action bridge & 原型中 & 动作执行骨架已具备，真实 bridge 待结题阶段强化。 \\
+    \dtr
+    云端 LLM 后端 & 接口设计 & 已定义 \texttt{CloudLlmBackend} 与回退路径，真实云端接入待后续完成。 \\
+    \dtr
+    eBPF / Binder 高权限采集 & 后续阶段 & 当前仅留扩展接口，不作为中期默认目标。 \\
+    \bottomrule
+  \end{tabular}
+\end{dipecstable}
 
 \subsection{基础采集原型}\label{subsec:collection}
 
@@ -249,7 +285,7 @@ DiPECS 尝试在 PID 级事件和 intent 级语义之间建立中间层：用脱
     \midrule
     KeepAlive & 高置信度、低风险 & 短窗口保护相关进程或本系统任务，减少重建成本。 \\
     \dtr
-    Prewarm/Prefetch & 中高置信度、target 明确 & 预读可访问资源或预热本应用/安全资源。 \\
+    PreWarm / Prefetch & 中高置信度、target 明确 & 预读可访问资源或预热本应用/安全资源。 \\
     \dtr
     Hint/NoOp & 低置信度或风险不明 & 只记录候选，不做实际资源占用。 \\
     \bottomrule

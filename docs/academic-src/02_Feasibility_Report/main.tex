@@ -18,10 +18,10 @@
 
 \begin{dipecsabstract}
 \noindent\textbf{\zihao{-4} 摘要：}\zihao{-5}
-DiPECS 是一个面向 Android/Linux 端侧环境的意图预测与动作治理原型。
-本报告从数据采集、系统架构、决策模型、动作执行、隐私约束和实验评估等方面评估该项目的技术可行性。
-评估表明，基于 Android 公开 API、Rust 核心链路、离线 replay 和受控动作边界，DiPECS 可以先实现一个可运行、可验证的端侧 AIOS 原型；高权限采集、真实系统预加载和复杂语义模型应作为后续阶段逐步推进。
-后续工作需优先保证数据链路、隐私边界和动作治理正确，再逐步证明预测模型和真实动作是否带来性能收益。
+\textbf{目的：}评估 DiPECS 端侧 AIOS 原型在 Android/Linux 环境下的技术可行性，明确建立可验证数据链路、隐私边界与动作治理边界的可行条件。
+\textbf{方法：}从数据采集、系统架构、决策模型、动作执行、隐私约束和实验评估六个方面，结合 Android 公开 API、Rust 核心实现、离线 replay 和项目代码仓库进行可行性论证。
+\textbf{结果：}Android 公开 API 与 Rust 核心链路足以支撑一条可脱敏、可聚合、可审查、可回放的端侧 AIOS 原型；高权限采集、真实系统预加载和复杂语义模型仍是后续阶段需要逐步推进的难点。
+\textbf{结论：}DiPECS 可以先以本地规则基线、公开 API 数据源和受控动作边界实现可运行原型，再逐步接入云端模型、复杂预测后端和高权限采集路径。
 
 \vspace{0.5em}
 \noindent\textbf{\zihao{-4} 关键词：}\zihao{-5} 可行性分析；端侧智能系统；隐私空气隙；动作治理；Android 公开 API
@@ -221,7 +221,7 @@ Android 公开 API 能力有限，高权限数据源部署复杂。
     \midrule
     Phase 1 & 打通离线 replay 和 RuleBased 基线 & 同一 trace 产生稳定 intent、policy 和 audit hash。 \\
     \dtr
-    Phase 2 & 接入 Android public-API trace & 真机或模拟器 JSONL 能进入 Rust pipeline。 \\
+    Phase 2 & 接入 Android public-API trace & 模拟器或物理设备 JSONL 能进入 Rust pipeline。 \\
     \dtr
     Phase 3 & 完善 cloud/rule/local 后端路由 & 云端失败可回退，privacy-sensitive context 不上传。 \\
     \dtr
@@ -231,6 +231,19 @@ Android 公开 API 能力有限，高权限数据源部署复杂。
     \bottomrule
   \end{tabular}
 \end{dipecstable}
+
+\section{局限性与展望}\label{sec:limitations}
+
+本可行性分析存在以下局限：
+
+\begin{enumerate}[label=(\arabic*)]
+  \item 分析以公开 API 能力和项目内部实现为主，尚未在真实物理设备上完成端到端长时间运行验证；
+  \item 高权限数据源（Accessibility、Binder、eBPF）的可行性判断以能力研究为主，缺少稳定部署方案；
+  \item 动作收益评估依赖后续实验，当前阶段无法给出启动延迟或能耗的量化结论；
+  \item 云端 LLM 的可行性结论基于接口设计和假设场景，真实场景下的失败模式需进一步覆盖。
+\end{enumerate}
+
+后续工作应在守住数据链路、隐私边界和动作治理边界的前提下，逐步扩展：稳定 Android 到 Rust 的生产入口、建立 golden trace 回归基线、接入真实云端后端、验证 Android-safe 动作桥接，并在更长周期内评估预测模型和动作执行的真实收益。
 
 \section{结论}\label{sec:conclusion}
 

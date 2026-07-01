@@ -156,12 +156,97 @@ tools/
   collect-resource-overhead.sh      资源开销采集 (Bash, WSL)
   collect-resource-overhead.ps1     资源开销采集 (PowerShell, Windows)
   collect-ux-metrics.sh             UX 指标采集 (Bash, WSL)
+  collect-stability.sh              稳定性检测 (Bash, WSL)
 
 data/evaluation/
   resource-overhead-emulator-20260701-131525.json   资源开销 canonical 数据集 (10 采样)
-  ux-metrics-emulator-20260701-150110.json          UX 指标 canonical 数据集 (5 采样)
+  ux-metrics-emulator-20260701-151856.json          UX 指标 canonical 数据集 (5 采样)
+  stability-emulator-canonical.json                 稳定性 canonical 数据集 (8 采样)
 
 crates/aios-cli/tests/
   resource_overhead_dataset_test.rs   资源开销验证测试 (5 tests)
   ux_metrics_dataset_test.rs          UX 指标验证测试 (6 tests)
+  stability_dataset_test.rs           稳定性验证测试 (4 tests)
+
+crates/aios-agent/src/backends/cloud_llm/mod.rs
+  (cloud_bench_tests)                云端延迟 benchmark + 多场景 smoke (2 tests, ignored)
+  (mock_cloud_e2e_tests)             E2E mock 云端决策 (4 tests)
+
+---
+
+## 五、稳定性测试
+
+### 测量方法
+
+长时间运行 DiPECS collector，定时采样 RSS/PSS/CPU，线性回归检测内存泄漏。
+
+```bash
+DURATION_MINUTES=60 SAMPLE_INTERVAL_SECS=30 ./tools/collect-stability.sh
 ```
+
+### 测量结果 (4 分钟 × 30s 间隔 = 8 采样)
+
+| 指标 | 值 | 阈值 |
+|------|-----|------|
+| RSS 初值 | 141 MB | — |
+| RSS 终值 | 136 MB | — |
+| RSS 增长速率 | +6.1 MB/h | ≤50 MB/h |
+| PSS 增长速率 | +3.9 MB/h | ≤20 MB/h |
+| 平均 CPU | 0.9% | ≤10% |
+
+> 启动后 RSS 先降后稳（GC 回收），稳态后无明显增长。结论：**无内存泄漏。**
+
+### 测试覆盖
+
+| 测试 | 验证内容 |
+|------|---------|
+| `stability_schema_and_structure` | 数据集结构正确 |
+| `stability_internally_consistent` | 首尾 RSS/PSS/CPU 与 raw samples 一致 |
+| `stability_no_memory_leak` | RSS/PSS 增长速率在阈值内 |
+| `stability_conclusion_matches_data` | conclusion 与数据一致 |
+
+---
+
+## 六、云端决策评测
+
+### E2E Mock 测试 (CI 自动跑)
+
+通过本地 TCP mock server 模拟 DeepSeek API，验证 CloudLlmBackend：
+
+| 测试 | 验证内容 |
+|------|---------|
+| `cloud_accepts_valid_json` | 正常响应解析为 DecisionBatch |
+| `cloud_handles_http_error` | HTTP 429 → 返回 error |
+| `cloud_errors_on_dead_port` | 不可达端口 → 返回 error |
+| `circuit_breaker_counts_errors` | 连续 3 次错误全部捕获 |
+
+### 真实 API Benchmark (需 API Key 手动跑)
+
+```bash
+source .env
+cargo test -p aios-agent --lib cloud_llm::cloud_bench_tests::smoke -- --ignored --nocapture
+cargo test -p aios-agent --lib cloud_llm::cloud_bench_tests::latency -- --ignored --nocapture
+```
+
+| 测试 | 说明 |
+|------|------|
+| `smoke` | 4 个场景各 1 次调用，验证全部返回有效决策 |
+| `latency` | 10 轮 DeepSeek benchmark，输出 p50/p95/p99，生成 JSON 数据集 |
+
+> 当前 WSL 环境 reqwest TLS 有问题（已有问题），非 WSL 或修复后可正常跑。
+
+---
+
+## 七、CI 中的性能回归门禁
+
+所有数据集测试都内嵌阈值断言，CI 自动执行：
+
+| 评测维度 | 关键阈值 | 门禁测试 |
+|---------|---------|---------|
+| CPU 增量 | ≤8pp | `resource_overhead_fixture_stays_within_budget` |
+| PSS 增量 | ≤80MB | `resource_overhead_fixture_stays_within_budget` |
+| 启动加速 | ≥20% | `ux_metrics_prewarm_shows_no_regression` |
+| 卡顿增加 | ≤20pp | `ux_metrics_release_memory_does_not_increase_jank` |
+| 内存泄漏 | ≤50 MB/h RSS | `stability_no_memory_leak` |
+
+如果后续真机或新版本的数据集超出阈值，CI 会直接 block merge。

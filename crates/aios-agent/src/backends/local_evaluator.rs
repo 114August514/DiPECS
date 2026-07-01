@@ -723,7 +723,7 @@ fn finalize_candidates(
 fn is_policy_aware_action(action: &SuggestedAction, signals: &WindowSignals) -> bool {
     match action.action_type {
         ActionType::PrefetchFile => {
-            !(signals.low_battery && !signals.charging)
+            (!signals.low_battery || signals.charging)
                 && !signals.offline
                 && action
                     .target

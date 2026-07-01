@@ -9,3 +9,7 @@
 - [PPTX v1](midterm/DiPECS-midterm-v1.pptx)
 - [PPTX v2](midterm/DiPECS-midterm-v2.pptx)
 - [PPTX v3](midterm/DiPECS-midterm-v3.pptx)
+
+## 期末汇报
+
+- [Slidev 源码](final/slides.md)

@@ -490,3 +490,160 @@ mod cloud_bench_tests {
         println!("\nWrote {}", p.display());
     }
 }
+
+#[cfg(test)]
+mod mock_cloud_e2e_tests {
+    use std::io::{BufRead, BufReader, Read, Write};
+    use std::net::TcpListener;
+    use std::thread;
+
+    use crate::backends::cloud_llm::client::CloudLlmBackend;
+    use crate::backends::cloud_llm::config::{CloudLlmConfig, CloudProvider};
+    use crate::DecisionBackend;
+    use aios_spec::{
+        ContextSummary, SanitizedEvent, SanitizedEventType, ScriptHint, SemanticHint, SourceTier,
+        StructuredContext, TextHint,
+    };
+
+    fn make_ctx() -> StructuredContext {
+        StructuredContext {
+            window_id: "mock-e2e".into(),
+            window_start_ms: 0,
+            window_end_ms: 60_000,
+            duration_secs: 60,
+            events: vec![SanitizedEvent {
+                event_id: "evt-1".into(),
+                timestamp_ms: 5000,
+                event_type: SanitizedEventType::Notification {
+                    source_package: "com.test.app".into(),
+                    category: Some("msg".into()),
+                    channel_id: None,
+                    title_hint: TextHint {
+                        length_chars: 10,
+                        script: ScriptHint::Latin,
+                        is_emoji_only: false,
+                    },
+                    text_hint: TextHint {
+                        length_chars: 30,
+                        script: ScriptHint::Latin,
+                        is_emoji_only: false,
+                    },
+                    semantic_hints: vec![SemanticHint::FileMention, SemanticHint::ImageMention],
+                    is_ongoing: false,
+                    group_key: None,
+                },
+                source_tier: SourceTier::PublicApi,
+                app_package: Some("com.test.app".into()),
+                uid: None,
+            }],
+            summary: ContextSummary {
+                foreground_apps: vec!["com.test.app".into()],
+                notified_apps: vec!["com.test.app".into()],
+                all_semantic_hints: vec![SemanticHint::FileMention, SemanticHint::ImageMention],
+                file_activity: vec![],
+                latest_system_status: None,
+                source_tier: SourceTier::PublicApi,
+            },
+        }
+    }
+
+    fn start_mock(port: u16, response_body: &str, status_code: u16) {
+        let body = response_body.to_string();
+        thread::spawn(move || {
+            let listener = TcpListener::bind(("127.0.0.1", port)).expect("bind mock");
+            for mut stream in listener.incoming().flatten() {
+                let mut reader = BufReader::new(&stream);
+                let mut content_length = 0usize;
+                loop {
+                    let mut line = String::new();
+                    reader.read_line(&mut line).unwrap();
+                    if line == "\r\n" || line.is_empty() {
+                        break;
+                    }
+                    if line.to_lowercase().starts_with("content-length:") {
+                        content_length =
+                            line.split(':').nth(1).unwrap().trim().parse().unwrap_or(0);
+                    }
+                }
+                let mut body_buf = vec![0u8; content_length];
+                if content_length > 0 {
+                    reader.read_exact(&mut body_buf).ok();
+                }
+                let resp = format!(
+                    "HTTP/1.1 {status_code} OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\r\n{body}",
+                    body.len()
+                );
+                stream.write_all(resp.as_bytes()).ok();
+                break; // One request per test
+            }
+        });
+    }
+
+    const VALID_JSON: &str = r#"{"id":"m","object":"chat.completion","model":"m","choices":[{"index":0,"message":{"role":"assistant","content":"{\"intents\":[{\"intent_type\":\"OpenApp\",\"target\":\"com.test.app\",\"confidence\":0.9,\"risk_level\":\"Low\",\"actions\":[{\"action_type\":\"PreWarmProcess\",\"target\":\"own:resources\",\"urgency\":\"Immediate\"}],\"rationale_tags\":[\"e2e\"]}]}"},"finish_reason":"stop"}]}"#;
+
+    fn backend_for(port: u16) -> CloudLlmBackend {
+        let config = CloudLlmConfig::new_for_test(
+            CloudProvider::GenericOpenAiCompatible,
+            format!("http://127.0.0.1:{port}/v1/chat/completions"),
+            "mock-model",
+            "noop-key",
+        );
+        CloudLlmBackend::try_new(config).expect("backend init")
+    }
+
+    #[test]
+    fn cloud_accepts_valid_json() {
+        let port = 19420;
+        start_mock(port, VALID_JSON, 200);
+        std::thread::sleep(std::time::Duration::from_millis(50));
+        let be = backend_for(port);
+        let result = be.evaluate(&make_ctx());
+        assert!(
+            result.error.is_none(),
+            "expected ok, got: {:?}",
+            result.error
+        );
+        assert!(!result.intent_batch.intents.is_empty());
+    }
+
+    #[test]
+    fn cloud_handles_http_error() {
+        let port = 19421;
+        start_mock(port, r#"{"error":"boom"}"#, 429);
+        std::thread::sleep(std::time::Duration::from_millis(50));
+        let be = backend_for(port);
+        let result = be.evaluate(&make_ctx());
+        assert!(result.error.is_some(), "should error on HTTP 429");
+    }
+
+    #[test]
+    fn cloud_errors_on_dead_port() {
+        let config = CloudLlmConfig::new_for_test(
+            CloudProvider::GenericOpenAiCompatible,
+            "http://127.0.0.1:65530/v1/chat/completions".to_string(),
+            "mock-model",
+            "noop-key",
+        );
+        let be = CloudLlmBackend::try_new(config).expect("backend init");
+        let result = be.evaluate(&make_ctx());
+        assert!(result.error.is_some(), "should error on dead port");
+    }
+
+    #[test]
+    fn circuit_breaker_counts_errors() {
+        let config = CloudLlmConfig::new_for_test(
+            CloudProvider::GenericOpenAiCompatible,
+            "http://127.0.0.1:65530/v1/chat/completions".to_string(),
+            "mock-model",
+            "noop-key",
+        );
+        let be = CloudLlmBackend::try_new(config).expect("backend init");
+        let mut errs = 0u32;
+        for _ in 0..3 {
+            if be.evaluate(&make_ctx()).error.is_some() {
+                errs += 1;
+            }
+        }
+        assert_eq!(errs, 3, "all requests to dead port should error");
+    }
+}

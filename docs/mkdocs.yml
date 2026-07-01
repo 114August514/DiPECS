@@ -111,6 +111,9 @@ nav:
     - 状态机: architecture/states.md
     - 数据流: architecture/data-flow.md
     - 管线与运行时: architecture/pipeline.md
+    - 决策路由: architecture/decision-routing.md
+    - 模型记忆与行为画像: architecture/model-memory.md
+    - 云端 LLM 后端: architecture/cloud-llm.md
     - 动作治理: architecture/action-governance.md
     - 动作执行: architecture/action-execution.md
     - 验证与审计: architecture/verification.md
@@ -129,6 +132,7 @@ nav:
       - RuleBased 能力对齐: rfc/releases/rule-based-capability-conformance.md
   - 评估与测试:
     - 模拟器评估套件: evaluation/emulator-evaluation-suite.md
+    - 评估场景与数据集: evaluation/scenarios.md
   - 调研分析:
     - research/index.md
     - 交付文档:
@@ -171,6 +175,7 @@ nav:
     - CI 质检体系: team/ci.md
     - 环境配置: team/environment.md
     - 开发指南: team/dev.md
+    - 调试指南: team/debugging.md
     - 编码规范:
       - team/conventions/index.md
       - Rust: team/conventions/rust.md

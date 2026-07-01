@@ -85,24 +85,30 @@ DiPECS 后台运行资源开销极低：CPU <2%，PSS ~30MB，10 分钟仅耗电
 
 | 模式 | 说明 |
 |------|------|
+| `no_dipecs_baseline` | DiPECS 完全停止，系统空闲基线（"没有 DiPECS" 的参考状态） |
 | `cold_startup` | 真冷启动：force-stop → 直接启动 MainActivity |
 | `prewarm_startup` | DiPECS 预热：force-stop → 启动后台服务 → PreWarmProcess → 启动 MainActivity |
-| `baseline_jank` | 正常运行时帧率基线 |
-| `post_release_jank` | ReleaseMemory 后帧率 |
+| `baseline_jank` | DiPECS 运行中，正常帧率 |
+| `post_release_jank` | DiPECS + ReleaseMemory 后帧率 |
 
 ### 测量结果 (5 采样 × 3s 间隔)
 
+**系统基线（无 DiPECS）：**
+
+| 指标 | 值 |
+|------|-----|
+| 系统空闲内存 | 2568 MB |
+
 **启动耗时（MainActivity am start -W TotalTime）：**
 
-| 模式 | 平均启动时间 | Jank |
-|------|------------|------|
-| cold_startup | 1470ms | 73% |
-| prewarm_startup | 665ms | 73% |
-| **提升** | **-805ms (54.7%)** | — |
+| 模式 | 平均启动时间 | Jank | vs 无 DiPECS |
+|------|------------|------|-------------|
+| cold_startup（无 DiPECS） | 1552ms | 80% | — |
+| prewarm_startup（DiPECS） | 873ms | 80% | **44% 更快** |
 
 > 冷启动时 Jank 高是正常的（首帧渲染），PreWarm 不影响首帧复杂度。
 
-**帧率卡顿：**
+**帧率卡顿（运行中）：**
 
 | 模式 | 平均 Jank | PSS |
 |------|----------|-----|

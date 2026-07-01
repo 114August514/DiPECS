@@ -210,6 +210,29 @@ layout: section
 
 ---
 
+# OS 概念映射
+
+<div class="mt-4 text-sm compact-table">
+
+| OS 概念 | DiPECS 对应 |
+| --- | --- |
+| 系统调用 ABI | Action Schema（`aios-spec` 中的结构化动作类型） |
+| 内核策略引擎 | `PolicyEngine`（风险、能力、置信度检查） |
+| 设备驱动 | `ActionAdapter` trait（Offline / Android / Linux） |
+| 进程追踪 (strace) | Golden Trace 确定性 replay |
+| 安全边界 / 信任域 | `PrivacyAirGap`（RawEvent 不越过此边界） |
+| Capability 权限系统 | `AuthorizedAction`（唯一构造点在 `ActionLifecycle`） |
+| 审计日志 | `AuditRecord`（每个 action 产出一条终态记录） |
+| 调度器 | `ActionBus` + `DecisionRouter`（mpsc channel + 优先级路由） |
+
+</div>
+
+<div class="mt-5 text-sm opacity-75">
+DiPECS 是一个面向模型原生 OS 的用户态控制平面原型。模型的输出只是“意图提案”，必须经过本地的能力检查、策略裁决和调度后才能执行。
+</div>
+
+---
+
 # 本地数据源
 
 <div class="mt-4 text-sm compact-table">
@@ -228,6 +251,22 @@ layout: section
 
 <div class="mt-5 text-sm opacity-75">
 当前优先使用用户可授权、可稳定复现的数据源；更底层的能力保留接口，不作为展示链路的前置依赖。
+</div>
+
+---
+
+# 为什么暂缓 eBPF / 内核追踪
+
+<div class="mt-5 text-sm leading-relaxed">
+
+裸系统调用 trace 本身不携带用户意图语义。在内核 VFS 层拦截 `open()`、`read()`、`write()` 只能告诉你“发生了什么系统调用”，无法区分“用户打开了 PDF”和“缓存守护进程写盘”——没有上层信号融合，syscall trace 就是噪声。
+
+<div class="mt-4 p-4 border rounded">
+
+**OS 设计考量**：DiPECS 选择先接入携带**语义意图**的公开 API 数据源（应用切换、通知类型、设备状态），在内核层保留 Binder / eBPF 接口作为扩展点。这类似于内核中的 **ftrace → perf_event → eBPF** 演进路径——机制层先用最小侵入的方式接入，语义层逐步叠加。Binder / fanotify / eBPF 接口已在 spec 中预留，后续可在不改变上层管线的前提下接入真实内核事件。
+
+</div>
+
 </div>
 
 ---
@@ -350,7 +389,7 @@ layout: section
 
 ---
 
-# 隐私边界
+# 隐私边界（安全边界 / 信任域）
 
 <div class="grid grid-cols-2 gap-5 mt-5 text-sm">
 
@@ -372,6 +411,10 @@ layout: section
 
 </div>
 
+</div>
+
+<div class="mt-5 p-3 border rounded text-sm">
+类比 OS 中的用户态/内核态隔离：`RawEvent` 是“内核态的原始数据”，`PrivacyAirGap` 是唯一允许跨越信任边界的门（gate）。模型后端永远只接收脱敏后的 `StructuredContext`，类似于用户态进程只能通过系统调用访问内核资源，而不能直接读写内核内存。
 </div>
 
 ---
@@ -427,13 +470,39 @@ layout: section
 
 ---
 
-# 决策路由
+# 决策路由（类比 OS 调度器）
 
 <div class="diagram-placeholder">
   <div>
     <div class="placeholder-title">预留：决策路由图</div>
     <div class="placeholder-subtitle">StructuredContext / DecisionRouter / RuleBasedBackend / CloudLlmBackend / FallbackNoOpBackend / IntentBatch</div>
   </div>
+</div>
+
+<div class="grid grid-cols-2 gap-4 mt-5 text-sm">
+
+<div class="p-3 border rounded">
+
+### 路由优先级（类比调度策略）
+
+1. **熔断器触发** → 直接兜底（过载保护）
+2. **隐私敏感度 > 阈值** → 本地规则（安全优先）
+3. **本地可行动信号** → 本地评估器（快速路径）
+4. **语义复杂度** → 云端 LLM（复杂场景）
+
+</div>
+
+<div class="p-3 border rounded">
+
+### OS 设计考量
+
+- **电路熔断器**：连续错误后自动降级，类似于内核的 watchdog 机制
+- **多级 fallback**：云端失败 → 规则兜底；熔断 → 纯 NoOp
+- **延迟分级**：微秒级（本地规则）、亚毫秒级（本地评估）、秒级（云端 LLM）
+- 与 OS 中断合并类似——窗口聚合将高频事件批处理，减少调度开销
+
+</div>
+
 </div>
 
 <div class="mt-5 text-sm">
@@ -444,7 +513,7 @@ layout: section
 
 ---
 
-# 模型只能提出建议
+# 模型只能提出建议（类比系统调用边界）
 
 <div class="diagram-placeholder">
   <div>
@@ -454,21 +523,21 @@ layout: section
 </div>
 
 <div class="mt-5 p-4 border rounded text-sm">
-真正可执行的 `AuthorizedAction` 只能由 `ActionLifecycle` 在策略通过后构造；执行器不能自行伪造授权动作。
+类比 OS 系统调用：模型（用户态）只能提出 `IntentBatch` 建议，真正可执行的 `AuthorizedAction` 必须经过内核态的 `ActionLifecycle` + `PolicyEngine` 校验后才能构造——执行器不能自行伪造授权动作。这与用户态进程无法绕过 syscall gate 直接操作内核资源同理。
 </div>
 
 ---
 
-# 策略检查
+# 策略检查（类比内核 Capability 检查）
 
 <div class="grid grid-cols-2 gap-5 mt-5 text-sm">
 
 <div>
 
-### 检查项
+### 检查项（类比 capability 校验）
 
-- 后端能力等级
-- 风险等级上限
+- 后端能力等级 → 类似 capability bound
+- 风险等级上限 → 类似 seccomp filter
 - 置信度下限
 - blocked action 子串
 - `Deferred` urgency 拒绝
@@ -493,7 +562,7 @@ layout: section
 </div>
 
 <div class="mt-6 text-sm opacity-75">
-策略检查让动作执行从“模型说了算”变成“本地规则裁决后才能执行”。
+类比 Linux capability / seccomp：`PolicyEngine` 定义了动作允许的能力上界。每个后端路由对应一个 `CapabilityLevel`（Low / Medium），超出能力范围的建议动作会被拒绝。这与内核中 `CAP_SYS_ADMIN` 等能力检查的设计理念一致——最小权限原则。
 </div>
 
 ---
@@ -544,7 +613,42 @@ layout: section
 </div>
 
 <div class="mt-6 p-4 border rounded text-sm">
-Android 侧不是开放任意执行入口，而是接收经过本地生命周期和策略检查后的有限动作。
+Android 侧不是开放任意执行入口，而是接收经过本地生命周期和策略检查后的有限动作。这类似于 OS 内核只允许通过系统调用接口访问受限资源。
+</div>
+
+---
+
+# 资源管理（用户态资源调度器）
+
+<div class="grid grid-cols-2 gap-5 mt-5 text-sm">
+
+<div>
+
+### 读取内核级状态
+
+- `/proc` 差分：PSS、RSS 进程内存快照
+- `SystemState`：电量、网络、屏幕状态
+- daemon 通过 tokio 异步采集，不阻塞主窗口
+
+</div>
+
+<div>
+
+### 执行资源调度动作
+
+| 动作 | OS 类比 |
+| --- | --- |
+| `PreWarmProcess` | 进程预加载（类 sched 提示） |
+| `ReleaseMemory` | 内存回收（类 LMK / cgroup 调整） |
+| `PrefetchFile` | 文件预取（类 readahead） |
+| `KeepAlive` | 进程保活（类 oom_score_adj） |
+
+</div>
+
+</div>
+
+<div class="mt-6 p-4 border rounded text-sm">
+DiPECS 作为用户态资源管理器：读取内核级状态，应用模型生成的预测作为调度提示，最终通过 Android OS 服务执行。内核保留最终裁决权——这与 `sched_ext` 等可扩展调度器的设计理念一致。
 </div>
 
 ---
@@ -663,7 +767,7 @@ layout: section
 
 ### 先做公开 API
 
-优先保证普通设备上可部署、可授权、可复现；底层接口保留但不强依赖。
+优先保证普通设备上可部署、可授权、可复现；底层内核接口保留但不强依赖（机制与策略分离——机制层独立于数据源）。
 
 </div>
 
@@ -687,7 +791,7 @@ layout: section
 
 ### 先做有限动作
 
-动作集合保持保守，降低自动执行的风险面。
+动作集合保持保守，降低自动执行的风险面（类比最小 capability 原则——只授予必要的动作类型）。
 
 </div>
 
@@ -697,17 +801,20 @@ layout: section
 
 # 项目总结
 
-<div class="mt-6 text-left text-lg leading-9">
+<div class="mt-4 text-left text-lg leading-9">
 
-DiPECS 将 Android 本地信号抽象为结构化事件流，在本地完成脱敏和窗口聚合，再把受控上下文交给决策模块。
-
-<br/>
-
-模型只提出建议，动作必须经过本地策略和生命周期状态机，最终形成可回放、可审计的执行记录。
+**DiPECS 是一个面向模型原生 OS 的用户态控制平面原型。**
 
 <br/>
 
-项目的重点不是让模型拥有更多权限，而是在真实设备边界内，把观察、决策和执行组织成一条清晰、可验证的系统链路。
+- **系统调用边界**：Action Schema 定义动作接口，`PolicyEngine` + `ActionLifecycle` 构成 syscall gate——模型意图必须经过本地能力检查后才能执行
+- **调度器**：`DecisionRouter` 按熔断器 → 隐私敏感度 → 可行动信号 → 语义复杂度四级路由，融合电路熔断器保护
+- **审计闭环**：Golden Trace 确定性 replay + `audit_hash`，每次 `cargo test` 验证回归——动作不只是“执行了”，而是“可复现、可验证的 OS 状态迁移”
+- **安全边界**：`PrivacyAirGap` 确保原始事件不越过信任域；模型只看脱敏后的结构化上下文
+
+<br/>
+
+项目的重点不是让模型拥有更多权限，而是在真实设备边界内，把观察、决策和执行组织成可验证的 OS 级控制回路。
 
 </div>
 

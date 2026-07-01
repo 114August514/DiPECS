@@ -29,12 +29,17 @@ class EventStore(context: Context) {
         if (!file.exists()) {
             return emptyList()
         }
-        return file.readLines()
-            .asSequence()
-            .filter { it.isNotBlank() }
-            .takeLastCompat(limit)
-            .mapNotNull { line -> runCatching { sanitizeForTrace(JSONObject(line)) }.getOrNull() }
-            .toList()
+
+        return synchronized(LOCK) {
+            // Keep memory bounded for long-running collectors: only the
+            // ring-buffer helper holds the last `limit` nonblank rows.
+            file.useLines { lines ->
+                lines
+                    .filter { it.isNotBlank() }
+                    .takeLastCompat(limit)
+                    .mapNotNull { line -> runCatching { sanitizeForTrace(JSONObject(line)) }.getOrNull() }
+            }
+        }
     }
 
     fun clear() {
@@ -52,20 +57,29 @@ class EventStore(context: Context) {
         if (!targetDir.exists()) {
             targetDir.mkdirs()
         }
+
         val target = File(targetDir, "actions.jsonl")
-        if (source.exists()) {
-            val sanitized = source.readLines()
-                .asSequence()
-                .filter { it.isNotBlank() }
-                .map { line ->
-                    runCatching { sanitizeForTrace(JSONObject(line)).toString() }
-                        .getOrElse { "" }
+
+        synchronized(LOCK) {
+            // Export is intentionally line-oriented. Large traces should not
+            // need a full in-memory sanitized copy just to write the public file.
+            target.bufferedWriter().use { writer ->
+                if (source.exists()) {
+                    source.useLines { lines ->
+                        lines
+                            .filter { it.isNotBlank() }
+                            .forEach { line ->
+                                val sanitized = runCatching {
+                                    sanitizeForTrace(JSONObject(line)).toString()
+                                }.getOrNull()
+                                if (!sanitized.isNullOrBlank()) {
+                                    writer.write(sanitized)
+                                    writer.newLine()
+                                }
+                            }
+                    }
                 }
-                .filter { it.isNotBlank() }
-                .joinToString(separator = "\n", postfix = "\n")
-            target.writeText(sanitized)
-        } else {
-            target.writeText("")
+            }
         }
         return target
     }

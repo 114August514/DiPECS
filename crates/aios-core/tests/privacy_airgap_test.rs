@@ -16,6 +16,9 @@ fn test_notification_file_detection() {
         channel_id: Some("lark_im_message".into()),
         raw_title: "张三".into(),
         raw_text: "张三发来一个文件: quarterly_report.pdf".into(),
+        title_hint: None,
+        text_hint: None,
+        semantic_hints: vec![],
         is_ongoing: false,
         group_key: Some("conv_12345".into()),
         has_picture: false,
@@ -64,6 +67,9 @@ fn test_notification_image_detection() {
         channel_id: None,
         raw_title: "家人群".into(),
         raw_text: "发了一张照片".into(),
+        title_hint: None,
+        text_hint: None,
+        semantic_hints: vec![],
         is_ongoing: false,
         group_key: None,
         has_picture: true,
@@ -74,6 +80,52 @@ fn test_notification_image_detection() {
     match &sanitized.event_type {
         SanitizedEventType::Notification { semantic_hints, .. } => {
             assert!(semantic_hints.contains(&SemanticHint::ImageMention));
+        },
+        _ => panic!("expected Notification event"),
+    }
+}
+
+#[test]
+fn test_notification_uses_collector_safe_hints_when_raw_text_is_redacted() {
+    let sanitizer = DefaultPrivacyAirGap;
+
+    let raw = RawEvent::NotificationPosted(NotificationRawEvent {
+        timestamp_ms: 1000,
+        package_name: "com.ss.android.lark".into(),
+        category: Some("msg".into()),
+        channel_id: Some("lark_im_message".into()),
+        raw_title: "".into(),
+        raw_text: "".into(),
+        title_hint: Some(TextHint {
+            length_chars: 2,
+            script: ScriptHint::Hanzi,
+            is_emoji_only: false,
+        }),
+        text_hint: Some(TextHint {
+            length_chars: 20,
+            script: ScriptHint::Mixed,
+            is_emoji_only: false,
+        }),
+        semantic_hints: vec![SemanticHint::FileMention],
+        is_ongoing: false,
+        group_key: None,
+        has_picture: false,
+    });
+
+    let sanitized = sanitizer.sanitize(raw);
+
+    match &sanitized.event_type {
+        SanitizedEventType::Notification {
+            title_hint,
+            text_hint,
+            semantic_hints,
+            ..
+        } => {
+            assert_eq!(title_hint.length_chars, 2);
+            assert_eq!(title_hint.script, ScriptHint::Hanzi);
+            assert_eq!(text_hint.length_chars, 20);
+            assert_eq!(text_hint.script, ScriptHint::Mixed);
+            assert!(semantic_hints.contains(&SemanticHint::FileMention));
         },
         _ => panic!("expected Notification event"),
     }
@@ -184,6 +236,9 @@ fn test_chinese_names_not_leaked() {
         channel_id: None,
         raw_title: "王小明".into(),
         raw_text: "李华发来一条消息：明天开会".into(),
+        title_hint: None,
+        text_hint: None,
+        semantic_hints: vec![],
         is_ongoing: false,
         group_key: None,
         has_picture: false,
@@ -217,6 +272,9 @@ fn test_phone_numbers_not_leaked() {
         channel_id: None,
         raw_title: "未接来电".into(),
         raw_text: "13812345678 来电".into(),
+        title_hint: None,
+        text_hint: None,
+        semantic_hints: vec![],
         is_ongoing: false,
         group_key: None,
         has_picture: false,
@@ -293,6 +351,9 @@ fn test_emoji_only_notification_text() {
         channel_id: None,
         raw_title: "👍".into(),
         raw_text: "😂🎉👍".into(),
+        title_hint: None,
+        text_hint: None,
+        semantic_hints: vec![],
         is_ongoing: false,
         group_key: None,
         has_picture: false,
@@ -325,6 +386,9 @@ fn test_mixed_chinese_english_notification_text() {
         channel_id: None,
         raw_title: "Hello 世界".into(),
         raw_text: "你的order已发货 tracking#12345".into(),
+        title_hint: None,
+        text_hint: None,
+        semantic_hints: vec![],
         is_ongoing: false,
         group_key: None,
         has_picture: false,
@@ -356,6 +420,9 @@ fn test_empty_notification_text() {
         channel_id: None,
         raw_title: "".into(),
         raw_text: "".into(),
+        title_hint: None,
+        text_hint: None,
+        semantic_hints: vec![],
         is_ongoing: false,
         group_key: None,
         has_picture: false,
@@ -391,6 +458,9 @@ fn test_very_long_notification_text_length_preserved_content_not_leaked() {
         channel_id: None,
         raw_title: "Long message".into(),
         raw_text: long_text,
+        title_hint: None,
+        text_hint: None,
+        semantic_hints: vec![],
         is_ongoing: false,
         group_key: None,
         has_picture: false,

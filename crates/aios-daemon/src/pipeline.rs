@@ -278,8 +278,12 @@ impl ProfileSummaryWorker {
 
 #[derive(Debug)]
 pub enum ProcessingEvent {
-    Raw(IngestedRawEvent),
+    // Keep the enum small even when RawEvent grows additional metadata fields.
+    // The processing loop immediately unboxes this before sanitization.
+    Raw(Box<IngestedRawEvent>),
+
     RawChannelClosed,
+
     WindowExpired,
 }
 

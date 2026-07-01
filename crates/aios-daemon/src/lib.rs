@@ -281,7 +281,9 @@ pub async fn run() -> anyhow::Result<()> {
             }
             event = bus.recv_raw() => {
                 match event {
-                    Some(raw) => ProcessingEvent::Raw(raw),
+                    // Box only affects this local dispatch enum's size; the
+                    // raw event is unboxed below before normal processing.
+                    Some(raw) => ProcessingEvent::Raw(Box::new(raw)),
                     None => ProcessingEvent::RawChannelClosed,
                 }
             }
@@ -315,6 +317,10 @@ pub async fn run() -> anyhow::Result<()> {
 
         match processing_event {
             ProcessingEvent::Raw(ingested) => {
+                // Return to the owned IngestedRawEvent shape expected by the
+                // stats and sanitizer code paths.
+                let ingested = *ingested;
+
                 raw_stats.record(&ingested.raw_event);
                 let sanitized =
                     sanitizer.sanitize_with_tier(ingested.raw_event, ingested.source_tier);

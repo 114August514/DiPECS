@@ -30,6 +30,8 @@ class AndroidRawEventMapperTest {
             packageName = "com.ss.android.lark",
             category = "msg",
             channelId = "lark_im_message",
+            title = "张三",
+            textItems = listOf("张三发来一个文件: quarterly_report.pdf"),
             isOngoing = false,
             hasPicture = true,
         )
@@ -41,6 +43,12 @@ class AndroidRawEventMapperTest {
         assertEquals("lark_im_message", event.getString("channel_id"))
         assertEquals("", event.getString("raw_title"))
         assertEquals("", event.getString("raw_text"))
+        assertEquals(2, event.getJSONObject("title_hint").getInt("length_chars"))
+        assertEquals("Hanzi", event.getJSONObject("title_hint").getString("script"))
+        assertEquals(30, event.getJSONObject("text_hint").getInt("length_chars"))
+        assertEquals("Mixed", event.getJSONObject("text_hint").getString("script"))
+        assertTrue(event.getJSONArray("semantic_hints").toString().contains("FileMention"))
+        assertTrue(event.getJSONArray("semantic_hints").toString().contains("ImageMention"))
         assertFalse(event.getBoolean("is_ongoing"))
         assertTrue(event.isNull("group_key"))
         assertTrue(event.getBoolean("has_picture"))

@@ -38,6 +38,9 @@ fn notif(timestamp: i64, package: &str, title: &str, text: &str) -> RawEvent {
         channel_id: None,
         raw_title: title.into(),
         raw_text: text.into(),
+        title_hint: None,
+        text_hint: None,
+        semantic_hints: vec![],
         is_ongoing: false,
         group_key: None,
         has_picture: false,
@@ -219,6 +222,47 @@ fn notification_interaction_strips_raw_notification_key() {
             assert!(
                 group_key.is_none(),
                 "group_key must be None for NotificationInteraction"
+            );
+        },
+        _ => panic!("expected Notification event_type"),
+    }
+}
+
+#[test]
+fn notification_posted_strips_raw_group_key() {
+    let sanitizer = DefaultPrivacyAirGap;
+    let group_key = "0|com.example|42|private-thread-alice|10042";
+    let raw = RawEvent::NotificationPosted(NotificationRawEvent {
+        timestamp_ms: 1000,
+        package_name: "com.example".into(),
+        category: Some("msg".into()),
+        channel_id: None,
+        raw_title: "".into(),
+        raw_text: "".into(),
+        title_hint: None,
+        text_hint: None,
+        semantic_hints: vec![],
+        is_ongoing: false,
+        group_key: Some(group_key.into()),
+        has_picture: false,
+    });
+
+    let sanitized = sanitizer.sanitize(raw);
+    let json = serde_json::to_string(&sanitized).unwrap();
+    assert!(
+        !json.contains("private-thread-alice"),
+        "group_key tag must not leak; got:\n{json}",
+    );
+    assert!(
+        !json.contains(group_key),
+        "full group_key must not leak; got:\n{json}",
+    );
+
+    match sanitized.event_type {
+        aios_spec::SanitizedEventType::Notification { group_key, .. } => {
+            assert!(
+                group_key.is_none(),
+                "group_key must be None for NotificationPosted"
             );
         },
         _ => panic!("expected Notification event_type"),

@@ -42,7 +42,8 @@ Android JSONL / 守护进程源 / 离线测试夹具产生 \texttt{RawEvent}，
 最终输出 \texttt{AuditRecord} 用于回放与追责。
 该链路可用图 \ref{fig:pipeline} 概括。
 
-\begin{dipecsfigure}{DiPECS 数据链路概览}{fig:pipeline}
+\begin{figure}[H]
+  \centering
   \small
   \fbox{\parbox{0.92\textwidth}{\centering
     \vspace{0.5em}
@@ -57,7 +58,9 @@ Android JSONL / 守护进程源 / 离线测试夹具产生 \texttt{RawEvent}，
     $\rightarrow$ \texttt{AuditRecord}
     \vspace{0.5em}
   }}
-\end{dipecsfigure}
+  \caption{DiPECS 数据链路概览}
+  \label{fig:pipeline}
+\end{figure}
 
 上述链路决定了本调研的重点。
 本文不把 DiPECS 定位为通用聊天助手，也不把它定位为单一的 next-app prediction 模型，而是把它看作一个端侧 AIOS 原型。

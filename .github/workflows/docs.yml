@@ -30,9 +30,16 @@ jobs:
   # 1. 编译 MkDocs 与 Rust API 文档
   build-docs:
     name: Build KB & API
+    needs: build-academic
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
+      - name: Download Academic PDFs
+        uses: actions/download-artifact@v4
+        with:
+          name: academic-pdfs
+          path: docs/src/academic/reports/
 
       - name: Cache Cargo
         uses: actions/cache@v4
@@ -101,11 +108,7 @@ jobs:
         run: |
           sudo apt-get update -qq && sudo apt-get install -y -qq texlive-latex-base texlive-latex-extra texlive-xetex texlive-lang-chinese latexmk fonts-noto-cjk
           cd docs/academic-src
-          for tex in 01_Survey_Report/main.tex 02_Feasibility_Report/main.tex 03_Midterm_Report/main.tex 04_Final_Report/main.tex; do
-            # -cd: 切到源文件目录再编译, 使 main.pdf 落在各自 <dir>/ 下 (否则 4 份都叫
-            # main.pdf 会在 CWD 相互覆盖, 且 Collect 到子目录找不到 → artifact 为空)。
-            latexmk -cd -xelatex -halt-on-error -interaction=nonstopmode "$tex"
-          done
+          ../../scripts/build-academic-reports.sh
 
       - name: Collect PDFs
         run: |

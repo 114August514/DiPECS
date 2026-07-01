@@ -135,6 +135,28 @@ cargo run -p aios-cli -- replay data/traces/android_synthetic_large.redacted.jso
 redacted, and explicitly synthetic. It is suitable for dashboard, replay, and
 policy/audit demos, but it is not real-device validation evidence.
 
+## Build Documentation and Academic Reports
+
+Build the MkDocs knowledge base and Rust API docs:
+
+```bash
+cd docs
+uv sync --frozen
+uv run env PYTHONPATH=. mkdocs build
+```
+
+Build the LaTeX academic reports (requires a TeX Live distribution with
+XeLaTeX, Chinese fonts, and `latexmk`):
+
+```bash
+./scripts/build-academic-reports.sh
+```
+
+The generated PDFs are placed in each report directory (e.g.
+`docs/academic-src/04_Final_Report/main.pdf`). In CI, the Docs workflow also
+copies them to `docs/site/academic/reports/` so that the published site can
+link to them.
+
 Build Android collector:
 
 ```bash

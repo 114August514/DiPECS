@@ -282,10 +282,11 @@ pub fn run_with_audit<R: BufRead, W: Write, A: Write>(
         summary.events_ingested += 1;
 
         if stage.includes(Stage::Ingest) {
+            let source_tier = &ingested.source_tier;
             emitter.emit(&json!({
                 "stage": "ingest",
                 "line": line_no,
-                "source_tier": format!("{:?}", ingested.source_tier),
+                "source_tier": format!("{source_tier:?}"),
                 "raw_event_kind": raw_event_kind(&ingested.raw_event),
             }))?;
         }
@@ -388,10 +389,11 @@ fn process_window(
     }
     let decision = router.evaluate(ctx);
     summary.intents_total += decision.intent_batch.intents.len() as u64;
+    let route = &decision.route;
     emitter.emit(&json!({
         "stage": "decision",
         "window_id": ctx.window_id,
-        "route": format!("{:?}", decision.route),
+        "route": format!("{route:?}"),
         "model": decision.intent_batch.model,
         "intent_count": decision.intent_batch.intents.len(),
         "rationale_tags": decision.rationale_tags,
@@ -468,13 +470,14 @@ fn process_window(
         }))?;
 
         for record in &audit_records {
+            let action_type = &record.action_type;
             emitter.emit(&json!({
                 "stage": "execute",
                 "window_id": ctx.window_id,
                 "window_ordinal": window_ordinal,
                 "coord": record.coord,
                 "intent_id": record.intent_id,
-                "action_type": format!("{:?}", record.action_type),
+                "action_type": format!("{action_type:?}"),
                 "terminal": record.terminal,
                 "outcome": record.outcome,
                 "error": record.error,
@@ -593,15 +596,15 @@ impl<'a> Emitter<'a> {
 fn canonicalize(value: &Value) -> Value {
     match value {
         Value::Object(map) => {
-            let mut keys: Vec<&String> = map.keys().collect();
+            let mut keys: Vec<&str> = map.keys().map(String::as_str).collect();
             keys.sort();
             let mut out = Map::new();
             for k in keys {
-                if VOLATILE_KEYS.contains(&k.as_str()) {
+                if VOLATILE_KEYS.contains(&k) {
                     continue;
                 }
                 if let Some(v) = map.get(k) {
-                    out.insert(k.clone(), canonicalize(v));
+                    out.insert(k.to_string(), canonicalize(v));
                 }
             }
             Value::Object(out)

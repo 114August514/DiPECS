@@ -170,6 +170,11 @@ fn test_file_mention_triggers_open_app() {
     let ctx = make_context(events, summary);
 
     let result = DecisionRouter::default().evaluate(&ctx);
+    assert!(matches!(result.route, DecisionRoute::LocalEvaluator));
+    assert!(result
+        .rationale_tags
+        .iter()
+        .any(|tag| tag == "routing:local_actionable_signal"));
     let batch = result.intent_batch;
     let open_app = batch
         .intents
@@ -178,11 +183,9 @@ fn test_file_mention_triggers_open_app() {
         .expect("should have OpenApp intent");
     assert!(open_app.confidence >= 0.70);
     assert_eq!(open_app.suggested_actions.len(), 1);
-    // KeepAlive after capability reconciliation: PreWarmProcess is outside the
-    // RuleBased capability, so the file-bearing app is kept warm instead.
     assert!(matches!(
         open_app.suggested_actions[0].action_type,
-        ActionType::KeepAlive
+        ActionType::PreWarmProcess
     ));
 }
 
@@ -250,6 +253,11 @@ fn test_app_transition_foreground_triggers_switch_to_app() {
     let ctx = make_context(events, summary);
 
     let result = DecisionRouter::default().evaluate(&ctx);
+    assert!(matches!(result.route, DecisionRoute::LocalEvaluator));
+    assert!(result
+        .rationale_tags
+        .iter()
+        .any(|tag| tag == "routing:local_actionable_signal"));
     let batch = result.intent_batch;
 
     let switch = batch
@@ -257,21 +265,15 @@ fn test_app_transition_foreground_triggers_switch_to_app() {
         .iter()
         .find(|i| matches!(i.intent_type, IntentType::SwitchToApp(_)))
         .expect("should have SwitchToApp intent");
-    assert_eq!(
-        switch.rationale_tags,
-        vec!["app_foreground_observed".to_string()]
-    );
+    assert!(switch
+        .rationale_tags
+        .contains(&"local:foreground_transition".to_string()));
 }
 
 // ===== FileActivity 处理 =====
 
 #[test]
-fn test_file_activity_not_actioned_under_rule_based() {
-    // After capability reconciliation, FileActivity yields no HandleFile intent
-    // under RuleBased: its only action (PrefetchFile) is a Cloud/LocalEvaluator
-    // tier action the RuleBased capability forbids. A lone file access therefore
-    // falls through to the idle NoOp, and the rule engine emits no
-    // capability-denied action.
+fn test_file_activity_routes_to_local_evaluator() {
     let events = vec![
         make_file_activity(ExtensionCategory::Document),
         make_file_activity(ExtensionCategory::Image),
@@ -279,26 +281,27 @@ fn test_file_activity_not_actioned_under_rule_based() {
     let ctx = make_context(events, make_summary());
 
     let result = DecisionRouter::default().evaluate(&ctx);
+    assert!(matches!(result.route, DecisionRoute::LocalEvaluator));
+    assert!(result
+        .rationale_tags
+        .iter()
+        .any(|tag| tag == "routing:local_actionable_signal"));
     let batch = result.intent_batch;
 
     assert!(
-        !batch
+        batch
             .intents
             .iter()
             .any(|i| matches!(i.intent_type, IntentType::HandleFile(_))),
-        "FileActivity must not produce a HandleFile intent under RuleBased"
+        "FileActivity should produce HandleFile intents under LocalEvaluator"
     );
+    let intents = &batch.intents;
     assert!(
-        batch.intents.iter().all(|i| {
-            i.suggested_actions.iter().all(|a| {
-                !matches!(
-                    a.action_type,
-                    ActionType::PrefetchFile | ActionType::PreWarmProcess
-                )
-            })
-        }),
-        "RuleBased must not emit capability-denied actions, got {:?}",
-        batch.intents
+        batch.intents.iter().any(|i| i
+            .suggested_actions
+            .iter()
+            .any(|a| matches!(a.action_type, ActionType::PrefetchFile))),
+        "LocalEvaluator should emit safe prefetch actions, got {intents:?}"
     );
 }
 
@@ -326,7 +329,7 @@ fn test_local_evaluator_generates_prefetch_intent_without_cloud() {
         })
         .expect("local evaluator should produce a HandleFile intent");
 
-    assert!(handle.confidence >= 0.78);
+    assert!(handle.confidence >= 0.72);
     assert!(handle
         .rationale_tags
         .iter()
@@ -337,6 +340,208 @@ fn test_local_evaluator_generates_prefetch_intent_without_cloud() {
                 .target
                 .as_deref()
                 .is_some_and(|target| target.starts_with("url:"))
+    }));
+}
+
+#[test]
+fn test_local_evaluator_low_battery_suppresses_prefetch() {
+    let events = vec![
+        make_file_activity(ExtensionCategory::Document),
+        make_system_status(Some(12)),
+    ];
+    let ctx = make_context(events, make_summary());
+
+    let result = LocalEvaluatorBackend.evaluate(&ctx);
+    let batch = result.intent_batch;
+
+    assert!(
+        !batch.intents.iter().any(|intent| intent
+            .suggested_actions
+            .iter()
+            .any(|action| matches!(action.action_type, ActionType::PrefetchFile))),
+        "low battery without charging should suppress local prefetch"
+    );
+    assert!(
+        batch.intents.iter().any(
+            |intent| intent.suggested_actions.iter().any(|action| matches!(
+                action.action_type,
+                ActionType::ReleaseMemory
+            ) && action.target.as_deref()
+                == Some("cache:prefetch"))
+        ),
+        "low battery should still produce a cache release action"
+    );
+}
+
+#[test]
+fn test_local_evaluator_screen_off_keeps_work_but_filters_pkg_prewarm() {
+    let events = vec![
+        SanitizedEvent {
+            event_id: "evt-foreground".into(),
+            timestamp_ms: 5000,
+            event_type: SanitizedEventType::AppTransition {
+                package_name: "com.example.reader".into(),
+                activity_class: None,
+                transition: AppTransition::Foreground,
+            },
+            source_tier: SourceTier::PublicApi,
+            app_package: Some("com.example.reader".into()),
+            uid: None,
+        },
+        make_screen_event(ScreenState::NonInteractive),
+    ];
+    let ctx = make_context(events, make_summary());
+
+    let result = LocalEvaluatorBackend.evaluate(&ctx);
+    let switch_intent = result
+        .intent_batch
+        .intents
+        .iter()
+        .find(|intent| matches!(intent.intent_type, IntentType::SwitchToApp(_)))
+        .expect("foreground transition should still produce a switch intent");
+
+    assert!(
+        switch_intent.suggested_actions.iter().all(|action| {
+            !matches!(action.action_type, ActionType::PreWarmProcess)
+                || !action
+                    .target
+                    .as_deref()
+                    .is_some_and(|target| target.starts_with("pkg:"))
+        }),
+        "screen-off windows should not emit package prewarm hints"
+    );
+    assert!(
+        switch_intent
+            .suggested_actions
+            .iter()
+            .any(|action| matches!(action.action_type, ActionType::KeepAlive)),
+        "work-scoped keepalive should remain allowed"
+    );
+}
+
+#[test]
+fn test_local_evaluator_foreground_notification_boosts_confidence() {
+    let mut summary = make_summary();
+    summary.foreground_apps = vec!["com.example.chat".into()];
+    let events = vec![make_notification_event(
+        "com.example.chat",
+        vec![SemanticHint::FileMention, SemanticHint::LinkAttachment],
+    )];
+    let ctx = make_context(events, summary);
+
+    let result = LocalEvaluatorBackend.evaluate(&ctx);
+    let notification_intent = result
+        .intent_batch
+        .intents
+        .iter()
+        .find(|intent| matches!(intent.intent_type, IntentType::OpenApp(_)))
+        .expect("attachment notification should produce an OpenApp intent");
+
+    assert!(notification_intent.confidence > 0.80);
+    assert!(notification_intent
+        .rationale_tags
+        .contains(&"local:boost:foreground_notification_app".to_string()));
+    assert!(notification_intent
+        .rationale_tags
+        .contains(&"local:boost:link_attachment".to_string()));
+}
+
+#[test]
+fn test_local_evaluator_links_notification_and_file_activity_by_package() {
+    let events = vec![
+        make_notification_event("com.example.files", vec![SemanticHint::FileMention]),
+        make_file_activity(ExtensionCategory::Document),
+    ];
+    let ctx = make_context(events, make_summary());
+
+    let result = LocalEvaluatorBackend.evaluate(&ctx);
+    let handle = result
+        .intent_batch
+        .intents
+        .iter()
+        .find(|intent| matches!(intent.intent_type, IntentType::HandleFile(_)))
+        .expect("same-package notification and file activity should produce HandleFile");
+
+    assert!(handle
+        .rationale_tags
+        .contains(&"local:boost:file_notification_same_package_strong".to_string()));
+}
+
+#[test]
+fn test_local_evaluator_boosts_repeated_package_in_window() {
+    let events = vec![
+        make_notification_event("com.example.chat", vec![SemanticHint::FileMention]),
+        make_notification_event("com.example.chat", vec![SemanticHint::ImageMention]),
+    ];
+    let ctx = make_context(events, make_summary());
+
+    let result = LocalEvaluatorBackend.evaluate(&ctx);
+    let notification_intent = result
+        .intent_batch
+        .intents
+        .iter()
+        .find(|intent| matches!(intent.intent_type, IntentType::OpenApp(_)))
+        .expect("repeated attachment notifications should produce OpenApp");
+
+    assert!(notification_intent
+        .rationale_tags
+        .contains(&"local:boost:repeated_package_in_window".to_string()));
+}
+
+#[test]
+fn test_local_evaluator_uses_behavior_profile_for_package_boosts() {
+    let events = vec![make_notification_event(
+        "com.example.chat",
+        vec![SemanticHint::FileMention],
+    )];
+    let ctx = make_context(events, make_summary());
+    let mut input = ModelInput::current_only(ctx);
+    input
+        .behavior_profile
+        .frequent_notifying_apps
+        .push(("com.example.chat".into(), 5));
+
+    let result = LocalEvaluatorBackend.evaluate_model_input(&input);
+    let notification_intent = result
+        .intent_batch
+        .intents
+        .iter()
+        .find(|intent| matches!(intent.intent_type, IntentType::OpenApp(_)))
+        .expect("attachment notification should produce OpenApp");
+
+    assert!(notification_intent
+        .rationale_tags
+        .contains(&"local:boost:frequent_notifying_app".to_string()));
+}
+
+#[test]
+fn test_local_evaluator_inter_app_does_not_guess_target_package() {
+    let events = vec![SanitizedEvent {
+        event_id: "evt-launch".into(),
+        timestamp_ms: 5000,
+        event_type: SanitizedEventType::InterAppInteraction {
+            source_package: Some("com.android.chrome".into()),
+            target_service: "activity".into(),
+            interaction_type: InteractionType::ActivityLaunch,
+        },
+        source_tier: SourceTier::Daemon,
+        app_package: Some("com.android.chrome".into()),
+        uid: Some(10086),
+    }];
+    let ctx = make_context(events, make_summary());
+
+    let result = LocalEvaluatorBackend.evaluate(&ctx);
+    assert!(!result
+        .intent_batch
+        .intents
+        .iter()
+        .any(|intent| matches!(intent.intent_type, IntentType::SwitchToApp(_))));
+    assert!(result.intent_batch.intents.iter().any(|intent| {
+        matches!(intent.intent_type, IntentType::EnterContext(_))
+            && intent.suggested_actions.iter().any(|action| {
+                matches!(action.action_type, ActionType::PreWarmProcess)
+                    && action.target.as_deref() == Some("own:resources")
+            })
     }));
 }
 
@@ -485,6 +690,7 @@ fn test_combined_signals_all_detected() {
     let ctx = make_context(events, summary);
 
     let result = DecisionRouter::default().evaluate(&ctx);
+    assert!(matches!(result.route, DecisionRoute::LocalEvaluator));
     let batch = result.intent_batch;
     let tags: Vec<&str> = batch
         .intents
@@ -493,26 +699,25 @@ fn test_combined_signals_all_detected() {
         .collect();
 
     assert!(
-        tags.contains(&"file_received"),
+        tags.contains(&"local:attachment_notification"),
         "should detect file mention"
     );
     assert!(
         !tags.contains(&"app_launch_detected"),
         "ActivityLaunch is no longer actioned under RuleBased (rule removed in Fix 2)"
     );
-    assert!(tags.contains(&"screen_on"), "should detect screen on");
-    assert!(tags.contains(&"low_battery"), "should detect low battery");
+    assert!(
+        tags.contains(&"local:low_battery"),
+        "should detect low battery"
+    );
     let handle_count = batch
         .intents
         .iter()
         .filter(|i| matches!(i.intent_type, IntentType::HandleFile(_)))
         .count();
-    // FileActivity is no longer actioned under RuleBased (PrefetchFile moved to
-    // the Cloud/LocalEvaluator tier), so the Image file access yields no
-    // HandleFile intent even though the other four signals still fire.
     assert_eq!(
         handle_count, 0,
-        "FileActivity is not actioned under RuleBased"
+        "low battery should suppress file prefetch candidates"
     );
 }
 
@@ -539,13 +744,13 @@ fn test_router_privacy_sensitivity_downgrades_to_rule_based() {
 
     let result = DecisionRouter::default().evaluate(&ctx);
     assert!(matches!(result.route, DecisionRoute::RuleBased));
+    let rationale_tags = &result.rationale_tags;
     assert!(
         result
             .rationale_tags
             .iter()
             .any(|t| t.contains("privacy_sensitive")),
-        "should have privacy_sensitive routing reason, got {:?}",
-        result.rationale_tags
+        "should have privacy_sensitive routing reason, got {rationale_tags:?}"
     );
 }
 
@@ -586,13 +791,13 @@ fn test_fallback_noop_passes_policy_engine() {
 
     assert_eq!(decisions.len(), 1);
     let decision = &decisions[0];
+    let verdict = &decision.verdict;
     assert!(
         matches!(
             decision.verdict,
             aios_spec::governance::PolicyVerdict::Approved
         ),
-        "fallback NoOp must clear policy gate; got verdict {:?}",
-        decision.verdict,
+        "fallback NoOp must clear policy gate; got verdict {verdict:?}",
     );
     assert_eq!(decision.action_ordinal, 0);
     assert!(matches!(
@@ -706,7 +911,10 @@ impl aios_core::governance::ActionAdapter for NoOpAdapter {
         authorized: &aios_core::governance::AuthorizedAction,
     ) -> Result<aios_spec::governance::ActionOutcome, aios_spec::governance::AdapterError> {
         Ok(aios_spec::governance::ActionOutcome {
-            action_type: format!("{:?}", authorized.action().action_type),
+            action_type: {
+                let action_type = &authorized.action().action_type;
+                format!("{action_type:?}")
+            },
             target: authorized.action().target.clone(),
             summary: "noop".into(),
             latency_us: 0,

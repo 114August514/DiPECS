@@ -125,8 +125,9 @@ fn drive_pipeline() -> (Vec<SanitizedEvent>, IntentBatch, Vec<ExecutedAction>) {
             .as_ref()
             .map(|o| o.summary.clone())
             .unwrap_or_else(|| "ok".into());
+        let action_type = &record.action_type;
         executed.push(ExecutedAction {
-            action_type: format!("{:?}", record.action_type),
+            action_type: format!("{action_type:?}"),
             target: record.target.clone(),
             executed_at_ms: ctx.window_end_ms,
             success: true,
@@ -157,28 +158,28 @@ fn replay_matches_golden_sample() {
     let engine = DefaultTraceEngine::new(DefaultPrivacyAirGap);
     let result = engine.validate(&golden, &intents, &executed);
 
+    let sanitization_divergences = &result.sanitization_divergences;
     assert!(
         result.sanitization_match,
-        "sanitization divergences at indices {:?} — pipeline drifted from \
+        "sanitization divergences at indices {sanitization_divergences:?} — pipeline drifted from \
          golden expected_sanitized; if intentional, REGEN_GOLDEN=1",
-        result.sanitization_divergences
     );
+    let policy_divergences = &result.policy_divergences;
     assert!(
         result.policy_match,
-        "policy divergences: {:#?} — intent batch drifted from golden \
+        "policy divergences: {policy_divergences:#?} — intent batch drifted from golden \
          expected_intents; if intentional, REGEN_GOLDEN=1",
-        result.policy_divergences
     );
+    let execution_divergences = &result.execution_divergences;
     assert!(
         result.execution_match,
-        "execution divergences at indices {:?} — executor drifted from \
+        "execution divergences at indices {execution_divergences:?} — executor drifted from \
          golden expected_actions; if intentional, REGEN_GOLDEN=1",
-        result.execution_divergences
     );
     assert!(result.all_match());
 
-    // Sanity: the golden's own counts are what we expect (denial.jsonl
-    // shape — 2 ActionCapabilityDenied → 2 approved actions executed).
+    // Sanity: the golden's own counts are what we expect for the current
+    // LocalEvaluator routing path.
     assert_eq!(
         sanitized.len(),
         3,
@@ -186,8 +187,8 @@ fn replay_matches_golden_sample() {
     );
     assert_eq!(
         executed.len(),
-        2,
-        "exactly 2 actions survive policy: KeepAlive(work:collector_heartbeat) + ReleaseMemory(cache:prefetch)"
+        3,
+        "exactly 3 actions survive policy: ReleaseMemory(cache:prefetch) + PreWarmProcess(pkg:com.android.chrome) + KeepAlive(work:collector_heartbeat)"
     );
 }
 
@@ -247,13 +248,13 @@ fn mutated_rationale_tags_is_flagged() {
     let result = engine.validate(&golden, &intents, &executed);
 
     assert!(!result.policy_match);
+    let policy_divergences = &result.policy_divergences;
     assert!(
         result
             .policy_divergences
             .iter()
             .any(|d| d.contains("rationale_tags")),
-        "expected a rationale_tags divergence, got {:#?}",
-        result.policy_divergences
+        "expected a rationale_tags divergence, got {policy_divergences:#?}"
     );
 }
 
@@ -302,13 +303,13 @@ fn mutated_expected_intent_count_is_flagged() {
     let result = engine.validate(&golden, &intents, &executed);
 
     assert!(!result.policy_match);
+    let policy_divergences = &result.policy_divergences;
     assert!(
         result
             .policy_divergences
             .iter()
             .any(|d| d.contains("intent count mismatch")),
-        "expected an intent-count mismatch divergence, got {:#?}",
-        result.policy_divergences
+        "expected an intent-count mismatch divergence, got {policy_divergences:#?}"
     );
 }
 

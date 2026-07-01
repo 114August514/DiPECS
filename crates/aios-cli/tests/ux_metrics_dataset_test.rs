@@ -7,13 +7,13 @@
 use serde_json::Value;
 
 const DATA: &str =
-    include_str!("../../../data/evaluation/ux-metrics-emulator-20260701-143655.json");
+    include_str!("../../../data/evaluation/ux-metrics-emulator-20260701-145001.json");
 const EPSILON: f64 = 0.011;
 
 #[derive(Debug, Clone)]
 struct RunMetrics {
     mode: String,
-    avg_startup_wait_time_ms: Option<f64>,
+    avg_startup_total_time_ms: Option<f64>,
     avg_cpu_pct: f64,
     avg_rss_mb: f64,
     avg_pss_mb: f64,
@@ -68,11 +68,11 @@ fn recompute_run(run: &Value, expected_sample_count: usize) -> RunMetrics {
         );
     }
 
-    let has_startup = samples[0].get("startup_wait_time_ms").is_some();
+    let has_startup = samples[0].get("startup_total_time_ms").is_some();
     let startup_wait: Vec<f64> = if has_startup {
         samples
             .iter()
-            .map(|s| number(s, "startup_wait_time_ms"))
+            .map(|s| number(s, "startup_total_time_ms"))
             .collect()
     } else {
         vec![]
@@ -87,7 +87,7 @@ fn recompute_run(run: &Value, expected_sample_count: usize) -> RunMetrics {
 
     RunMetrics {
         mode,
-        avg_startup_wait_time_ms: if has_startup {
+        avg_startup_total_time_ms: if has_startup {
             Some(avg(&startup_wait))
         } else {
             None
@@ -126,7 +126,7 @@ fn ux_metrics_schema_and_structure() {
     );
 
     let modes: Vec<&str> = runs.iter().map(|r| r["mode"].as_str().unwrap()).collect();
-    assert!(modes.contains(&"cold_startup"));
+    assert!(modes.contains(&"warm_startup"));
     assert!(modes.contains(&"prewarm_startup"));
     assert!(modes.contains(&"baseline_jank"));
     assert!(modes.contains(&"post_release_jank"));
@@ -159,11 +159,11 @@ fn ux_metrics_measurement_is_internally_consistent() {
             &format!("{mode} avg_jank_pct"),
         );
 
-        if let Some(wait) = computed.avg_startup_wait_time_ms {
+        if let Some(wait) = computed.avg_startup_total_time_ms {
             assert_close(
                 wait,
-                number(summary, "avg_startup_wait_time_ms"),
-                &format!("{mode} avg_startup_wait_time_ms"),
+                number(summary, "avg_startup_total_time_ms"),
+                &format!("{mode} avg_startup_total_time_ms"),
             );
         }
     }
@@ -172,12 +172,21 @@ fn ux_metrics_measurement_is_internally_consistent() {
 #[test]
 fn ux_metrics_prewarm_shows_no_regression() {
     let data = fixture();
-    let deltas = &data["ux_deltas"]["prewarm_vs_cold"];
+    let deltas = &data["ux_deltas"]["prewarm_vs_warm"];
     let pct_faster = number(deltas, "pct_faster");
+    let ms_faster = number(deltas, "startup_total_time_ms_reduction");
+    // On emulator, PreWarm benefit is small (within noise). The hard requirement
+    // is that it must not regress beyond a noise tolerance.
     let threshold = number(&data["thresholds"], "min_prewarm_pct_faster");
     assert!(
         pct_faster >= threshold,
-        "PreWarm startup must not be significantly slower: {pct_faster}% vs threshold {threshold}%"
+        "PreWarm startup regressed: {pct_faster}% (threshold {threshold}%)"
+    );
+    // Also check the absolute ms threshold
+    let min_ms = number(&data["thresholds"], "min_prewarm_ms_faster");
+    assert!(
+        ms_faster >= min_ms,
+        "PreWarm startup slower by {ms_faster}ms (threshold {min_ms}ms)"
     );
 }
 
@@ -199,12 +208,12 @@ fn ux_metrics_conclusion_matches_deltas() {
     let conclusion = &data["conclusion"];
     assert_eq!(conclusion["accepted"], true);
 
-    let prewarm_delta = &data["ux_deltas"]["prewarm_vs_cold"];
-    let wait_reduction = number(prewarm_delta, "startup_wait_time_ms_reduction");
+    let prewarm_delta = &data["ux_deltas"]["prewarm_vs_warm"];
+    let wait_reduction = number(prewarm_delta, "startup_total_time_ms_reduction");
     assert_eq!(
         conclusion["prewarm_effective"].as_bool().unwrap(),
         wait_reduction > 0.0,
-        "prewarm_effective must match startup_wait_time_ms_reduction sign"
+        "prewarm_effective must match startup_total_time_ms_reduction sign"
     );
 
     let release_delta = &data["ux_deltas"]["release_vs_baseline"];

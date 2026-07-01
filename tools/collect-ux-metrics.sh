@@ -39,7 +39,10 @@ adb_cmd() { "$ADB" "$@"; }
 send_action() {
   local action_type="$1" target="$2"
   local sender="tests/scenarios/lib/action-forensic-sender.py"
-  "$SEND_PYTHON" "$sender" "$ACTION_HOST" "$PORT" "$TOKEN" 1.0 "$action_type" "$target" Immediate >/dev/null 2>&1 || true
+  # Convert WSL path to Windows path for Windows Python
+  local sender_win
+  sender_win="$(wslpath -w "$sender" 2>/dev/null || echo "E:\\\\DIPECS\\\\tests\\\\scenarios\\\\lib\\\\action-forensic-sender.py")"
+  "$SEND_PYTHON" "$sender_win" "$ACTION_HOST" "$PORT" "$TOKEN" 1.0 "$action_type" "$target" Immediate >/dev/null 2>&1 || true
 }
 
 send_prewarm() { send_action PreWarmProcess own:warmup; }
@@ -58,13 +61,12 @@ stop_collector() {
 }
 
 get_startup_time() {
-  local result wait_time
-  stop_collector
-  result="$(adb_cmd shell am start -W -n "$PACKAGE/.debug.DebugCollectorControlActivity" 2>/dev/null || true)"
-  # The debug activity finishes immediately so ThisTime/TotalTime are absent;
-  # WaitTime is the full launch latency including service start.
-  wait_time="$(printf '%s\n' "$result" | sed -n 's/.*WaitTime:[[:space:]]*\([0-9][0-9]*\).*/\1/p' | head -n 1)"
-  echo "${wait_time:-0}"
+  local result total_time
+  # Activity is started via am start -W; process should already be running
+  # (service was started beforehand), so this is a WARM activity launch.
+  result="$(adb_cmd shell am start -W -n "$PACKAGE/.MainActivity" 2>/dev/null || true)"
+  total_time="$(printf '%s\n' "$result" | sed -n 's/.*TotalTime:[[:space:]]*\([0-9][0-9]*\).*/\1/p' | head -n 1)"
+  echo "${total_time:-0}"
 }
 
 get_meminfo() {
@@ -104,19 +106,24 @@ get_top_metrics() {
 
 startup_sample() {
   local mode="$1" idx="$2"
-  local wait_time rss pss total_frames janky_frames jank_pct ts
-  wait_time="$(get_startup_time)"
+  local total_time rss pss total_frames janky_frames jank_pct ts
+  # Prepare: force-stop → start service → (PreWarm already sent by caller) → start MainActivity
+  stop_collector
+  start_collector
+  # If this is a prewarm mode, the caller already sent PreWarm before calling us.
+  # The service is now running with socket up; launch MainActivity.
+  total_time="$(get_startup_time)"
   read -r rss pss < <(get_meminfo)
   read -r total_frames janky_frames jank_pct < <(get_gfxinfo)
   ts="$(date -u +%s%3N)"
-  python3 - "$idx" "$ts" "$mode" "$wait_time" "$rss" "$pss" "$total_frames" "$janky_frames" "$jank_pct" <<'PY'
+  python3 - "$idx" "$ts" "$mode" "$total_time" "$rss" "$pss" "$total_frames" "$janky_frames" "$jank_pct" <<'PY'
 import json, sys
-idx, ts, mode, wait_t, rss, pss, total_f, janky_f, jank_p = sys.argv[1:]
+idx, ts, mode, total_t, rss, pss, total_f, janky_f, jank_p = sys.argv[1:]
 obj = {
   "sample_index": int(idx),
   "timestamp_ms": int(ts),
   "mode": mode,
-  "startup_wait_time_ms": int(float(wait_t)),
+  "startup_total_time_ms": int(float(total_t)),
   "rss_mb": round(float(rss), 3),
   "pss_mb": round(float(pss), 3),
   "total_frames": int(float(total_f)),
@@ -170,7 +177,7 @@ collect_startup_mode() {
     python3 - "$sample" <<'PY' >&2
 import json, sys
 s = json.loads(sys.argv[1])
-print(f"  {s['mode']}[{s['sample_index']}] wait={s['startup_wait_time_ms']}ms rss={s['rss_mb']}MB pss={s['pss_mb']}MB jank={s['jank_pct']}%")
+print(f"  {s['mode']}[{s['sample_index']}] total={s['startup_total_time_ms']}ms rss={s['rss_mb']}MB pss={s['pss_mb']}MB jank={s['jank_pct']}%")
 PY
     if [[ "$i" -lt $((SAMPLES_PER_MODE - 1)) ]]; then
       sleep "$SAMPLE_INTERVAL_SECS"
@@ -213,12 +220,11 @@ timestamp="$(date +%Y%m%d-%H%M%S)"
 tmpdir="$(mktemp -d)"
 trap 'rm -rf "$tmpdir"' EXIT
 
-# 1. Cold startup
+# 1. Warm startup (no PreWarm)
 stop_collector
-collect_startup_mode cold_startup none "$tmpdir/cold.jsonl"
+collect_startup_mode warm_startup none "$tmpdir/warm.jsonl"
 
-# 2. PreWarm startup
-start_collector
+# 2. PreWarm startup (PreWarm before launching MainActivity)
 collect_startup_mode prewarm_startup prewarm "$tmpdir/prewarm.jsonl"
 
 # 3. Baseline jank
@@ -236,13 +242,13 @@ md_path="$OUT_DIR/ux-metrics-emulator-$timestamp.md"
 adb_serial="$(adb_cmd get-serialno | tr -d '\r')"
 
 python3 - \
-  "$tmpdir/cold.jsonl" "$tmpdir/prewarm.jsonl" \
+  "$tmpdir/warm.jsonl" "$tmpdir/prewarm.jsonl" \
   "$tmpdir/baseline_jank.jsonl" "$tmpdir/post_release.jsonl" \
   "$json_path" "$md_path" "$timestamp" \
   "$SAMPLE_INTERVAL_SECS" "$SAMPLES_PER_MODE" "$PACKAGE" "$adb_serial" <<'PY'
 import json, sys, pathlib, datetime
 
-cold_p, prewarm_p, base_jank_p, release_jank_p, json_path, md_path, timestamp, interval, samples_per, package, adb_serial = sys.argv[1:]
+warm_p, prewarm_p, base_jank_p, release_jank_p, json_path, md_path, timestamp, interval, samples_per, package, adb_serial = sys.argv[1:]
 
 def load_run(path, mode):
     samples = [json.loads(line) for line in open(path, encoding="utf-8") if line.strip()]
@@ -255,9 +261,9 @@ def load_run(path, mode):
     def maximum(key):
         return round(max(float(s.get(key) or 0) for s in samples), 3)
 
-    startup_keys = any("startup_wait_time_ms" in s for s in samples)
+    startup_keys = any("startup_total_time_ms" in s for s in samples)
     summary = {
-        "avg_startup_wait_time_ms": avg("startup_wait_time_ms") if startup_keys else None,
+        "avg_startup_total_time_ms": avg("startup_total_time_ms") if startup_keys else None,
         "avg_cpu_pct": avg("cpu_pct"),
         "avg_rss_mb": avg("rss_mb"),
         "max_rss_mb": maximum("rss_mb"),
@@ -270,17 +276,17 @@ def load_run(path, mode):
     }
     return {"mode": mode, "samples": samples, "summary": summary}
 
-cold = load_run(cold_p, "cold_startup")
+warm = load_run(warm_p, "warm_startup")
 prewarm = load_run(prewarm_p, "prewarm_startup")
 base_jank = load_run(base_jank_p, "baseline_jank")
 release_jank = load_run(release_jank_p, "post_release_jank")
 
-# PreWarm benefit
-cw = cold["summary"]["avg_startup_wait_time_ms"] or 0
-pw = prewarm["summary"]["avg_startup_wait_time_ms"] or 0
+# PreWarm benefit: delta between warm and prewarm startup time
+ww = warm["summary"]["avg_startup_total_time_ms"] or 0
+pw = prewarm["summary"]["avg_startup_total_time_ms"] or 0
 prewarm_delta = {
-    "startup_wait_time_ms_reduction": round(cw - pw, 1),
-    "pct_faster": round((cw - pw) / max(cw, 1) * 100, 1),
+    "startup_total_time_ms_reduction": round(ww - pw, 1),
+    "pct_faster": round((ww - pw) / max(ww, 1) * 100, 1),
 }
 
 # ReleaseMemory benefit
@@ -312,19 +318,20 @@ data = {
         "PreWarm and ReleaseMemory actions sent through the bridge socket (adb forward).",
     ],
     "thresholds": {
-        "min_prewarm_pct_faster": -5.0,
+        "min_prewarm_pct_faster": 0.0,
+        "min_prewarm_ms_faster": 0.0,
         "max_jank_pct_points_increase": 20.0,
         "max_rss_mb": 250.0,
         "max_pss_mb": 80.0,
     },
-    "runs": [cold, prewarm, base_jank, release_jank],
+    "runs": [warm, prewarm, base_jank, release_jank],
     "ux_deltas": {
-        "prewarm_vs_cold": prewarm_delta,
+        "prewarm_vs_warm": prewarm_delta,
         "release_vs_baseline": release_delta,
     },
     "conclusion": {
         "accepted": True,
-        "prewarm_effective": prewarm_delta["startup_wait_time_ms_reduction"] > 0,
+        "prewarm_effective": prewarm_delta["startup_total_time_ms_reduction"] > 0,
         "release_memory_effective": release_delta["avg_jank_pct_points_reduction"] >= 0,
     },
 }
@@ -334,7 +341,7 @@ with open(json_path, "w", encoding="utf-8") as f:
     f.write("\n")
 
 # Markdown report
-cd = cold["summary"]
+cd = warm["summary"]
 pd = prewarm["summary"]
 bj = base_jank["summary"]
 rj = release_jank["summary"]
@@ -348,12 +355,12 @@ md = f"""# DiPECS Emulator UX Metrics Measurement
 
 ## Startup Latency (am start -W WaitTime)
 
-| Mode | WaitTime avg | RSS avg | PSS avg |
+| Mode | TotalTime avg | RSS avg | PSS avg |
 | --- | ---: | ---: | ---: |
-| cold_startup | {cd['avg_startup_wait_time_ms']} ms | {cd['avg_rss_mb']} MB | {cd['avg_pss_mb']} MB |
-| prewarm_startup | {pd['avg_startup_wait_time_ms']} ms | {pd['avg_rss_mb']} MB | {pd['avg_pss_mb']} MB |
+| warm_startup | {cd['avg_startup_total_time_ms']} ms | {cd['avg_rss_mb']} MB | {cd['avg_pss_mb']} MB |
+| prewarm_startup | {pd['avg_startup_total_time_ms']} ms | {pd['avg_rss_mb']} MB | {pd['avg_pss_mb']} MB |
 
-**PreWarm effect:** {prewarm_delta['startup_wait_time_ms_reduction']} ms faster ({prewarm_delta['pct_faster']}%)
+**PreWarm effect:** {prewarm_delta['startup_total_time_ms_reduction']} ms faster ({prewarm_delta['pct_faster']}%)
 
 ## Jank / Memory (dumpsys gfxinfo + meminfo)
 

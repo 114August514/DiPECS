@@ -1,16 +1,18 @@
 //! Android localhost bridge 线协议（IPC schema，归属 SSOT）。
 //!
 //! `execute` 请求把一个已封存的 `AuthorizedAction`（在 `aios-action` 侧序列化为
-//! canonical 字符串）连同对该字符串字节的 HMAC-SHA256 认证标签发往设备侧 bridge；
-//! 设备执行后回送结构化的 [`BridgeExecuteResponse`]。
+//! canonical 字符串）连同 freshness window，以及覆盖 freshness window 与 action
+//! 字节的 HMAC-SHA256 认证标签发往设备侧 bridge；设备执行后回送结构化的
+//! [`BridgeExecuteResponse`]。
 //!
 //! 设计要点：
 //! - 认证标签 (`auth.hmac_sha256`) 放在 envelope 上，而非塞进 action JSON 内部，
-//!   使每次授权与一个**具体的 action 字节序列**绑定 —— 捕获到的旧标签无法重放到
-//!   另一个 action（替换静态 bearer token 的关键改进）。
+//!   使每次授权与一个**具体的 action 字节序列和有效期**绑定 —— 捕获到的旧标签
+//!   无法重放到另一个 action 或过期窗口（替换静态 bearer token 的关键改进）。
 //! - `action` 以**字符串**形式承载（即 `AuthorizedAction` 序列化后的逐字节内容），
-//!   HMAC 即对这些字节计算。两侧都对"收发的同一段字节"做 HMAC，规避跨语言
-//!   JSON key 排序导致的 canonicalization 漂移。
+//!   HMAC 输入使用 length-prefixed action 字节和 freshness window。两侧都对
+//!   "收发的同一段字节"做 HMAC，规避跨语言 JSON key 排序导致的
+//!   canonicalization 漂移。
 //!
 //! 注意：本 crate 零内部依赖，这里只定义协议数据；HMAC 计算与 TCP 收发在
 //! `aios-action` 侧实现。设备（Kotlin）侧的 responder 是 Tier 2 工作，须遵循本契约。
@@ -25,16 +27,20 @@ pub const BRIDGE_MESSAGE_TYPE_EXECUTE: &str = "execute";
 pub struct BridgeExecuteRequest {
     /// 固定为 [`BRIDGE_MESSAGE_TYPE_EXECUTE`]。
     pub message_type: String,
+    /// 请求签发时间（epoch milliseconds）。
+    pub issued_at_ms: i64,
+    /// 请求过期时间（epoch milliseconds）。
+    pub expires_at_ms: i64,
     /// 认证标签，绑定到 `action` 字节。
     pub auth: BridgeAuth,
-    /// canonical 序列化后的 `AuthorizedAction`（作为字符串，逐字节即 HMAC 输入）。
+    /// canonical 序列化后的 `AuthorizedAction`。
     pub action: String,
 }
 
 /// envelope 级认证标签。
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BridgeAuth {
-    /// 对 [`BridgeExecuteRequest::action`] 字节的 HMAC-SHA256，小写 hex。
+    /// 对 freshness window 和 [`BridgeExecuteRequest::action`] 字节的 HMAC-SHA256，小写 hex。
     pub hmac_sha256: String,
 }
 
@@ -70,6 +76,8 @@ mod tests {
     fn execute_request_roundtrips() {
         let request = BridgeExecuteRequest {
             message_type: BRIDGE_MESSAGE_TYPE_EXECUTE.into(),
+            issued_at_ms: 1000,
+            expires_at_ms: 2000,
             auth: BridgeAuth {
                 hmac_sha256: "deadbeef".into(),
             },
@@ -78,6 +86,8 @@ mod tests {
         let json = serde_json::to_string(&request).unwrap();
         let parsed: BridgeExecuteRequest = serde_json::from_str(&json).unwrap();
         assert_eq!(parsed.message_type, BRIDGE_MESSAGE_TYPE_EXECUTE);
+        assert_eq!(parsed.issued_at_ms, 1000);
+        assert_eq!(parsed.expires_at_ms, 2000);
         assert_eq!(parsed.auth.hmac_sha256, "deadbeef");
         assert_eq!(parsed.action, request.action);
     }

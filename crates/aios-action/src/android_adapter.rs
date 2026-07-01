@@ -9,8 +9,8 @@
 //!    `Failed`，而不再把"一次成功的 TCP 写"谎报为 `Succeeded`。
 //! 2. **注入式配置**：[`AndroidBridgeConfig`] 在**构造时**注入，`execute()` 内不再
 //!    读取进程环境变量 —— 移除执行期的 ambient authority。
-//! 3. **HMAC 绑定**：认证标签是对 `AuthorizedAction` 字节的 HMAC-SHA256，而非静态
-//!    bearer token，使捕获到的标签无法重放到另一个 action。
+//! 3. **HMAC 绑定**：认证标签覆盖 freshness window 与 `AuthorizedAction` 字节，
+//!    而非静态 bearer token，使捕获到的标签无法重放到另一个 action 或过期窗口。
 //!
 //! 非转发类动作（或缺少有效目标的 `PrefetchFile`）回退到内部
 //! [`DefaultActionExecutor`] 的确定性本地 stub —— 复用同一套 stub 语义，不重复实现。
@@ -22,7 +22,7 @@
 use std::env;
 use std::io::{ErrorKind, Read, Write};
 use std::net::{Shutdown, TcpStream};
-use std::time::Duration;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use aios_core::governance::{ActionAdapter, AuthorizedAction};
 use aios_spec::bridge::{
@@ -39,6 +39,7 @@ use crate::DefaultActionExecutor;
 type HmacSha256 = Hmac<Sha256>;
 
 const DEFAULT_ANDROID_ACTION_BRIDGE_PORT: u16 = 46321;
+const ANDROID_ACTION_PAYLOAD_TTL_MS: i64 = 60_000;
 const READ_TIMEOUT_MS: u64 = 5000;
 const MAX_RESPONSE_BYTES: usize = 4096;
 
@@ -106,15 +107,27 @@ impl AndroidAdapter {
             )
         })?;
 
-        // canonical 序列化 AuthorizedAction；HMAC 即对这些字节计算。
+        // canonical 序列化 AuthorizedAction；HMAC 绑定这些字节和 freshness window。
         let action_json = serde_json::to_string(authorized).map_err(|error| {
             AdapterError::AndroidBridgeError(format!("serialize AuthorizedAction: {error}"))
         })?;
-        let hmac_sha256 = compute_hmac(auth_key, action_json.as_bytes())
+        let issued_at_ms = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map_err(|error| {
+                AdapterError::AndroidBridgeError(format!(
+                    "calculate Android bridge payload issue time: {error}"
+                ))
+            })?
+            .as_millis() as i64;
+        let expires_at_ms = issued_at_ms + ANDROID_ACTION_PAYLOAD_TTL_MS;
+        let canonical = canonical_execute_envelope_input(issued_at_ms, expires_at_ms, &action_json);
+        let hmac_sha256 = compute_hmac(auth_key, canonical.as_bytes())
             .map_err(AdapterError::AndroidBridgeError)?;
 
         let request = BridgeExecuteRequest {
             message_type: BRIDGE_MESSAGE_TYPE_EXECUTE.to_string(),
+            issued_at_ms,
+            expires_at_ms,
             auth: BridgeAuth { hmac_sha256 },
             action: action_json,
         };
@@ -200,7 +213,19 @@ fn classify(action: &SuggestedAction) -> Route<'_> {
     }
 }
 
-/// 对消息字节计算 HMAC-SHA256，返回小写 hex。
+/// Canonical HMAC input shared with the Android bridge.
+fn canonical_execute_envelope_input(
+    issued_at_ms: i64,
+    expires_at_ms: i64,
+    action_json: &str,
+) -> String {
+    format!(
+        "dipecs.android.bridge.execute.v1\nissued_at_ms:{issued_at_ms}\nexpires_at_ms:{expires_at_ms}\naction:{}:{action_json}",
+        action_json.len(),
+    )
+}
+
+/// 对 canonical 消息字节计算 HMAC-SHA256，返回小写 hex。
 fn compute_hmac(key: &str, message: &[u8]) -> Result<String, String> {
     let mut mac = HmacSha256::new_from_slice(key.as_bytes())
         .map_err(|error| format!("init HMAC key: {error}"))?;

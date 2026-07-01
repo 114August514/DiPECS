@@ -43,9 +43,11 @@ Task 2: processing
   ActionBus.raw_events_rx
       -> PrivacyAirGap
       -> WindowAggregator
-      -> process_window
-      -> DecisionRouter
+      -> ModelMemoryStore.model_input(ctx)     # 行为画像 + 近期反馈
+      -> DecisionRouter.evaluate_model_input
       -> ActionLifecycle
+      -> ModelMemoryStore.update()             # 反馈写入模型记忆
+      -> ProfileSummarizer (按周期异步汇总)
       -> RuntimeTraceRecorder
 ```
 
@@ -63,9 +65,11 @@ Task 2: processing
 窗口关闭后执行：
 
 ```text
-DecisionRouter.evaluate(ctx)
+ModelMemoryStore.model_input(ctx)    # 构建 ModelInput（含 current_context + behavior_profile + recent_feedback）
+DecisionRouter.evaluate_model_input(input)
 CapabilityLevel::for_route(route)
 ActionLifecycle.run(window_ordinal, batch, route, backend_error, capability, ctx)
+ModelMemoryStore.update(...)         # 将本窗口的决策结果和审计反馈写入模型记忆
 ```
 
 `process_window` 会统计：
@@ -75,6 +79,7 @@ ActionLifecycle.run(window_ordinal, batch, route, backend_error, capability, ctx
 - decision route / model / latency / error
 - action audit records
 - executed / denied / failed 数量
+- model memory 更新（行为画像轮转、近期决策记录、反馈推导）
 
 如果设置 `--trace-output`，daemon 会以 NDJSON 追加写一条 `daemon_window` 记录。
 

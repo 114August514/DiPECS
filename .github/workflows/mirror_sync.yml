@@ -5,6 +5,14 @@ on:
   delete: # 监听分支删除
   workflow_dispatch: # 支持手动触发
 
+# 串行化镜像作业:一次「合并 + 删分支」会同时触发 push 与 delete 两个 run,
+# 二者都对镜像远端做 `--force --prune`,并发时会互相抢 refs/heads/* 的锁
+# (报错 cannot lock ref)。用固定 group 让镜像作业排队执行而非并发;
+# mirror 是全量幂等同步,排队不丢状态。
+concurrency:
+  group: mirror-to-osh2026
+  cancel-in-progress: false
+
 jobs:
   mirror_to_org:
     if: github.repository == '114August514/DiPECS'

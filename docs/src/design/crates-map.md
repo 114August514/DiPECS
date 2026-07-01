@@ -25,7 +25,7 @@ aios-spec
   ├─ aios-collector
   ├─ aios-core
   ├─ aios-agent
-  └─ aios-action
+  └─ aios-action (also depends on aios-core)
 
 aios-collector ─┐
 aios-core ──────┼─ aios-daemon
@@ -34,6 +34,8 @@ aios-action ────┘
 
 aios-cli 复用 collector/core/agent/action 做离线 replay
 ```
+
+`aios-action` 额外依赖 `aios-core`（为了 `ActionAdapter` trait 和 `AuthorizedAction` 类型），其余 library-layer crates 只依赖 `aios-spec`。
 
 ## `aios-spec`
 

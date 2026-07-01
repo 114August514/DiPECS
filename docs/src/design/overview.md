@@ -13,7 +13,7 @@ aios-spec
   ├─ aios-collector
   ├─ aios-core
   ├─ aios-agent
-  └─ aios-action
+  └─ aios-action (also depends on aios-core)
 
 aios-collector ─┐
 aios-core ──────┼─ aios-daemon

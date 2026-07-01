@@ -1,7 +1,7 @@
 # Android 动作实现手册
 
 > Status: Current  
-> Last verified: 2026-06-30
+> Last verified: 2026-07-01
 
 本文记录当前已经落地的 Android action bridge。更早文档中关于 WorkManager、通用 ActionResult、静默预热第三方应用的内容已经过期。
 
@@ -18,13 +18,15 @@ Deferred items for v0.2:
 | --- | --- |
 | `crates/aios-action/src/lib.rs` | `DefaultActionExecutor` — 纯确定性 stub，不访问网络、环境变量或 Android。 |
 | `crates/aios-action/src/android_adapter.rs` | `AndroidAdapter` — Android bridge env、target 白名单、HMAC 载荷、TCP 请求/响应协议。 |
+| `crates/aios-action/src/offline_adapter.rs` | replay / golden 使用的 deterministic adapter。 |
 | `apps/android-collector/.../actions/AuthorizedActionSocketServer.kt` | localhost socket、token、TTL、HMAC、rate limit。 |
 | `apps/android-collector/.../actions/ActionExecutorBridge.kt` | action type 分发。 |
 | `apps/android-collector/.../actions/AccessibleContentPrefetcher.kt` | `PrefetchFile` 实现。 |
 | `apps/android-collector/.../actions/ActionMaintenanceScheduler.kt` | `KeepAlive` 实现。 |
-| `apps/android-collector/.../actions/CacheTrimmer.kt` | `ReleaseMemory` 实现。 |
-| `apps/android-collector/.../actions/OwnResourceWarmer.kt` | `PreWarmProcess(own:*)` 实现。 |
-| `apps/android-collector/.../actions/UserVisibleActionNotifier.kt` | 第三方 app 相关提示。 |
+| `apps/android-collector/.../actions/CacheTrimmer.kt` | 正常 App 模式下 `ReleaseMemory(cache:*)` 实现。 |
+| `apps/android-collector/.../actions/SystemActionExecutors.kt` | platform/root 模式下的系统级执行器。 |
+| `apps/android-collector/.../actions/SystemPrewarmActivity.kt` | `PreWarmProcess(own:*)` / 系统级预热 activity。 |
+| `apps/android-collector/.../actions/UserVisibleActionNotifier.kt` | 用户可见动作提示。 |
 
 ## 启用 Rust -> Android 转发
 
@@ -100,6 +102,7 @@ None -> work:collector_heartbeat
 
 - 使用 `JobScheduler` 调度 `ActionMaintenanceJobService`。
 - 只调度 DiPECS-owned maintenance job。
+- platform/root 模式下还会降低自身 OOM score 并尝试把自身 PID 写入 foreground cpuset。
 
 ### `ReleaseMemory`
 
@@ -108,14 +111,17 @@ Allowed targets：
 ```text
 cache:prefetch
 cache:all
+pkg:<package>
+page
 None -> cache:prefetch
 ```
 
 行为：
 
 - `cache:prefetch` 清理 prefetch cache。
-- `cache:all` 清理 app-owned cache children。
-- 不触碰第三方进程或第三方文件。
+- `cache:all` 在正常 App 模式下只清理 app-owned cache；platform/root 模式下会尝试清理所有应用缓存。
+- `pkg:<package>` 需要 platform/root，对指定包执行 `pm clear --cache-only`。
+- `page` 需要 root，向 `/proc/sys/vm/drop_caches` 写入 `1`，触发全局 page cache 回收。
 
 ### `PreWarmProcess`
 
@@ -130,8 +136,8 @@ None -> own:resources
 
 行为：
 
-- `own:*` 调用 `OwnResourceWarmer`，准备 DiPECS 自身 cache / token / trace stats。
-- `pkg:*` 和 `notif:*` 不后台启动第三方 app，只发布用户可见 action hint。
+- `own:*` 调用 `SystemPrewarmActivity`，准备 DiPECS 自身资源。
+- `pkg:*` 和 `notif:*` 在正常 App 模式下只发布用户可见 action hint；platform/root 模式下会启动目标包的 launcher Activity 并立即 finish task，触发 Zygote fork。
 
 ### `NoOp`
 
@@ -155,3 +161,17 @@ cargo run -p aios-cli -- send-authorized-action \
 ```
 
 它不会派发 prefetch 或其他动作。
+
+要派发一个真实的签名动作（注意这会真实执行）：
+
+```bash
+cargo run -p aios-cli -- send-action \
+  --auth-token <token> \
+  --host 127.0.0.1 \
+  --port 46321 \
+  --action-type KeepAlive \
+  --target work:collector_heartbeat \
+  --urgency IdleTime
+```
+
+`send-action` 会构造完整的 HMAC-signed execute envelope 并发送给 Android bridge。

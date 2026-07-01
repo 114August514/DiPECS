@@ -112,9 +112,9 @@ Ping:
 
 ## Android-Safe Action Targets
 
-当前 Android bridge 只接受以下低风险 action 语义：
+当前 Android bridge 的**默认/正常 App 模式**只接受以下低风险 action 语义：
 
-| ActionType | 允许 target | Android 侧行为 |
+| ActionType | 允许 target | 正常 App 模式行为 |
 | :--- | :--- | :--- |
 | `PrefetchFile` | `url:https://...`, `uri:content://...` | 预取可访问内容到 app cache |
 | `ReleaseMemory` | `cache:prefetch`, `cache:all`, 或空 target | 只清理 DiPECS 自己的 cache |
@@ -123,12 +123,29 @@ Ping:
 | `PreWarmProcess` | `pkg:*`, `notif:*` | 发用户可见通知提示，不后台启动第三方 App |
 | `NoOp` | 任意 | 只记录审计事件 |
 
-不支持：
+## 平台签名 / 系统级能力
 
-- 后台拉起第三方 Activity。
+如果 DiPECS 被签名为 platform app 或以 `/system/bin/dipecsd` 运行，`SystemActionExecutors` 会启用更强的系统级实现：
+
+| ActionType | target | 系统级行为 |
+| :--- | :--- | :--- |
+| `KeepAlive` | 任意 | 降低自身 OOM score、把自身 PID 写入 foreground cpuset，并回退到 JobScheduler |
+| `ReleaseMemory` | `cache:all` | 除 prefetch cache 外，还尝试通过反射调用 `deleteApplicationCacheFiles` 清理所有应用缓存 |
+| `ReleaseMemory` | `pkg:<package>` | 对指定包执行 `pm clear --cache-only` |
+| `ReleaseMemory` | `page` | 向 `/proc/sys/vm/drop_caches` 写入 `1`，触发全局 page cache 回收 |
+| `PreWarmProcess` | `pkg:*` / `notif:*` | 启动目标包的 launcher Activity 并立即 finish task，触发 Zygote fork + `Application.onCreate` |
+
+这些系统级行为需要 platform 签名或 root；正常 App 模式会收到 `SecurityException` 或写入拒绝，诚实回退到安全子集。
+
+## 明确不支持的能力
+
+在正常 App 模式下，以下动作语义**不会**执行：
+
+- 后台静默拉起第三方 Activity。
 - 修改第三方进程优先级或 `oom_score_adj`。
 - 清理第三方 App 内存或私有文件。
 - 访问未授权的第三方 URI 或本机/内网 HTTP 目标。
+- 触发全局 `drop_caches`。
 
 ## 文档与样本要求
 

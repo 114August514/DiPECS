@@ -1,0 +1,101 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 430" font-family="system-ui, -apple-system, sans-serif">
+  <defs>
+    <marker id="arrow" markerWidth="6" markerHeight="5" refX="6" refY="2.5" orient="auto">
+      <path d="M0,0 L6,2.5 L0,5 Z" fill="#0284c7"/>
+    </marker>
+  </defs>
+
+  <rect width="900" height="430" rx="10" fill="#f8fafc" stroke="#bae6fd" stroke-width="1"/>
+
+  <text x="450" y="24" text-anchor="middle" font-size="16" font-weight="700" fill="#0369a1">窗口聚合</text>
+
+  <!-- Time axis -->
+  <line x1="50" y1="54" x2="850" y2="54" stroke="#cbd5e1" stroke-width="1.5"/>
+  <text x="50" y="46" font-size="10" font-weight="700" fill="#64748b">时间轴</text>
+
+  <line x1="50" y1="50" x2="50" y2="58" stroke="#64748b" stroke-width="1.2"/>
+  <text x="50" y="72" text-anchor="middle" font-size="8" fill="#64748b">t₀</text>
+  <line x1="250" y1="50" x2="250" y2="58" stroke="#64748b" stroke-width="1.2"/>
+  <text x="250" y="72" text-anchor="middle" font-size="8" fill="#64748b">t₀+10s</text>
+  <line x1="450" y1="50" x2="450" y2="58" stroke="#64748b" stroke-width="1.2"/>
+  <text x="450" y="72" text-anchor="middle" font-size="8" fill="#64748b">t₀+20s</text>
+  <line x1="650" y1="50" x2="650" y2="58" stroke="#64748b" stroke-width="1.2"/>
+  <text x="650" y="72" text-anchor="middle" font-size="8" fill="#64748b">t₀+30s</text>
+
+  <!-- Window brackets -->
+  <rect x="50" y="84" width="200" height="28" rx="4" fill="#e0f2fe" stroke="#7dd3fc" stroke-width="0.8"/>
+  <text x="150" y="102" text-anchor="middle" font-size="10" font-weight="700" fill="#075985">窗口 1（10s）</text>
+
+  <rect x="250" y="84" width="200" height="28" rx="4" fill="#e0f2fe" stroke="#7dd3fc" stroke-width="0.8"/>
+  <text x="350" y="102" text-anchor="middle" font-size="10" font-weight="700" fill="#075985">窗口 2（10s）</text>
+
+  <rect x="450" y="84" width="200" height="28" rx="4" fill="#e0f2fe" stroke="#7dd3fc" stroke-width="0.8"/>
+  <text x="550" y="102" text-anchor="middle" font-size="10" font-weight="700" fill="#075985">窗口 3（10s）</text>
+
+  <!-- Event boxes under windows, with spacing -->
+  <rect x="55" y="124" width="52" height="24" rx="3" fill="#fff" stroke="#bae6fd" stroke-width="0.6"/>
+  <text x="81" y="140" text-anchor="middle" font-size="8" fill="#0e7490">应用切换</text>
+  <rect x="113" y="124" width="42" height="24" rx="3" fill="#fff" stroke="#bae6fd" stroke-width="0.6"/>
+  <text x="134" y="140" text-anchor="middle" font-size="8" fill="#0e7490">通知</text>
+  <rect x="161" y="124" width="52" height="24" rx="3" fill="#fff" stroke="#bae6fd" stroke-width="0.6"/>
+  <text x="187" y="140" text-anchor="middle" font-size="8" fill="#0e7490">系统状态</text>
+
+  <rect x="255" y="124" width="52" height="24" rx="3" fill="#fff" stroke="#bae6fd" stroke-width="0.6"/>
+  <text x="281" y="140" text-anchor="middle" font-size="8" fill="#0e7490">文件访问</text>
+  <rect x="313" y="124" width="52" height="24" rx="3" fill="#fff" stroke="#bae6fd" stroke-width="0.6"/>
+  <text x="339" y="140" text-anchor="middle" font-size="8" fill="#0e7490">应用切换</text>
+  <rect x="371" y="124" width="42" height="24" rx="3" fill="#fff" stroke="#bae6fd" stroke-width="0.6"/>
+  <text x="392" y="140" text-anchor="middle" font-size="8" fill="#0e7490">通知</text>
+
+  <rect x="455" y="124" width="52" height="24" rx="3" fill="#fff" stroke="#bae6fd" stroke-width="0.6"/>
+  <text x="481" y="140" text-anchor="middle" font-size="8" fill="#0e7490">进程状态</text>
+  <rect x="513" y="124" width="52" height="24" rx="3" fill="#fff" stroke="#bae6fd" stroke-width="0.6"/>
+  <text x="539" y="140" text-anchor="middle" font-size="8" fill="#0e7490">屏幕状态</text>
+  <rect x="571" y="124" width="42" height="24" rx="3" fill="#fff" stroke="#bae6fd" stroke-width="0.6"/>
+  <text x="592" y="140" text-anchor="middle" font-size="8" fill="#0e7490">系统</text>
+
+  <!-- Arrow down to aggregation -->
+  <line x1="450" y1="152" x2="450" y2="172" stroke="#0284c7" stroke-width="1.3" marker-end="url(#arrow)"/>
+
+  <!-- Aggregation: WindowAggregator.close() → StructuredContext -->
+  <rect x="100" y="178" width="700" height="44" rx="7" fill="#dbeafe" stroke="#60a5fa" stroke-width="1.2"/>
+  <text x="450" y="198" text-anchor="middle" font-size="11" font-weight="700" fill="#1e40af">窗口聚合器.close() → 结构化上下文</text>
+  <text x="450" y="214" text-anchor="middle" font-size="8.5" fill="#1d4ed8">将窗口内脱敏事件聚合为上下文摘要（含窗口起止时间、事件列表、摘要）</text>
+
+  <!-- ContextSummary pills: row 1 -->
+  <rect x="110" y="230" width="150" height="18" rx="3" fill="#e0f2fe"/>
+  <text x="185" y="243" text-anchor="middle" font-size="7.5" fill="#075985">前台应用：[A, B]</text>
+  <rect x="270" y="230" width="150" height="18" rx="3" fill="#e0f2fe"/>
+  <text x="345" y="243" text-anchor="middle" font-size="7.5" fill="#075985">通知应用：[C, D]</text>
+  <rect x="430" y="230" width="150" height="18" rx="3" fill="#e0f2fe"/>
+  <text x="505" y="243" text-anchor="middle" font-size="7.5" fill="#075985">语义提示：[文件, 链接]</text>
+  <rect x="590" y="230" width="150" height="18" rx="3" fill="#e0f2fe"/>
+  <text x="665" y="243" text-anchor="middle" font-size="7.5" fill="#075985">文件活动：[.pdf, .jpg]</text>
+  <!-- ContextSummary pills: row 2 (missing fields from code) -->
+  <rect x="280" y="252" width="145" height="18" rx="3" fill="#e0f2fe"/>
+  <text x="352" y="265" text-anchor="middle" font-size="7.5" fill="#075985">最新系统状态：电量/网络</text>
+  <rect x="435" y="252" width="145" height="18" rx="3" fill="#e0f2fe"/>
+  <text x="507" y="265" text-anchor="middle" font-size="7.5" fill="#075985">来源层级：公开接口</text>
+
+  <!-- Arrow down to ModelInput -->
+  <line x1="450" y1="274" x2="450" y2="300" stroke="#0284c7" stroke-width="1.3" marker-end="url(#arrow)"/>
+
+  <!-- ModelInput wrapper -->
+  <rect x="220" y="302" width="460" height="38" rx="7" fill="#fefce8" stroke="#fde047" stroke-width="1"/>
+  <text x="450" y="319" text-anchor="middle" font-size="10" font-weight="700" fill="#854d0e">模型输入 = 结构化上下文 + 行为画像 + 近期反馈</text>
+  <text x="450" y="334" text-anchor="middle" font-size="8" fill="#a16207">云端后端使用此路径，规则/本地后端直接取用结构化上下文</text>
+
+  <!-- Arrow from ModelInput to Decision Backend -->
+  <path d="M330,340 L330,362" fill="none" stroke="#0284c7" stroke-width="1.3" marker-end="url(#arrow)"/>
+
+  <!-- Decision Backend → IntentBatch -->
+  <rect x="250" y="366" width="160" height="36" rx="6" fill="#fefce8" stroke="#fde047" stroke-width="0.8"/>
+  <text x="330" y="388" text-anchor="middle" font-size="10" font-weight="700" fill="#854d0e">决策后端</text>
+  <line x1="410" y1="384" x2="440" y2="384" stroke="#0284c7" stroke-width="1.2" marker-end="url(#arrow)"/>
+  <rect x="445" y="366" width="160" height="36" rx="6" fill="#f0fdf4" stroke="#86efac" stroke-width="0.8"/>
+  <text x="525" y="388" text-anchor="middle" font-size="10" font-weight="700" fill="#166534">意图批次</text>
+
+  <!-- Bottom note -->
+  <rect x="80" y="414" width="740" height="12" rx="2" fill="#f8fafc"/>
+  <text x="450" y="423" text-anchor="middle" font-size="7.5" fill="#94a3b8">窗口大小可配置（默认10s）· 减少逐事件决策开销 · 短时间行为摘要 · 回放时间对齐更稳定</text>
+</svg>

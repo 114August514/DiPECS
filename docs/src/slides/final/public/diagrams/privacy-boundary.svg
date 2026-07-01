@@ -1,0 +1,82 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 300" font-family="system-ui, -apple-system, sans-serif">
+  <defs>
+    <marker id="arrow" markerWidth="6" markerHeight="5" refX="6" refY="2.5" orient="auto">
+      <path d="M0,0 L6,2.5 L0,5 Z" fill="#16a34a"/>
+    </marker>
+    <marker id="arrow-red" markerWidth="6" markerHeight="5" refX="6" refY="2.5" orient="auto">
+      <path d="M0,0 L6,2.5 L0,5 Z" fill="#dc2626"/>
+    </marker>
+  </defs>
+
+  <rect width="900" height="300" rx="10" fill="#f8fafc" stroke="#bae6fd" stroke-width="1"/>
+
+  <text x="450" y="24" text-anchor="middle" font-size="16" font-weight="700" fill="#0369a1">隐私边界</text>
+
+  <!-- Left: Raw Zone -->
+  <rect x="20" y="36" width="280" height="248" rx="7" fill="#fef2f2" stroke="#fca5a5" stroke-width="1" stroke-dasharray="6,3"/>
+  <text x="160" y="60" text-anchor="middle" font-size="12" font-weight="700" fill="#991b1b">原始事件区（Raw Zone）</text>
+  <text x="160" y="78" text-anchor="middle" font-size="8.5" fill="#b91c1c">包含隐私信息，不可越界</text>
+
+  <!-- RawEvent types -->
+  <rect x="35" y="92" width="250" height="54" rx="5" fill="#fff" stroke="#fca5a5" stroke-width="0.6"/>
+  <text x="160" y="110" text-anchor="middle" font-size="10" font-weight="700" fill="#991b1b">RawEvent</text>
+  <text x="160" y="126" text-anchor="middle" font-size="8.5" fill="#b91c1c">通知（标题+正文）· 文件路径 · Binder 负载</text>
+  <text x="160" y="140" text-anchor="middle" font-size="8.5" fill="#b91c1c">通知键 · 分组键 · 应用包名</text>
+
+  <!-- SourceTier -->
+  <rect x="55" y="158" width="105" height="24" rx="4" fill="#dbeafe" stroke="#93c5fd" stroke-width="0.5"/>
+  <text x="107" y="174" text-anchor="middle" font-size="8.5" font-weight="600" fill="#1e40af">PublicApi</text>
+  <rect x="170" y="158" width="105" height="24" rx="4" fill="#f0fdf4" stroke="#86efac" stroke-width="0.5"/>
+  <text x="222" y="174" text-anchor="middle" font-size="8.5" font-weight="600" fill="#166534">Daemon</text>
+
+  <!-- What's stripped -->
+  <rect x="35" y="196" width="250" height="42" rx="5" fill="#fef2f2" stroke="#fca5a5" stroke-width="0.5"/>
+  <text x="160" y="214" text-anchor="middle" font-size="9" font-weight="600" fill="#991b1b">被丢弃的敏感字段</text>
+  <text x="160" y="230" text-anchor="middle" font-size="8" fill="#b91c1c">原文 · 路径 · 负载 · 键值 → 不可逆丢弃</text>
+
+  <!-- ===== Wall ===== -->
+  <rect x="308" y="36" width="36" height="248" rx="4" fill="#fee2e2" stroke="#ef4444" stroke-width="1.5"/>
+  <text x="326" y="160" text-anchor="middle" font-size="10" font-weight="800" fill="#dc2626">隐</text>
+  <text x="326" y="178" text-anchor="middle" font-size="10" font-weight="800" fill="#dc2626">私</text>
+  <text x="326" y="196" text-anchor="middle" font-size="10" font-weight="800" fill="#dc2626">气</text>
+  <text x="326" y="214" text-anchor="middle" font-size="10" font-weight="800" fill="#dc2626">隙</text>
+
+  <!-- ===== Right: Sanitized Zone ===== -->
+  <rect x="352" y="36" width="528" height="248" rx="7" fill="#f0fdf4" stroke="#86efac" stroke-width="1" stroke-dasharray="6,3"/>
+  <text x="616" y="60" text-anchor="middle" font-size="12" font-weight="700" fill="#166534">安全区（Sanitized Zone）</text>
+  <text x="616" y="78" text-anchor="middle" font-size="8.5" fill="#15803d">无隐私信息，可自由传输</text>
+
+  <!-- SanitizedEvent -->
+  <rect x="370" y="92" width="230" height="54" rx="5" fill="#fff" stroke="#86efac" stroke-width="0.6"/>
+  <text x="485" y="110" text-anchor="middle" font-size="10" font-weight="700" fill="#166534">SanitizedEvent</text>
+  <text x="485" y="126" text-anchor="middle" font-size="8.5" fill="#15803d">事件类型 · 来源层级 · 应用包名</text>
+  <text x="485" y="140" text-anchor="middle" font-size="8.5" fill="#15803d">TextHint（长度+书写系统+是否表情）</text>
+
+  <line x1="600" y1="119" x2="628" y2="119" stroke="#16a34a" stroke-width="1.2" marker-end="url(#arrow)"/>
+
+  <!-- SemanticHint -->
+  <rect x="632" y="92" width="230" height="54" rx="5" fill="#fff" stroke="#86efac" stroke-width="0.6"/>
+  <text x="747" y="110" text-anchor="middle" font-size="10" font-weight="700" fill="#166534">SemanticHint</text>
+  <text x="747" y="126" text-anchor="middle" font-size="8.5" fill="#15803d">文件 · 图片 · 语音 · 链接 · 日历</text>
+  <text x="747" y="140" text-anchor="middle" font-size="8.5" fill="#15803d">验证码 · 金融 · 用户提及（共 8 种）</text>
+
+  <!-- Mapping arrows -->
+  <line x1="485" y1="146" x2="485" y2="186" stroke="#16a34a" stroke-width="1.2" marker-end="url(#arrow)"/>
+  <line x1="747" y1="146" x2="747" y2="186" stroke="#16a34a" stroke-width="1.2" marker-end="url(#arrow)"/>
+
+  <!-- StructuredContext -->
+  <rect x="370" y="192" width="280" height="42" rx="6" fill="#dbeafe" stroke="#60a5fa" stroke-width="1"/>
+  <text x="510" y="212" text-anchor="middle" font-size="10" font-weight="700" fill="#1e40af">StructuredContext（决策后端可见）</text>
+  <text x="510" y="228" text-anchor="middle" font-size="8.5" fill="#1d4ed8">前台应用 · 通知应用 · 语义提示 · 文件活动 · 系统状态 · 来源层级</text>
+
+  <line x1="650" y1="213" x2="682" y2="213" stroke="#0284c7" stroke-width="1.3" marker-end="url(#arrow-red)"/>
+
+  <!-- Decision Backend -->
+  <rect x="686" y="192" width="176" height="42" rx="6" fill="#fefce8" stroke="#fde047" stroke-width="0.8"/>
+  <text x="774" y="212" text-anchor="middle" font-size="10" font-weight="700" fill="#854d0e">Decision Backend</text>
+  <text x="774" y="228" text-anchor="middle" font-size="8" fill="#a16207">唯一可见的上下文格式</text>
+
+  <!-- Bottom note -->
+  <rect x="352" y="248" width="528" height="20" rx="3" fill="#fef2f2" stroke="#fca5a5" stroke-width="0.4"/>
+  <text x="616" y="262" text-anchor="middle" font-size="8" fill="#b91c1c">隐私信息在此边界被不可逆丢弃 —— 决策后端永远看不到原始文本、路径和键值</text>
+</svg>

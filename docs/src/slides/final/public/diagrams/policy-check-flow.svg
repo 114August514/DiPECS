@@ -1,0 +1,86 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 380" font-family="system-ui, -apple-system, sans-serif">
+  <defs>
+    <marker id="arrow-green" markerWidth="6" markerHeight="5" refX="6" refY="2.5" orient="auto">
+      <path d="M0,0 L6,2.5 L0,5 Z" fill="#059669"/>
+    </marker>
+  </defs>
+
+  <rect width="900" height="380" rx="10" fill="#f8fafc" stroke="#bae6fd" stroke-width="1"/>
+
+  <text x="450" y="24" text-anchor="middle" font-size="16" font-weight="700" fill="#0369a1">策略检查流程（8 项检查，按顺序执行）</text>
+
+  <!-- Input (centered above check ①) -->
+  <rect x="35" y="42" width="195" height="36" rx="6" fill="#dbeafe" stroke="#60a5fa" stroke-width="1"/>
+  <text x="132" y="64" text-anchor="middle" font-size="10" font-weight="700" fill="#1e40af">意图批次 + 能力 + 上下文</text>
+
+  <!-- Arrow from Input down to check ① -->
+  <line x1="132" y1="78" x2="132" y2="88" stroke="#059669" stroke-width="1.3" marker-end="url(#arrow-green)"/>
+
+  <!-- Row 1: Checks 1-4 -->
+  <rect x="35" y="90" width="195" height="50" rx="6" fill="#fff" stroke="#cbd5e1" stroke-width="0.7"/>
+  <text x="132" y="112" text-anchor="middle" font-size="9.5" font-weight="700" fill="#475569">① 后端能力等级</text>
+  <text x="132" y="130" text-anchor="middle" font-size="8" fill="#64748b">能力允许风险 → 拒绝：风险超出能力</text>
+
+  <line x1="230" y1="115" x2="248" y2="115" stroke="#059669" stroke-width="1.2" marker-end="url(#arrow-green)"/>
+
+  <rect x="252" y="90" width="195" height="50" rx="6" fill="#fff" stroke="#cbd5e1" stroke-width="0.7"/>
+  <text x="349" y="112" text-anchor="middle" font-size="9.5" font-weight="700" fill="#475569">② 风险等级上限</text>
+  <text x="349" y="130" text-anchor="middle" font-size="8" fill="#64748b">风险 ≤ 最大自动风险 → 拒绝：超出配置</text>
+
+  <line x1="447" y1="115" x2="465" y2="115" stroke="#059669" stroke-width="1.2" marker-end="url(#arrow-green)"/>
+
+  <rect x="469" y="90" width="195" height="50" rx="6" fill="#fff" stroke="#cbd5e1" stroke-width="0.7"/>
+  <text x="566" y="112" text-anchor="middle" font-size="9.5" font-weight="700" fill="#475569">③ 置信度下限</text>
+  <text x="566" y="130" text-anchor="middle" font-size="8" fill="#64748b">置信度 ≥ 0.3 → 拒绝：置信度过低</text>
+
+  <line x1="664" y1="115" x2="682" y2="115" stroke="#059669" stroke-width="1.2" marker-end="url(#arrow-green)"/>
+
+  <rect x="686" y="90" width="180" height="50" rx="6" fill="#fff" stroke="#cbd5e1" stroke-width="0.7"/>
+  <text x="776" y="112" text-anchor="middle" font-size="9.5" font-weight="700" fill="#475569">④ 批量上限</text>
+  <text x="776" y="130" text-anchor="middle" font-size="8" fill="#64748b">≤ 每批次最大动作数 → 拒绝：超限</text>
+
+  <!-- Wrap arrow from row 1 to row 2 -->
+  <path d="M776,140 L776,158 L132,158 L132,166" fill="none" stroke="#059669" stroke-width="1.2" marker-end="url(#arrow-green)"/>
+
+  <!-- Row 2: Checks 5-8 -->
+  <rect x="35" y="170" width="195" height="50" rx="6" fill="#fff" stroke="#cbd5e1" stroke-width="0.7"/>
+  <text x="132" y="192" text-anchor="middle" font-size="9.5" font-weight="700" fill="#475569">⑤ 阻止动作列表</text>
+  <text x="132" y="210" text-anchor="middle" font-size="8" fill="#64748b">子串匹配 → 拒绝：动作被阻止</text>
+
+  <line x1="230" y1="195" x2="248" y2="195" stroke="#059669" stroke-width="1.2" marker-end="url(#arrow-green)"/>
+
+  <rect x="252" y="170" width="195" height="50" rx="6" fill="#fff" stroke="#cbd5e1" stroke-width="0.7"/>
+  <text x="349" y="192" text-anchor="middle" font-size="9.5" font-weight="700" fill="#475569">⑥ 延迟紧急度</text>
+  <text x="349" y="210" text-anchor="middle" font-size="8" fill="#64748b">紧急度 ≠ 延迟 → 拒绝：延迟紧急度</text>
+
+  <line x1="447" y1="195" x2="465" y2="195" stroke="#059669" stroke-width="1.2" marker-end="url(#arrow-green)"/>
+
+  <rect x="469" y="170" width="195" height="50" rx="6" fill="#fff" stroke="#cbd5e1" stroke-width="0.7"/>
+  <text x="566" y="192" text-anchor="middle" font-size="9.5" font-weight="700" fill="#475569">⑦ 能力动作白名单</text>
+  <text x="566" y="210" text-anchor="middle" font-size="8" fill="#64748b">能力允许动作 → 拒绝：能力拒绝</text>
+
+  <line x1="664" y1="195" x2="682" y2="195" stroke="#059669" stroke-width="1.2" marker-end="url(#arrow-green)"/>
+
+  <rect x="686" y="170" width="180" height="50" rx="6" fill="#fff" stroke="#cbd5e1" stroke-width="0.7"/>
+  <text x="776" y="192" text-anchor="middle" font-size="9.5" font-weight="700" fill="#475569">⑧ 目标在上下文中</text>
+  <text x="776" y="210" text-anchor="middle" font-size="8" fill="#64748b">目标 ∈ 已知目标 → 拒绝：不在上下文</text>
+
+  <!-- Arrow to result -->
+  <line x1="450" y1="220" x2="450" y2="246" stroke="#059669" stroke-width="1.3" marker-end="url(#arrow-green)"/>
+
+  <!-- Approved result -->
+  <rect x="250" y="248" width="400" height="38" rx="7" fill="#dcfce7" stroke="#86efac" stroke-width="1.2"/>
+  <text x="450" y="268" text-anchor="middle" font-size="11" font-weight="700" fill="#059669">全部 8 项通过 → PolicyActionDecision::Approved</text>
+  <text x="450" y="282" text-anchor="middle" font-size="8" fill="#15803d">→ ActionLifecycle.seal() → 已授权动作 → 执行</text>
+
+  <!-- Bottom: KnownTargets + Config -->
+  <rect x="35" y="300" width="410" height="48" rx="6" fill="#f8fafc" stroke="#e2e8f0" stroke-width="0.6"/>
+  <text x="240" y="318" text-anchor="middle" font-size="9" font-weight="700" fill="#475569">KnownTargets 推导</text>
+  <text x="240" y="334" text-anchor="middle" font-size="8" fill="#64748b">从上下文聚合所有包名、前台应用、通知应用，支持 own/notif/pkg/work/cache/url 前缀匹配</text>
+  <text x="240" y="346" text-anchor="middle" font-size="8" fill="#64748b">⑧ 中使用此集合判定目标是否出现在当前窗口上下文中</text>
+
+  <rect x="460" y="300" width="405" height="48" rx="6" fill="#f8fafc" stroke="#e2e8f0" stroke-width="0.6"/>
+  <text x="662" y="318" text-anchor="middle" font-size="9" font-weight="700" fill="#475569">默认配置</text>
+  <text x="662" y="334" text-anchor="middle" font-size="8" fill="#64748b">最大自动风险：低 | 最小置信度：0.3 | 每批次最大动作数：5 | 阻止列表：[]</text>
+  <text x="662" y="346" text-anchor="middle" font-size="8" fill="#64748b">①② 使用能力等级和风险上限，③ 使用置信度，④ 使用批量上限，⑤ 使用阻止列表</text>
+</svg>

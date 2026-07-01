@@ -318,8 +318,8 @@ data/evaluation/
   resource-overhead-emulator-20260701-131525.json   资源开销 (10 采样)
   ux-metrics-emulator-20260701-151856.json          UX 指标 (5 采样)
   stability-emulator-canonical.json                 稳定性 (8 采样)
-  cloud-scenarios-20260716-084010.json              云端场景烟雾测试 (4 场景，待更新为 6；时间戳因 now_ts() bug 偏移，实际运行日期 2026-07-01)
-  cloud-latency-20260716-084110.json                云端延迟基准 (5 轮；时间戳同理)
+  cloud-scenarios-20260701-084010.json              云端场景烟雾测试 (4 场景，待更新为 6)
+  cloud-latency-20260701-084110.json                云端延迟基准 (5 轮)
 
 data/traces/scenarios/
   circuit-breaker.jsonl              单 app，断路器触发场景

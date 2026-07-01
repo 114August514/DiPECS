@@ -137,16 +137,11 @@ cargo test -p aios-agent --lib cloud_llm::cloud_bench_tests::latency -- --ignore
 
 ## 已有评估数据快照
 
-> **注意**：以下文件的实际运行日期为 2026-07-01，因早期 `now_ts()` 日历计算 bug
-> (忽略闰年、每月按 30 天计算) 导致时间戳偏移为 `20260716`。该 bug 已修复，
-> 后续运行将产生正确日期戳的文件名。详见
-> [cloud_llm/mod.rs](https://github.com/DIPECS/DIPECS/blob/main/crates/aios-agent/src/backends/cloud_llm/mod.rs) 中的 `now_ts()`。
-
-- `data/evaluation/cloud-latency-20260716-084110.json`
+- `data/evaluation/cloud-latency-20260701-084110.json`
   - DeepSeek `deepseek-v4-flash`
   - 5 轮 `morning-routine`
   - p50 ≈ 11.3 s，p95 ≈ 13.0 s，成功率 100%
-- `data/evaluation/cloud-scenarios-20260716-084010.json`
+- `data/evaluation/cloud-scenarios-20260701-084010.json`
   - 4 个场景全部成功
 
 ## 关键设计点

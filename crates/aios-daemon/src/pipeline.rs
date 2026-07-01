@@ -7,14 +7,20 @@ use std::io::Write;
 use std::path::Path;
 use std::sync::Arc;
 use std::thread::{self, JoinHandle};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use aios_agent::{DecisionRouter, ProfileSummarizer};
 use aios_collector::collection_stats::RawEventStats;
 use aios_core::action_lifecycle::ActionLifecycle;
+use aios_core::context_builder::WindowAggregator;
 use aios_core::context_memory::{ModelMemoryConfig, ModelMemoryStore};
+use aios_core::privacy_airgap::DefaultPrivacyAirGap;
+use aios_spec::traits::PrivacySanitizer;
 use aios_spec::IngestedRawEvent;
 use aios_spec::{CapabilityLevel, RecentDecisionRecord, UserBehaviorProfile};
 use serde_json::json;
+use tokio::sync::mpsc;
+use tokio::time::{sleep_until, Instant};
 
 /// Append-only NDJSON recorder for daemon window processing.
 pub struct RuntimeTraceRecorder {
@@ -177,6 +183,102 @@ pub(crate) fn process_window(
             tracing::warn!(error = %error, "failed to write daemon runtime trace");
         }
     }
+}
+
+/// 处理循环的终止原因。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum LoopTermination {
+    /// raw 通道关闭 (采集侧所有 sender 落地) —— 退出前已 flush 最后一个窗口。
+    ChannelClosed,
+}
+
+/// 处理循环收尾摘要。
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct ProcessingLoopSummary {
+    pub(crate) windows_closed: u32,
+    pub(crate) events_processed: u64,
+    pub(crate) terminated_by: LoopTermination,
+}
+
+/// Task-2 处理循环: 从 raw 通道消费已贴 SourceTier 的事件, 按时间窗口聚合, 逐窗口
+/// 驱动决策 → 策略 → 执行 → 审计 → trace (`process_window`)。
+///
+/// 终止由通道关闭驱动: 当采集侧所有 sender 落地, `recv()` 返回 `None`, 循环 flush
+/// 最后一个窗口再退出。这样 shutdown 时不会丢掉最后一个未满窗口。
+///
+/// 窗口计时用 `tokio::time::Instant`——生产环境等价于实时, 同时让暂停时钟测试
+/// (`start_paused`) 能确定性地推进到 deadline 触发关窗。
+pub(crate) async fn run_processing_loop(
+    mut raw_rx: mpsc::Receiver<IngestedRawEvent>,
+    sanitizer: &DefaultPrivacyAirGap,
+    mut window: WindowAggregator,
+    window_duration: Duration,
+    deps: &mut WindowProcessingDeps<'_>,
+) -> ProcessingLoopSummary {
+    let mut raw_stats = RawEventStats::default();
+    let mut window_ordinal = 0u32;
+    let mut events_processed = 0u64;
+    let mut window_deadline = Instant::now() + window_duration;
+
+    loop {
+        let processing_event = tokio::select! {
+            maybe = raw_rx.recv() => match maybe {
+                // Box only affects this local dispatch enum's size; the raw
+                // event is unboxed below before normal processing.
+                Some(raw) => ProcessingEvent::Raw(Box::new(raw)),
+                None => ProcessingEvent::RawChannelClosed,
+            },
+            _ = sleep_until(window_deadline) => ProcessingEvent::WindowExpired,
+        };
+
+        if should_stop_processing(&processing_event) {
+            tracing::info!("raw event channel closed, flushing remaining events");
+            let window_stats = std::mem::take(&mut raw_stats);
+            if let Some(ctx) = window.close(timestamp_ms()) {
+                process_window(window_ordinal, &ctx, &window_stats, deps);
+                window_ordinal += 1;
+            }
+            return ProcessingLoopSummary {
+                windows_closed: window_ordinal,
+                events_processed,
+                terminated_by: LoopTermination::ChannelClosed,
+            };
+        }
+
+        let window_expired = matches!(processing_event, ProcessingEvent::WindowExpired);
+
+        match processing_event {
+            ProcessingEvent::Raw(ingested) => {
+                // Return to the owned IngestedRawEvent shape expected by the
+                // stats and sanitizer code paths.
+                let ingested = *ingested;
+                raw_stats.record(&ingested.raw_event);
+                let sanitized =
+                    sanitizer.sanitize_with_tier(ingested.raw_event, ingested.source_tier);
+                window.push(sanitized);
+                events_processed += 1;
+            },
+            ProcessingEvent::RawChannelClosed => unreachable!("handled before event dispatch"),
+            ProcessingEvent::WindowExpired => {},
+        }
+
+        if window_expired || Instant::now() >= window_deadline {
+            let window_stats = std::mem::take(&mut raw_stats);
+            if let Some(ctx) = window.close(timestamp_ms()) {
+                process_window(window_ordinal, &ctx, &window_stats, deps);
+                window_ordinal += 1;
+            }
+            window_deadline = Instant::now() + window_duration;
+        }
+    }
+}
+
+/// 当前 epoch 毫秒。窗口 ID / trace 时间戳用, 与决策控制流无关。
+pub(crate) fn timestamp_ms() -> i64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as i64
 }
 
 type SummarizerFn = Arc<
@@ -345,12 +447,18 @@ mod tests {
     use std::io::Read;
     use std::time::{SystemTime, UNIX_EPOCH};
 
+    use aios_action::DefaultActionExecutor;
     use aios_agent::DecisionRouter;
     use aios_collector::collection_stats::RawEventStats;
+    use aios_collector::AndroidJsonlIngress;
+    use aios_core::action_bus::ActionBus;
     use aios_core::action_lifecycle::ActionLifecycle;
+    use aios_core::collector_ingress::RustCollectorIngress;
+    use aios_core::context_builder::WindowAggregator;
     use aios_core::context_memory::{ModelMemoryConfig, ModelMemoryStore};
     use aios_core::governance::{ActionAdapter, AuthorizedAction};
     use aios_core::policy_engine::PolicyEngine;
+    use aios_core::privacy_airgap::DefaultPrivacyAirGap;
     use aios_spec::governance::{ActionOutcome, AdapterError};
     use aios_spec::{
         ContextSummary, DecisionBackendResult, DecisionRoute, IntentBatch, SourceTier,
@@ -673,5 +781,268 @@ mod tests {
         assert!(parsed["audit"].is_array());
 
         let _ = std::fs::remove_file(path);
+    }
+
+    // ============================================================
+    // run_processing_loop 端到端测试: 真实 ActionBus 双任务通道
+    //
+    // 用真实 mpsc 通道连起「producer 任务 (Task-1 类比) → run_processing_loop
+    // (Task-2)」, 驱动真实 sanitize → 窗口聚合 → 决策 → 策略 → 执行 → 审计 → trace
+    // 全链路。终止由通道关闭驱动 (producer drop sender), 确定性收尾。
+    // ============================================================
+
+    const APP_TRANSITION_LINE: &str = r#"{"eventId":"evt-1","timestampMs":1000,"source":"UsageCollector","eventType":"app_transition","rawEvent":{"AppTransition":{"timestamp_ms":1000,"package_name":"com.android.chrome","activity_class":"MainActivity","transition":"Foreground"}},"rawPayload":{}}"#;
+
+    const SYSTEM_LOW_BATTERY_LINE: &str = r#"{"eventId":"evt-4","timestampMs":4000,"source":"CollectorForegroundService","eventType":"system_state","rawEvent":{"SystemState":{"timestamp_ms":4000,"battery_pct":8,"is_charging":false,"network":"Wifi","ringer_mode":"Normal","location_type":"Unknown","headphone_connected":false,"bluetooth_connected":false}},"rawPayload":{}}"#;
+
+    const NOTIFICATION_FILE_LINE: &str = r#"{"eventId":"evt-2","timestampMs":2000,"source":"NotificationCollectorService","eventType":"notification_posted","rawEvent":{"NotificationPosted":{"timestamp_ms":2000,"package_name":"com.ss.android.lark","category":"msg","channel_id":"lark_im_message","raw_title":"Zhang San","raw_text":"sent a file: report.pdf","is_ongoing":false,"group_key":"conv_42","has_picture":false}},"rawPayload":{}}"#;
+
+    /// 走真实 ingress (与 daemon 采集任务同款) 把一行 Android JSONL 变成
+    /// 带 SourceTier 的 `IngestedRawEvent`, 供 producer 灌进真实通道。
+    fn ingest(line: &str) -> aios_spec::IngestedRawEvent {
+        let envelope = AndroidJsonlIngress::new()
+            .parse_line(line)
+            .expect("parse_line ok")
+            .expect("line carries a raw_event");
+        RustCollectorIngress
+            .accept(envelope)
+            .expect("ingress accepts envelope")
+    }
+
+    fn temp_trace_path(tag: &str) -> std::path::PathBuf {
+        std::env::temp_dir().join(format!(
+            "dipecs-e2e-{tag}-{}.ndjson",
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ))
+    }
+
+    /// T1: 两条事件经真实通道进入同一大窗口, 通道关闭时 flush 一次,
+    /// 产出审计并执行动作。窗口设 3600s → 只有关闭触发关窗, 与定时器无关。
+    #[tokio::test]
+    async fn dual_task_pipeline_processes_events_and_flushes_on_close() {
+        let (raw_tx, raw_rx, _itx, _irx) = ActionBus::new(64).split();
+
+        // producer (Task-1 类比): 发低电量 + app 切换, 发完 drop sender → 通道关闭。
+        let producer = tokio::spawn(async move {
+            raw_tx.send(ingest(SYSTEM_LOW_BATTERY_LINE)).await.unwrap();
+            raw_tx.send(ingest(APP_TRANSITION_LINE)).await.unwrap();
+        });
+
+        let trace_path = temp_trace_path("close");
+        let mut recorder = RuntimeTraceRecorder::new(&trace_path).unwrap();
+        let router = DecisionRouter::default();
+        let policy = PolicyEngine::default();
+        let adapter = DefaultActionExecutor::new();
+        let lifecycle = ActionLifecycle::new(&policy, &adapter);
+        let mut memory = ModelMemoryStore::new(5);
+        let config = ModelMemoryConfig::default();
+        let mut worker = ProfileSummaryWorker::new(None, 10);
+        let sanitizer = DefaultPrivacyAirGap;
+        let window = WindowAggregator::new(3600, timestamp_ms());
+
+        let summary = {
+            let mut deps = WindowProcessingDeps {
+                router: &router,
+                lifecycle: &lifecycle,
+                memory: &mut memory,
+                memory_config: &config,
+                profile_summary_worker: Some(&mut worker),
+                trace_recorder: Some(&mut recorder),
+            };
+            run_processing_loop(
+                raw_rx,
+                &sanitizer,
+                window,
+                Duration::from_secs(3600),
+                &mut deps,
+            )
+            .await
+        };
+        producer.await.unwrap();
+        drop(recorder);
+
+        assert_eq!(summary.terminated_by, LoopTermination::ChannelClosed);
+        assert_eq!(summary.events_processed, 2);
+        assert_eq!(
+            summary.windows_closed, 1,
+            "两条事件在同一大窗口 → flush 一次"
+        );
+
+        let content = std::fs::read_to_string(&trace_path).unwrap();
+        let lines: Vec<&str> = content.lines().collect();
+        assert_eq!(lines.len(), 1, "flush 一次 → 一行 NDJSON");
+        let rec: serde_json::Value = serde_json::from_str(lines[0]).unwrap();
+        assert_eq!(rec["stage"], "daemon_window");
+        assert_eq!(rec["window_ordinal"], 0);
+        let audit = rec["audit"].as_array().expect("audit is array");
+        assert!(!audit.is_empty(), "窗口应产出审计记录");
+        let succeeded = audit
+            .iter()
+            .filter(|r| r["terminal"] == "Succeeded")
+            .count();
+        assert!(
+            succeeded >= 1,
+            "低电量上下文应至少授权并执行一个动作, audit={audit:?}"
+        );
+
+        let _ = std::fs::remove_file(&trace_path);
+    }
+
+    /// T2: 带原文 PII 的通知经真实通道后, daemon trace 里不得出现原文,
+    /// 但保留脱敏后的语义提示 → 真实通道上守住 PrivacyAirGap 边界。
+    #[tokio::test]
+    async fn dual_task_pipeline_scrubs_pii_across_channel() {
+        let (raw_tx, raw_rx, _itx, _irx) = ActionBus::new(64).split();
+        let producer = tokio::spawn(async move {
+            raw_tx.send(ingest(NOTIFICATION_FILE_LINE)).await.unwrap();
+        });
+
+        let trace_path = temp_trace_path("pii");
+        let mut recorder = RuntimeTraceRecorder::new(&trace_path).unwrap();
+        let router = DecisionRouter::default();
+        let policy = PolicyEngine::default();
+        let adapter = DefaultActionExecutor::new();
+        let lifecycle = ActionLifecycle::new(&policy, &adapter);
+        let mut memory = ModelMemoryStore::new(5);
+        let config = ModelMemoryConfig::default();
+        let mut worker = ProfileSummaryWorker::new(None, 10);
+        let sanitizer = DefaultPrivacyAirGap;
+        let window = WindowAggregator::new(3600, timestamp_ms());
+
+        let summary = {
+            let mut deps = WindowProcessingDeps {
+                router: &router,
+                lifecycle: &lifecycle,
+                memory: &mut memory,
+                memory_config: &config,
+                profile_summary_worker: Some(&mut worker),
+                trace_recorder: Some(&mut recorder),
+            };
+            run_processing_loop(
+                raw_rx,
+                &sanitizer,
+                window,
+                Duration::from_secs(3600),
+                &mut deps,
+            )
+            .await
+        };
+        producer.await.unwrap();
+        drop(recorder);
+
+        assert_eq!(summary.events_processed, 1);
+        assert_eq!(summary.windows_closed, 1);
+
+        let content = std::fs::read_to_string(&trace_path).unwrap();
+        for pii in ["Zhang San", "report.pdf", "sent a file"] {
+            assert!(
+                !content.contains(pii),
+                "原文 PII '{pii}' 泄漏进 daemon trace: {content}"
+            );
+        }
+        assert!(
+            content.contains("FileMention"),
+            "脱敏应保留 FileMention 语义提示: {content}"
+        );
+
+        let _ = std::fs::remove_file(&trace_path);
+    }
+
+    /// T3: 空事件流 (producer 立刻 drop sender) 应干净收尾, 不 panic, 不写 trace。
+    #[tokio::test]
+    async fn dual_task_pipeline_empty_stream_closes_cleanly() {
+        let (raw_tx, raw_rx, _itx, _irx) = ActionBus::new(64).split();
+        drop(raw_tx); // 不发任何事件, 立刻关闭通道
+
+        let trace_path = temp_trace_path("empty");
+        let mut recorder = RuntimeTraceRecorder::new(&trace_path).unwrap();
+        let router = DecisionRouter::default();
+        let policy = PolicyEngine::default();
+        let adapter = DefaultActionExecutor::new();
+        let lifecycle = ActionLifecycle::new(&policy, &adapter);
+        let mut memory = ModelMemoryStore::new(5);
+        let config = ModelMemoryConfig::default();
+        let mut worker = ProfileSummaryWorker::new(None, 10);
+        let sanitizer = DefaultPrivacyAirGap;
+        let window = WindowAggregator::new(3600, timestamp_ms());
+
+        let summary = {
+            let mut deps = WindowProcessingDeps {
+                router: &router,
+                lifecycle: &lifecycle,
+                memory: &mut memory,
+                memory_config: &config,
+                profile_summary_worker: Some(&mut worker),
+                trace_recorder: Some(&mut recorder),
+            };
+            run_processing_loop(
+                raw_rx,
+                &sanitizer,
+                window,
+                Duration::from_secs(3600),
+                &mut deps,
+            )
+            .await
+        };
+        drop(recorder);
+
+        assert_eq!(summary.terminated_by, LoopTermination::ChannelClosed);
+        assert_eq!(summary.events_processed, 0);
+        assert_eq!(summary.windows_closed, 0, "空窗口不关窗");
+
+        let content = std::fs::read_to_string(&trace_path).unwrap_or_default();
+        assert!(content.trim().is_empty(), "空流不应写 trace: {content}");
+
+        let _ = std::fs::remove_file(&trace_path);
+    }
+
+    /// T4: 定时器驱动的多窗口轮转。暂停时钟下, 每灌一批事件后推进时钟越过窗口,
+    /// 由 WindowExpired 分支关窗。`join!` 让 producer 与循环在同一任务并发,
+    /// 规避 spawn 的 'static 借用限制; 推进前事件已排空 → 无 select 竞态。
+    #[tokio::test(start_paused = true)]
+    async fn dual_task_pipeline_rotates_windows_on_timer() {
+        let (raw_tx, raw_rx, _itx, _irx) = ActionBus::new(64).split();
+
+        let router = DecisionRouter::default();
+        let policy = PolicyEngine::default();
+        let adapter = DefaultActionExecutor::new();
+        let lifecycle = ActionLifecycle::new(&policy, &adapter);
+        let mut memory = ModelMemoryStore::new(5);
+        let config = ModelMemoryConfig::default();
+        let mut worker = ProfileSummaryWorker::new(None, 10);
+        let sanitizer = DefaultPrivacyAirGap;
+        let window_dur = Duration::from_secs(10);
+        let window = WindowAggregator::new(10, timestamp_ms());
+
+        let mut deps = WindowProcessingDeps {
+            router: &router,
+            lifecycle: &lifecycle,
+            memory: &mut memory,
+            memory_config: &config,
+            profile_summary_worker: Some(&mut worker),
+            trace_recorder: None,
+        };
+
+        let control = async move {
+            // W1: 发事件 → 越过窗口 → 定时器关 W1。
+            raw_tx.send(ingest(APP_TRANSITION_LINE)).await.unwrap();
+            tokio::time::sleep(Duration::from_secs(11)).await;
+            // W2: 再发再越过 → 关 W2。
+            raw_tx.send(ingest(SYSTEM_LOW_BATTERY_LINE)).await.unwrap();
+            tokio::time::sleep(Duration::from_secs(11)).await;
+            drop(raw_tx); // 通道关闭 → 循环 flush(空) + 退出。
+        };
+
+        let (summary, ()) = tokio::join!(
+            run_processing_loop(raw_rx, &sanitizer, window, window_dur, &mut deps),
+            control,
+        );
+
+        assert_eq!(summary.terminated_by, LoopTermination::ChannelClosed);
+        assert_eq!(summary.events_processed, 2);
+        assert_eq!(summary.windows_closed, 2, "两个非空窗口各由定时器关一次");
     }
 }

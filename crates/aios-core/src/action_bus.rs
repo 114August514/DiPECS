@@ -52,6 +52,29 @@ impl ActionBus {
     pub async fn recv_intent(&mut self) -> Option<IntentBatch> {
         self.intent_rx.recv().await
     }
+
+    /// 拆出四个端点并消费掉 bus 自身。
+    ///
+    /// 与 `raw_sender()` + `recv_raw()` 的关键区别: `split` 交出 `raw_events_tx`
+    /// 的所有权而不在结构体里残留一份。这样当采集侧的所有 sender 落地后, raw
+    /// 通道才会真正关闭, `recv()` 返回 `None`——处理循环据此排空并 flush 最后一个
+    /// 窗口再退出。若继续持有 bus, 内部那份 sender 会让通道永不关闭。
+    #[allow(clippy::type_complexity)]
+    pub fn split(
+        self,
+    ) -> (
+        mpsc::Sender<IngestedRawEvent>,
+        mpsc::Receiver<IngestedRawEvent>,
+        mpsc::Sender<IntentBatch>,
+        mpsc::Receiver<IntentBatch>,
+    ) {
+        (
+            self.raw_events_tx,
+            self.raw_events_rx,
+            self.intent_tx,
+            self.intent_rx,
+        )
+    }
 }
 
 impl Default for ActionBus {

@@ -81,3 +81,33 @@ fn test_action_bus_default_creates() {
     assert!(!bus.raw_sender().is_closed());
     assert!(!bus.intent_sender().is_closed());
 }
+
+#[tokio::test]
+async fn test_split_raw_channel_closes_when_sender_dropped() {
+    // split 交出 sender 所有权而不残留内部副本: 唯一的 raw sender 落地后,
+    // recv 必须返回 None。daemon 处理循环靠这个 None 来 flush 最后窗口并退出。
+    let (raw_tx, mut raw_rx, _intent_tx, _intent_rx) = ActionBus::new(4).split();
+
+    raw_tx.send(make_raw_event()).await.unwrap();
+    drop(raw_tx);
+
+    // 先收到已缓冲的事件, 再收到通道关闭信号。
+    assert!(
+        raw_rx.recv().await.is_some(),
+        "buffered event delivered first"
+    );
+    assert!(
+        raw_rx.recv().await.is_none(),
+        "raw channel must close once the only sender is dropped"
+    );
+}
+
+#[tokio::test]
+async fn test_split_intent_channel_roundtrips() {
+    let (_raw_tx, _raw_rx, intent_tx, mut intent_rx) = ActionBus::new(4).split();
+    intent_tx.send(make_intent_batch()).await.unwrap();
+
+    let batch = intent_rx.recv().await.unwrap();
+    assert_eq!(batch.model, "test");
+    assert_eq!(batch.intents.len(), 1);
+}

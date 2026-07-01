@@ -19,6 +19,11 @@ anyhow = { workspace = true }
 libc = { workspace = true }
 serde_json = { workspace = true }
 
+[dev-dependencies]
+# test-util 只在测试构建启用 tokio 的可暂停时钟 (start_paused);
+# 生产构建不含 dev-dependencies, 因此不会影响 daemon 运行时计时。
+tokio = { workspace = true, features = ["test-util"] }
+
 [[bin]]
 name = "dipecsd"
 path = "src/main.rs"

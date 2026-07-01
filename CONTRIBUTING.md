@@ -90,6 +90,7 @@ docs(readme): clarify collector boundary
 - 新决策规则：补 `aios-agent` 后端测试，并说明后端能力上限。
 - 新动作：补 `PolicyEngine` 审查测试和 `aios-action` 执行结果测试。
 - Android 采集能力：先在 `apps/android-collector` 证明真实 API 能看到稳定字段，再接入 `aios-collector`。
+- 端到端回路变更：补充或更新 `tests/scenarios/` 下的场景脚本。action-loop 变更需通过 mock-socket 验证。
 
 ## Safety
 

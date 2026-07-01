@@ -1,7 +1,7 @@
 # 设计哲学
 
 > Status: Current  
-> Last verified: 2026-06-30  
+> Last verified: 2026-07-01  
 > 本页描述架构原则。当前可运行实现以 [当前实现总览](../current/overview.md)、[动作治理](../current/action-governance.md) 和源码为准。
 
 ## OS = 对象 + API
@@ -112,6 +112,8 @@ apps/android-collector / daemon sources
 ## 工程防线
 
 - **`data/traces`** — 离线轨迹数据是算法组的"粮草"。开发时大量依赖离线 Trace 回放测试 Action Bus 逻辑，而非每次都调云端 API
+- **`tests/scenarios/`** — 端到端验证脚本（action-loop 模拟器 + emulator e2e），mock-socket 全套回路验证
+- **`data/evaluation/`** — 动作回路和模拟器 e2e 评估结果存档
 - **`aios-cli`** — 调试组的"时光机"。系统崩溃时一帧帧重放失败过程，定位错误 Action
 - **`docs/src/design/rfc`** — 架构组的"刹车闸"。防止接口每天变化导致项目无法编译
 - **`scripts/setup-env.sh`** — 新人的"入职礼"。10 分钟内跑通 Hello World

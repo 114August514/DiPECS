@@ -187,3 +187,306 @@ mod latency_tests {
         );
     }
 }
+
+#[cfg(test)]
+mod cloud_bench_tests {
+    use std::env;
+    use std::fs;
+    use std::io::BufRead;
+    use std::path::PathBuf;
+    use std::time::{Instant, SystemTime, UNIX_EPOCH};
+
+    use crate::backends::cloud_llm::client::CloudLlmBackend;
+    use crate::backends::cloud_llm::config::{CloudLlmConfig, CloudProvider};
+    use crate::DecisionBackend;
+    use aios_spec::{
+        ContextSummary, SanitizedEvent, SanitizedEventType, ScriptHint, SemanticHint, SourceTier,
+        StructuredContext, TextHint,
+    };
+
+    fn project_root() -> PathBuf {
+        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("..")
+            .join("..")
+            .canonicalize()
+            .expect("resolve project root")
+    }
+
+    fn load_scenario_events(name: &str) -> Vec<serde_json::Value> {
+        let path = project_root()
+            .join("data/traces/scenarios")
+            .join(format!("{name}.jsonl"));
+        let file = fs::File::open(&path).unwrap_or_else(|_| panic!("open {}", path.display()));
+        std::io::BufReader::new(file)
+            .lines()
+            .map_while(Result::ok)
+            .filter(|l| !l.trim().is_empty())
+            .map(|l| serde_json::from_str(&l).expect("valid JSON"))
+            .collect()
+    }
+
+    fn build_context(events: &[serde_json::Value]) -> StructuredContext {
+        let hints = vec![
+            SemanticHint::FileMention,
+            SemanticHint::ImageMention,
+            SemanticHint::LinkAttachment,
+        ];
+        let sanitized: Vec<SanitizedEvent> = events
+            .iter()
+            .filter_map(|e| {
+                let re = e.get("rawEvent")?;
+                let pkg = re
+                    .pointer("/NotificationPosted/sourcePackage")
+                    .or_else(|| re.pointer("/ActivityLaunch/sourcePackage"))
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("com.unknown.app");
+                Some(SanitizedEvent {
+                    event_id: format!(
+                        "evt-{}",
+                        e.get("sequence").and_then(|v| v.as_u64()).unwrap_or(0)
+                    ),
+                    timestamp_ms: e.get("capturedAtMs").and_then(|v| v.as_i64()).unwrap_or(0),
+                    event_type: SanitizedEventType::Notification {
+                        source_package: pkg.to_string(),
+                        category: Some("msg".into()),
+                        channel_id: None,
+                        title_hint: TextHint {
+                            length_chars: 24,
+                            script: ScriptHint::Latin,
+                            is_emoji_only: false,
+                        },
+                        text_hint: TextHint {
+                            length_chars: 80,
+                            script: ScriptHint::Latin,
+                            is_emoji_only: false,
+                        },
+                        semantic_hints: hints.clone(),
+                        is_ongoing: false,
+                        group_key: None,
+                    },
+                    source_tier: SourceTier::PublicApi,
+                    app_package: Some(pkg.to_string()),
+                    uid: None,
+                })
+            })
+            .take(5)
+            .collect();
+        StructuredContext {
+            window_id: "cloud-bench".into(),
+            window_start_ms: 0,
+            window_end_ms: 60_000,
+            duration_secs: 60,
+            events: sanitized,
+            summary: ContextSummary {
+                foreground_apps: vec!["com.example.app".into()],
+                notified_apps: vec!["com.example.chat".into()],
+                all_semantic_hints: hints,
+                file_activity: vec![],
+                latest_system_status: None,
+                source_tier: SourceTier::PublicApi,
+            },
+        }
+    }
+
+    fn now_ts() -> String {
+        let dur = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default();
+        let secs = dur.as_secs();
+        let days = secs / 86400;
+        let rem = secs % 86400;
+        let year = 1970 + days / 365;
+        let doy = days % 365;
+        let month = doy / 30 + 1;
+        let day = (doy % 30) + 1;
+        let hour = (rem / 3600) % 24;
+        let min = (rem % 3600) / 60;
+        let sec = rem % 60;
+        format!("{year:04}{month:02}{day:02}-{hour:02}{min:02}{sec:02}")
+    }
+
+    /// 10-round cloud latency benchmark against DeepSeek.
+    /// Usage: source .env && cargo test -p aios-agent --lib cloud_llm::cloud_bench_tests::latency -- --ignored --nocapture
+    #[test]
+    #[ignore = "requires DIPECS_CLOUD_LLM_API_KEY"]
+    fn latency() {
+        if let Err(e) = rustls::crypto::ring::default_provider().install_default() {
+            panic!("rustls ring provider install failed: {e:?}");
+        }
+        let api_key = env::var("DIPECS_CLOUD_LLM_API_KEY")
+            .or_else(|_| env::var("DEEPSEEK_API_KEY"))
+            .expect("set DIPECS_CLOUD_LLM_API_KEY or DEEPSEEK_API_KEY");
+        let rounds = env::var("CLOUD_BENCH_ROUNDS")
+            .ok()
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(10);
+        let scenario =
+            env::var("CLOUD_BENCH_SCENARIO").unwrap_or_else(|_| "morning-routine".into());
+        let events = load_scenario_events(&scenario);
+        let ctx = build_context(&events);
+        let config = CloudLlmConfig::new_for_test(
+            CloudProvider::DeepSeek,
+            "https://api.deepseek.com/chat/completions",
+            "deepseek-v4-flash",
+            &api_key,
+        );
+        let be = match CloudLlmBackend::try_new(config) {
+            Ok(b) => b,
+            Err(e) => {
+                println!("SKIP: cloud backend init failed: {e}");
+                return;
+            },
+        };
+
+        println!("\n=== Cloud Decision Latency (DeepSeek deepseek-v4-flash) ===");
+        println!(
+            "scenario: {scenario}  rounds: {rounds}  events: {}",
+            events.len()
+        );
+
+        let mut lats = Vec::with_capacity(rounds);
+        let mut errs = 0u32;
+        let mut good = 0u32;
+        for i in 0..rounds {
+            let start = Instant::now();
+            let res = be.evaluate(&ctx);
+            let wall = start.elapsed().as_millis() as u64;
+            match &res.error {
+                Some(e) => {
+                    errs += 1;
+                    println!("  [{i}/{rounds}] ERR: {e} ({wall}ms)");
+                },
+                None => {
+                    lats.push(res.latency_us);
+                    let has = res
+                        .intent_batch
+                        .intents
+                        .iter()
+                        .any(|i| !matches!(i.intent_type, aios_spec::IntentType::Idle));
+                    if has {
+                        good += 1;
+                    }
+                    println!(
+                        "  [{i}/{rounds}] OK  {wall}ms  intents={}  non_trivial={has}",
+                        res.intent_batch.intents.len()
+                    );
+                },
+            }
+        }
+
+        if !lats.is_empty() {
+            let mut s = lats.clone();
+            s.sort_unstable();
+            let n = s.len();
+            let (min, p50, p95, max) = (
+                s[0] / 1000,
+                s[n / 2] / 1000,
+                s[(n as f64 * 0.95) as usize] / 1000,
+                s[n - 1] / 1000,
+            );
+            println!("\n  min={min}ms p50={p50}ms p95={p95}ms max={max}ms n={n}");
+            let ok_rate = (rounds - errs as usize) as f64 / rounds as f64 * 100.0;
+            println!(
+                "  success_rate: {ok_rate:.1}%  non_trivial_rate: {:.1}%",
+                good as f64 / rounds as f64 * 100.0
+            );
+
+            let out = project_root().join("data/evaluation");
+            fs::create_dir_all(&out).ok();
+            let p = out.join(format!("cloud-latency-{}.json", now_ts()));
+            let d = serde_json::json!({
+                "schema_version": "dipecs.cloud_latency.v1",
+                "dataset_id": format!("cloud-latency-{}", now_ts()),
+                "status": "measured_live_api",
+                "environment": {"provider":"deepseek","model":"deepseek-v4-flash","scenario":scenario,"rounds":rounds},
+                "results": {"success_rate_pct":ok_rate,"non_trivial_rate_pct":good as f64/rounds as f64*100.0,
+                    "latency_min_ms":min,"latency_p50_ms":p50,"latency_p95_ms":p95,"latency_max_ms":max,"errors":errs},
+                "thresholds": {"min_success_rate_pct":90.0,"max_p95_latency_ms":30000},
+                "conclusion": {"accepted":ok_rate>=90.0 && p95<=30000},
+            });
+            fs::write(&p, serde_json::to_string_pretty(&d).unwrap()).unwrap();
+            println!("Wrote {}", p.display());
+
+            assert!(ok_rate >= 90.0);
+            assert!(p95 <= 30000);
+        }
+    }
+
+    /// One call per scenario to verify all return valid decisions.
+    /// Usage: source .env && cargo test -p aios-agent --lib cloud_llm::cloud_bench_tests::smoke -- --ignored --nocapture
+    #[test]
+    #[ignore = "requires DIPECS_CLOUD_LLM_API_KEY"]
+    fn smoke() {
+        // Install ring crypto provider for reqwest TLS.
+        if let Err(e) = rustls::crypto::ring::default_provider().install_default() {
+            panic!("rustls ring provider install failed: {e:?}");
+        }
+        let api_key = env::var("DIPECS_CLOUD_LLM_API_KEY")
+            .or_else(|_| env::var("DEEPSEEK_API_KEY"))
+            .expect("set DIPECS_CLOUD_LLM_API_KEY");
+        let config = CloudLlmConfig::new_for_test(
+            CloudProvider::DeepSeek,
+            "https://api.deepseek.com/chat/completions",
+            "deepseek-v4-flash",
+            &api_key,
+        );
+        let be = match CloudLlmBackend::try_new(config) {
+            Ok(b) => b,
+            Err(e) => {
+                println!("SKIP: cloud backend init failed: {e}");
+                return;
+            },
+        };
+        let scenarios = [
+            "circuit-breaker",
+            "low-battery",
+            "morning-routine",
+            "rich-workflow",
+        ];
+
+        println!("\n=== Cloud Decision Multi-Scenario Smoke ===");
+        let mut results = Vec::new();
+        for sc in &scenarios {
+            let events = load_scenario_events(sc);
+            let ctx = build_context(&events);
+            let start = Instant::now();
+            let res = be.evaluate(&ctx);
+            let wall = start.elapsed().as_millis() as u64;
+            let intents: Vec<String> = res
+                .intent_batch
+                .intents
+                .iter()
+                .map(|i| format!("{:?}", i.intent_type))
+                .collect();
+            let err = res.error.is_some();
+            if err {
+                println!(
+                    "  {sc:<25} {wall:>5}ms  ERR: {:?}",
+                    res.error.as_ref().unwrap()
+                );
+            } else {
+                println!("  {sc:<25} {wall:>5}ms  ok       intents={intents:?}");
+            }
+            assert!(!intents.is_empty());
+            assert!(!err);
+            results.push(
+                serde_json::json!({"scenario":sc,"latency_ms":wall,"error":err,"intents":intents}),
+            );
+        }
+
+        let out = project_root().join("data/evaluation");
+        fs::create_dir_all(&out).ok();
+        let p = out.join(format!("cloud-scenarios-{}.json", now_ts()));
+        let d = serde_json::json!({
+            "schema_version": "dipecs.cloud_scenarios.v1",
+            "dataset_id": format!("cloud-scenarios-{}", now_ts()),
+            "status": "measured_live_api",
+            "environment": {"provider":"deepseek","model":"deepseek-v4-flash","scenarios":scenarios},
+            "results": results,
+            "thresholds": {"min_scenarios":4},
+            "conclusion": {"accepted": results.iter().all(|r| !r["error"].as_bool().unwrap())},
+        });
+        fs::write(&p, serde_json::to_string_pretty(&d).unwrap()).unwrap();
+        println!("\nWrote {}", p.display());
+    }
+}

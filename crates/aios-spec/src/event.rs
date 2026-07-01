@@ -142,6 +142,27 @@ pub struct NotificationRawEvent {
     pub raw_title: String,
     /// ⚠️ PII
     pub raw_text: String,
+
+    /// Optional privacy-preserving title metadata computed by the collector.
+    ///
+    /// Android production traces keep `raw_title` empty, but can still provide
+    /// this local-only feature so downstream routing does not lose all signal.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub title_hint: Option<TextHint>,
+
+    /// Optional privacy-preserving body metadata computed by the collector.
+    ///
+    /// Missing values are allowed so older JSONL traces remain readable.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub text_hint: Option<TextHint>,
+
+    /// Optional privacy-preserving semantic hints computed by the collector.
+    ///
+    /// This carries enum labels such as `FileMention`; it must never contain
+    /// notification source text.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub semantic_hints: Vec<SemanticHint>,
+
     pub is_ongoing: bool,
     pub group_key: Option<String>,
     pub has_picture: bool,

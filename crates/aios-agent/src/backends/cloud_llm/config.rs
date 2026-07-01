@@ -82,6 +82,10 @@ pub(super) struct CloudLlmConfig {
 
 impl CloudLlmConfig {
     pub(super) fn from_env() -> Result<Self, String> {
+        Self::from_env_inner()
+    }
+
+    fn from_env_inner() -> Result<Self, String> {
         let provider = read_var(ENV_PROVIDER)
             .as_deref()
             .map(CloudProvider::parse)
@@ -116,6 +120,27 @@ impl CloudLlmConfig {
             reasoning_effort: read_var(ENV_REASONING_EFFORT),
             enable_thinking: read_bool_var(ENV_ENABLE_THINKING),
         })
+    }
+
+    /// Test-only constructor for latency/benchmark tests against a real provider.
+    #[cfg(test)]
+    pub(crate) fn new_for_test(
+        provider: CloudProvider,
+        endpoint: impl Into<String>,
+        model: impl Into<String>,
+        api_key: impl Into<String>,
+    ) -> Self {
+        Self {
+            provider,
+            endpoint: endpoint.into(),
+            model: model.into(),
+            api_key: Some(api_key.into()),
+            timeout_secs: DEFAULT_TIMEOUT_SECS,
+            temperature: DEFAULT_TEMPERATURE,
+            system_prompt: DEFAULT_SYSTEM_PROMPT.to_string(),
+            reasoning_effort: None,
+            enable_thinking: None,
+        }
     }
 }
 

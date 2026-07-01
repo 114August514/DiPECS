@@ -219,6 +219,8 @@ class CollectorInstrumentedTest {
             packageName = "com.example.app",
             category = "msg",
             channelId = "messages",
+            title = "Example",
+            textItems = listOf("example file notification"),
             isOngoing = false,
             hasPicture = false
         )

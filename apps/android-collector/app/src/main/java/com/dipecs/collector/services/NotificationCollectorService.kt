@@ -44,19 +44,26 @@ class NotificationCollectorService : NotificationListenerService() {
 
     private fun notificationEvent(eventType: String, sbn: StatusBarNotification): CollectorEvent {
         val extras = sbn.notification.extras
+        val title = extras.getCharSequence(Notification.EXTRA_TITLE)?.toString()
         val text = extras.getCharSequence(Notification.EXTRA_TEXT)?.toString()
         val subText = extras.getCharSequence(Notification.EXTRA_SUB_TEXT)?.toString()
         val bigText = extras.getCharSequence(Notification.EXTRA_BIG_TEXT)?.toString()
-        val combinedTextLength = listOfNotNull(text, bigText, subText)
+        val textItems = listOfNotNull(text, bigText, subText)
+        val combinedTextLength = textItems
             .sumOf { it.length }
             .takeIf { it > 0 }
         val isOngoing = (sbn.notification.flags and Notification.FLAG_ONGOING_EVENT) != 0
         val hasPicture = extras.containsKey(Notification.EXTRA_PICTURE)
+
+        // Title/body are read only for local feature extraction inside the
+        // mapper. The mapper still writes empty raw_title/raw_text fields.
         val rawEvent = AndroidRawEventMapper.notificationPosted(
             timestampMs = sbn.postTime,
             packageName = sbn.packageName,
             category = sbn.notification.category,
             channelId = sbn.notification.channelId,
+            title = title,
+            textItems = textItems,
             isOngoing = isOngoing,
             hasPicture = hasPicture,
         )

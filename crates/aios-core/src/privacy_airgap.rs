@@ -182,9 +182,18 @@ fn sanitize_fs(e: FsAccessEvent) -> SanitizedEvent {
 }
 
 fn sanitize_notification(e: NotificationRawEvent) -> SanitizedEvent {
-    let title_hint = analyze_text(&e.raw_title);
-    let text_hint = analyze_text(&e.raw_text);
-    let semantic_hints = extract_semantic_hints(&e.raw_title, &e.raw_text);
+    // Android production collection intentionally redacts raw title/text before
+    // persistence. When it supplies already-sanitized hints, prefer them.
+    let title_hint = e.title_hint.unwrap_or_else(|| analyze_text(&e.raw_title));
+    let text_hint = e.text_hint.unwrap_or_else(|| analyze_text(&e.raw_text));
+
+    // Older traces do not have collector-provided hints, so keep the legacy
+    // local extraction path as the compatibility fallback.
+    let semantic_hints = if e.semantic_hints.is_empty() {
+        extract_semantic_hints(&e.raw_title, &e.raw_text)
+    } else {
+        e.semantic_hints
+    };
 
     SanitizedEvent {
         event_id: new_id(),
@@ -197,6 +206,8 @@ fn sanitize_notification(e: NotificationRawEvent) -> SanitizedEvent {
             text_hint,
             semantic_hints,
             is_ongoing: e.is_ongoing,
+            // Group keys can include user-controlled conversation identifiers.
+            // Drop them at the air-gap even when upstream forgets to redact.
             group_key: None,
         },
         source_tier: SourceTier::PublicApi,

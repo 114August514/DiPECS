@@ -1,121 +1,74 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 330" font-family="system-ui, -apple-system, sans-serif">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 540">
   <defs>
-    <marker id="arrow" markerWidth="6" markerHeight="5" refX="6" refY="2.5" orient="auto">
-      <path d="M0,0 L6,2.5 L0,5 Z" fill="#0284c7"/>
+    <marker id="arrow" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L10,4 L0,8 Z" fill="#2563eb"/>
     </marker>
-    <marker id="arrow-purple" markerWidth="6" markerHeight="5" refX="6" refY="2.5" orient="auto">
-      <path d="M0,0 L6,2.5 L0,5 Z" fill="#7c3aed"/>
+    <marker id="arrow-gray" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L10,4 L0,8 Z" fill="#94a3b8"/>
     </marker>
+    <style><![CDATA[
+      text { font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+      .title { font-size: 23px; font-weight: 850; fill: #0f172a; }
+      .lane { font-size: 13px; font-weight: 850; fill: #334155; }
+      .name { font-size: 13px; font-weight: 850; }
+      .desc { font-size: 11px; font-weight: 620; }
+      .tiny { font-size: 10px; font-weight: 620; }
+      .box { stroke-width: 1.35; }
+    ]]></style>
   </defs>
 
-  <rect width="900" height="330" rx="10" fill="#f8fafc" stroke="#bae6fd" stroke-width="1"/>
+  <rect width="960" height="540" rx="18" fill="#f8fafc" stroke="#dbeafe" stroke-width="1.5"/>
+  <text x="480" y="42" text-anchor="middle" class="title">Replay / Audit：在线和离线共用核心逻辑</text>
 
-  <text x="450" y="24" text-anchor="middle" font-size="16" font-weight="700" fill="#0369a1">回放与审计</text>
+  <!-- Online lane -->
+  <rect x="64" y="82" width="832" height="128" rx="16" fill="#ffffff" stroke="#dbeafe" stroke-width="1.25"/>
+  <text x="92" y="112" text-anchor="start" class="lane">在线路径：真实设备动作</text>
+  <rect x="92" y="132" width="142" height="50" rx="10" fill="#ecfeff" stroke="#67e8f9" class="box"/>
+  <text x="163" y="153" text-anchor="middle" class="name" fill="#0e7490">Android 事件</text>
+  <text x="163" y="171" text-anchor="middle" class="desc" fill="#0e7490">公开 API 实采</text>
+  <line x1="234" y1="157" x2="284" y2="157" stroke="#2563eb" stroke-width="2.5" marker-end="url(#arrow)"/>
+  <rect x="284" y="132" width="142" height="50" rx="10" fill="#fef3c7" stroke="#fbbf24" class="box"/>
+  <text x="355" y="153" text-anchor="middle" class="name" fill="#92400e">JSONL trace</text>
+  <text x="355" y="171" text-anchor="middle" class="desc" fill="#92400e">同一份输入</text>
+  <line x1="426" y1="157" x2="476" y2="157" stroke="#2563eb" stroke-width="2.5" marker-end="url(#arrow)"/>
+  <rect x="476" y="132" width="182" height="50" rx="10" fill="#dbeafe" stroke="#93c5fd" class="box"/>
+  <text x="567" y="153" text-anchor="middle" class="name" fill="#1e40af">aios-core pipeline</text>
+  <text x="567" y="171" text-anchor="middle" class="desc" fill="#1e40af">ingest / sanitize / policy</text>
+  <line x1="658" y1="157" x2="708" y2="157" stroke="#2563eb" stroke-width="2.5" marker-end="url(#arrow)"/>
+  <rect x="708" y="132" width="142" height="50" rx="10" fill="#dcfce7" stroke="#86efac" class="box"/>
+  <text x="779" y="153" text-anchor="middle" class="name" fill="#166534">AndroidAdapter</text>
+  <text x="779" y="171" text-anchor="middle" class="desc" fill="#166534">真实执行 / 回执</text>
 
-  <!-- ===== Left: Online path ===== -->
-  <rect x="20" y="36" width="415" height="276" rx="7" fill="#f0f9ff" stroke="#bae6fd" stroke-width="0.8"/>
-  <rect x="20" y="36" width="415" height="24" rx="7" fill="#e0f2fe"/>
-  <text x="227" y="53" text-anchor="middle" font-size="11" font-weight="700" fill="#075985">在线路径</text>
+  <!-- Offline lane -->
+  <rect x="64" y="238" width="832" height="128" rx="16" fill="#ffffff" stroke="#dbeafe" stroke-width="1.25"/>
+  <text x="92" y="268" text-anchor="start" class="lane">离线路径：确定性 replay</text>
+  <rect x="92" y="288" width="142" height="50" rx="10" fill="#ede9fe" stroke="#c4b5fd" class="box"/>
+  <text x="163" y="309" text-anchor="middle" class="name" fill="#5b21b6">同一 JSONL</text>
+  <text x="163" y="327" text-anchor="middle" class="desc" fill="#5b21b6">golden input</text>
+  <line x1="234" y1="313" x2="284" y2="313" stroke="#2563eb" stroke-width="2.5" marker-end="url(#arrow)"/>
+  <rect x="284" y="288" width="142" height="50" rx="10" fill="#ede9fe" stroke="#c4b5fd" class="box"/>
+  <text x="355" y="309" text-anchor="middle" class="name" fill="#5b21b6">aios-cli replay</text>
+  <text x="355" y="327" text-anchor="middle" class="desc" fill="#5b21b6">确定性驱动</text>
+  <line x1="426" y1="313" x2="476" y2="313" stroke="#2563eb" stroke-width="2.5" marker-end="url(#arrow)"/>
+  <rect x="476" y="288" width="182" height="50" rx="10" fill="#dbeafe" stroke="#93c5fd" class="box"/>
+  <text x="567" y="309" text-anchor="middle" class="name" fill="#1e40af">同一 core pipeline</text>
+  <text x="567" y="327" text-anchor="middle" class="desc" fill="#1e40af">状态迁移完全一致</text>
+  <line x1="658" y1="313" x2="708" y2="313" stroke="#2563eb" stroke-width="2.5" marker-end="url(#arrow)"/>
+  <rect x="708" y="288" width="142" height="50" rx="10" fill="#ede9fe" stroke="#c4b5fd" class="box"/>
+  <text x="779" y="309" text-anchor="middle" class="name" fill="#5b21b6">OfflineAdapter</text>
+  <text x="779" y="327" text-anchor="middle" class="desc" fill="#5b21b6">无 I/O / 可复现</text>
 
-  <!-- Flow boxes -->
-  <rect x="35" y="72" width="110" height="36" rx="5" fill="#fff" stroke="#7dd3fc" stroke-width="0.7"/>
-  <text x="90" y="94" text-anchor="middle" font-size="9.5" font-weight="600" fill="#075985">Android 采集器</text>
+  <!-- Audit convergence -->
+  <path d="M779,182 L779,402 L430,402" fill="none" stroke="#94a3b8" stroke-width="2" stroke-dasharray="6 6" marker-end="url(#arrow-gray)"/>
+  <path d="M779,338 L779,402 L530,402" fill="none" stroke="#94a3b8" stroke-width="2" stroke-dasharray="6 6" marker-end="url(#arrow-gray)"/>
+  <rect x="330" y="402" width="220" height="58" rx="12" fill="#ede9fe" stroke="#c4b5fd" class="box"/>
+  <text x="440" y="426" text-anchor="middle" class="name" fill="#5b21b6">规范审计流</text>
+  <text x="440" y="446" text-anchor="middle" class="desc" fill="#5b21b6">剥离易变字段；排序稳定</text>
+  <line x1="550" y1="431" x2="606" y2="431" stroke="#2563eb" stroke-width="2.5" marker-end="url(#arrow)"/>
+  <rect x="606" y="402" width="220" height="58" rx="12" fill="#fef3c7" stroke="#fbbf24" class="box"/>
+  <text x="716" y="426" text-anchor="middle" class="name" fill="#92400e">sha256 审计哈希</text>
+  <text x="716" y="446" text-anchor="middle" class="desc" fill="#92400e">锁定回归结果</text>
 
-  <line x1="145" y1="90" x2="168" y2="90" stroke="#0284c7" stroke-width="1.2" marker-end="url(#arrow)"/>
-
-  <rect x="172" y="72" width="90" height="36" rx="5" fill="#fff" stroke="#7dd3fc" stroke-width="0.7"/>
-  <text x="217" y="94" text-anchor="middle" font-size="9.5" font-weight="600" fill="#075985">JSONL 文件</text>
-
-  <line x1="262" y1="90" x2="285" y2="90" stroke="#0284c7" stroke-width="1.2" marker-end="url(#arrow)"/>
-
-  <rect x="289" y="72" width="130" height="36" rx="5" fill="#dbeafe" stroke="#93c5fd" stroke-width="0.7"/>
-  <text x="354" y="94" text-anchor="middle" font-size="9.5" font-weight="600" fill="#1e40af">aios-core 主链路</text>
-
-  <!-- Core pipeline detail -->
-  <rect x="35" y="118" width="384" height="68" rx="5" fill="#f8fafc" stroke="#e2e8f0" stroke-width="0.5"/>
-  <rect x="42" y="126" width="80" height="24" rx="3" fill="#fef2f2" stroke="#fca5a5" stroke-width="0.4"/>
-  <text x="82" y="142" text-anchor="middle" font-size="8" fill="#991b1b">隐私气隙</text>
-  <rect x="128" y="126" width="80" height="24" rx="3" fill="#e0f2fe" stroke="#7dd3fc" stroke-width="0.4"/>
-  <text x="168" y="142" text-anchor="middle" font-size="8" fill="#075985">窗口聚合</text>
-  <rect x="214" y="126" width="80" height="24" rx="3" fill="#dbeafe" stroke="#93c5fd" stroke-width="0.4"/>
-  <text x="254" y="142" text-anchor="middle" font-size="8" fill="#1e40af">决策路由</text>
-  <rect x="300" y="126" width="80" height="24" rx="3" fill="#fef2f2" stroke="#fca5a5" stroke-width="0.4"/>
-  <text x="340" y="142" text-anchor="middle" font-size="8" fill="#991b1b">策略执行</text>
-
-  <!-- Arrow chain in core -->
-  <line x1="122" y1="138" x2="126" y2="138" stroke="#94a3b8" stroke-width="0.8"/>
-  <line x1="208" y1="138" x2="212" y2="138" stroke="#94a3b8" stroke-width="0.8"/>
-  <line x1="294" y1="138" x2="298" y2="138" stroke="#94a3b8" stroke-width="0.8"/>
-
-  <text x="227" y="180" text-anchor="middle" font-size="7.5" fill="#94a3b8">同一条核心逻辑，在线和离线共用</text>
-
-  <!-- Core pipeline → Bridge (down arrow) -->
-  <line x1="354" y1="186" x2="354" y2="194" stroke="#0284c7" stroke-width="1" marker-end="url(#arrow)"/>
-
-  <!-- Android Bridge -->
-  <rect x="289" y="196" width="130" height="34" rx="5" fill="#f0fdf4" stroke="#86efac" stroke-width="0.7"/>
-  <text x="354" y="217" text-anchor="middle" font-size="9.5" font-weight="600" fill="#166534">Android 桥接</text>
-
-  <!-- Bridge → Audit -->
-  <line x1="354" y1="230" x2="354" y2="240" stroke="#0284c7" stroke-width="1"/>
-  <path d="M354,240 L227,240 L227,246" fill="none" stroke="#0284c7" stroke-width="1" marker-end="url(#arrow)"/>
-
-  <!-- Audit output -->
-  <rect x="127" y="248" width="200" height="32" rx="5" fill="#f5f3ff" stroke="#c4b5fd" stroke-width="0.8"/>
-  <text x="227" y="268" text-anchor="middle" font-size="10" font-weight="600" fill="#5b21b6">审计记录</text>
-
-  <!-- ===== Right: Offline path ===== -->
-  <rect x="450" y="36" width="430" height="276" rx="7" fill="#f5f3ff" stroke="#c4b5fd" stroke-width="0.8"/>
-  <rect x="450" y="36" width="430" height="24" rx="7" fill="#ede9fe"/>
-  <text x="665" y="53" text-anchor="middle" font-size="11" font-weight="700" fill="#5b21b6">离线路径（回放）</text>
-
-  <!-- Input -->
-  <rect x="465" y="72" width="170" height="36" rx="5" fill="#fff" stroke="#c4b5fd" stroke-width="0.7"/>
-  <text x="550" y="94" text-anchor="middle" font-size="9.5" font-weight="600" fill="#5b21b6">CollectorEvent JSONL</text>
-
-  <line x1="635" y1="90" x2="660" y2="90" stroke="#7c3aed" stroke-width="1.2" marker-end="url(#arrow-purple)"/>
-
-  <rect x="664" y="72" width="200" height="36" rx="5" fill="#ede9fe" stroke="#c4b5fd" stroke-width="0.8"/>
-  <text x="764" y="94" text-anchor="middle" font-size="9.5" font-weight="700" fill="#5b21b6">aios-cli replay（确定性）</text>
-
-  <!-- Pipeline stages -->
-  <rect x="465" y="118" width="399" height="44" rx="5" fill="#f8fafc" stroke="#e2e8f0" stroke-width="0.5"/>
-  <rect x="472" y="127" width="56" height="22" rx="3" fill="#ede9fe" stroke="#c4b5fd" stroke-width="0.3"/>
-  <text x="500" y="142" text-anchor="middle" font-size="8" fill="#5b21b6">Ingest</text>
-  <rect x="533" y="127" width="56" height="22" rx="3" fill="#ede9fe" stroke="#c4b5fd" stroke-width="0.3"/>
-  <text x="561" y="142" text-anchor="middle" font-size="8" fill="#5b21b6">Sanitize</text>
-  <rect x="594" y="127" width="56" height="22" rx="3" fill="#ede9fe" stroke="#c4b5fd" stroke-width="0.3"/>
-  <text x="622" y="142" text-anchor="middle" font-size="8" fill="#5b21b6">Context</text>
-  <rect x="655" y="127" width="56" height="22" rx="3" fill="#ede9fe" stroke="#c4b5fd" stroke-width="0.3"/>
-  <text x="683" y="142" text-anchor="middle" font-size="8" fill="#5b21b6">Decision</text>
-  <rect x="716" y="127" width="56" height="22" rx="3" fill="#ede9fe" stroke="#c4b5fd" stroke-width="0.3"/>
-  <text x="744" y="142" text-anchor="middle" font-size="8" fill="#5b21b6">Policy</text>
-  <rect x="777" y="127" width="56" height="22" rx="3" fill="#ede9fe" stroke="#c4b5fd" stroke-width="0.3"/>
-  <text x="805" y="142" text-anchor="middle" font-size="8" fill="#5b21b6">Execute</text>
-
-  <!-- OfflineAdapter -->
-  <line x1="764" y1="108" x2="764" y2="124" stroke="#7c3aed" stroke-width="1"/>
-
-  <rect x="465" y="172" width="399" height="36" rx="5" fill="#f8fafc" stroke="#c4b5fd" stroke-width="0.7"/>
-  <text x="664" y="194" text-anchor="middle" font-size="10" font-weight="600" fill="#5b21b6">离线适配器（无 I/O · 确定性 · 延迟恒为 0）</text>
-
-  <!-- OfflineAdapter → 规范审计流 (arrow to center of audit box) -->
-  <line x1="562" y1="208" x2="562" y2="226" stroke="#7c3aed" stroke-width="1.2" marker-end="url(#arrow-purple)"/>
-
-  <rect x="465" y="230" width="195" height="42" rx="5" fill="#fff" stroke="#c4b5fd" stroke-width="0.7"/>
-  <text x="562" y="250" text-anchor="middle" font-size="9.5" font-weight="600" fill="#5b21b6">规范审计流</text>
-  <text x="562" y="265" text-anchor="middle" font-size="7.5" fill="#7c3aed">排序键 · 剥离 5 个易变字段</text>
-
-  <line x1="660" y1="251" x2="685" y2="251" stroke="#7c3aed" stroke-width="1.2" marker-end="url(#arrow-purple)"/>
-
-  <rect x="689" y="230" width="175" height="42" rx="5" fill="#ede9fe" stroke="#a78bfa" stroke-width="1.2"/>
-  <text x="776" y="250" text-anchor="middle" font-size="10" font-weight="700" fill="#5b21b6">审计哈希</text>
-  <text x="776" y="265" text-anchor="middle" font-size="8" fill="#7c3aed">sha256:xxxx（黄金测试锁定）</text>
-
-  <!-- Connection between paths: from left audit record to right canonical stream -->
-  <path d="M327,264 L463,264" fill="none" stroke="#7c3aed" stroke-width="1.2" stroke-dasharray="4,2" marker-end="url(#arrow-purple)"/>
-  <text x="395" y="258" text-anchor="middle" font-size="7" fill="#7c3aed">同一份 trace</text>
-
-  <!-- Bottom -->
-  <rect x="20" y="318" width="860" height="8" rx="2" fill="#f8fafc"/>
+  <rect x="190" y="486" width="580" height="32" rx="10" fill="#eff6ff" stroke="#bfdbfe" class="box"/>
+  <text x="480" y="507" text-anchor="middle" class="desc" fill="#1e40af">在线和离线只在 adapter 处不同；核心状态迁移、策略审查和审计格式保持一致</text>
 </svg>

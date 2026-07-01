@@ -1,73 +1,101 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 420" font-family="system-ui, -apple-system, sans-serif">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 540">
   <defs>
-    <marker id="arrow" markerWidth="6" markerHeight="5" refX="6" refY="2.5" orient="auto">
-      <path d="M0,0 L6,2.5 L0,5 Z" fill="#0284c7"/>
+    <marker id="arrow" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L10,4 L0,8 Z" fill="#2563eb"/>
     </marker>
-    <marker id="arrow-red" markerWidth="6" markerHeight="5" refX="6" refY="2.5" orient="auto">
-      <path d="M0,0 L6,2.5 L0,5 Z" fill="#dc2626"/>
-    </marker>
+    <style><![CDATA[
+      text {
+        font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      }
+      .title {
+        font-size: 23px;
+        font-weight: 850;
+        fill: #0f172a;
+      }
+      .step {
+        font-size: 14px;
+        font-weight: 850;
+      }
+      .sub {
+        font-size: 11px;
+        font-weight: 600;
+      }
+      .tiny {
+        font-size: 10px;
+        font-weight: 600;
+      }
+      .label {
+        font-size: 12px;
+        font-weight: 800;
+        fill: #334155;
+      }
+      .box {
+        stroke-width: 1.3;
+      }
+    ]]></style>
   </defs>
 
-  <rect width="900" height="420" rx="10" fill="#f8fafc" stroke="#bae6fd" stroke-width="1"/>
+  <rect width="960" height="540" rx="18" fill="#f8fafc" stroke="#dbeafe" stroke-width="1.5"/>
+  <text x="480" y="42" text-anchor="middle" class="title">案例输入：本地事件如何进入系统</text>
 
-  <text x="450" y="26" text-anchor="middle" font-size="15" font-weight="700" fill="#0369a1">端到端数据流全貌</text>
+  <!-- Main evidence chain -->
+  <rect x="46" y="104" width="160" height="120" rx="14" fill="#ecfeff" stroke="#67e8f9" class="box"/>
+  <text x="126" y="132" text-anchor="middle" class="step" fill="#0e7490">Android 公开 API</text>
+  <rect x="66" y="152" width="120" height="24" rx="8" fill="#cffafe" stroke="#67e8f9"/>
+  <text x="126" y="168" text-anchor="middle" class="tiny" fill="#0e7490">UsageStats</text>
+  <rect x="66" y="182" width="120" height="24" rx="8" fill="#cffafe" stroke="#67e8f9"/>
+  <text x="126" y="198" text-anchor="middle" class="tiny" fill="#0e7490">NotificationListener</text>
+  <text x="126" y="216" text-anchor="middle" class="tiny" fill="#0e7490">设备状态 / 前台服务</text>
 
-  <!-- Layer 0: Sources -->
-  <rect x="20" y="40" width="860" height="48" rx="6" fill="#f0f9ff" stroke="#bae6fd" stroke-width="0.8"/>
-  <text x="35" y="60" font-size="10" font-weight="700" fill="#0369a1">L0 数据源</text>
-  <rect x="110" y="47" width="110" height="22" rx="3" fill="#fff" stroke="#7dd3fc" stroke-width="0.4"/>
-  <text x="165" y="62" text-anchor="middle" font-size="8.5" fill="#075985">Android 采集器</text>
-  <rect x="228" y="47" width="90" height="22" rx="3" fill="#fff" stroke="#7dd3fc" stroke-width="0.4"/>
-  <text x="273" y="62" text-anchor="middle" font-size="8.5" fill="#075985">进程读取器</text>
-  <rect x="326" y="47" width="100" height="22" rx="3" fill="#fff" stroke="#7dd3fc" stroke-width="0.4"/>
-  <text x="376" y="62" text-anchor="middle" font-size="8.5" fill="#075985">系统状态采集</text>
-  <rect x="434" y="47" width="90" height="22" rx="3" fill="#fefce8" stroke="#fde047" stroke-width="0.4" stroke-dasharray="3,2"/>
-  <text x="479" y="62" text-anchor="middle" font-size="8.5" fill="#a16207">Binder 探针</text>
-  <rect x="532" y="47" width="90" height="22" rx="3" fill="#fefce8" stroke="#fde047" stroke-width="0.4" stroke-dasharray="3,2"/>
-  <text x="577" y="62" text-anchor="middle" font-size="8.5" fill="#a16207">文件监控</text>
-  <text x="640" y="62" font-size="8" fill="#94a3b8">→ 每条来源产生 原始事件，标注 公开接口 / 守护进程 来源层级</text>
+  <line x1="206" y1="164" x2="248" y2="164" stroke="#2563eb" stroke-width="2.4" marker-end="url(#arrow)"/>
 
-  <line x1="450" y1="88" x2="450" y2="104" stroke="#0284c7" stroke-width="1.3" marker-end="url(#arrow)"/>
+  <rect x="248" y="104" width="160" height="120" rx="14" fill="#fef3c7" stroke="#fbbf24" class="box"/>
+  <text x="328" y="132" text-anchor="middle" class="step" fill="#92400e">Append-only JSONL</text>
+  <text x="328" y="158" text-anchor="middle" class="sub" fill="#92400e">App 私有目录</text>
+  <text x="328" y="178" text-anchor="middle" class="sub" fill="#92400e">每行一个 CollectorEvent</text>
+  <text x="328" y="198" text-anchor="middle" class="sub" fill="#92400e">仅 rawEvent 进入主链</text>
+  <text x="328" y="216" text-anchor="middle" class="tiny" fill="#92400e">半行 / 截断由 tailer 处理</text>
 
-  <!-- Layer 1: Collection -->
-  <rect x="20" y="108" width="860" height="40" rx="6" fill="#e0f2fe" stroke="#7dd3fc" stroke-width="0.8"/>
-  <text x="35" y="128" font-size="10" font-weight="700" fill="#0369a1">L1 采集入口</text>
-  <text x="130" y="128" font-size="9" fill="#0e7490">采集信封 → Rust 采集入口 → 已摄入原始事件</text>
+  <line x1="408" y1="164" x2="450" y2="164" stroke="#2563eb" stroke-width="2.4" marker-end="url(#arrow)"/>
 
-  <line x1="450" y1="148" x2="450" y2="164" stroke="#dc2626" stroke-width="1.3" marker-end="url(#arrow-red)"/>
+  <rect x="450" y="104" width="160" height="120" rx="14" fill="#dbeafe" stroke="#93c5fd" class="box"/>
+  <text x="530" y="132" text-anchor="middle" class="step" fill="#1e40af">Rust 采集入口</text>
+  <text x="530" y="158" text-anchor="middle" class="sub" fill="#1e40af">tail byte offset</text>
+  <text x="530" y="178" text-anchor="middle" class="sub" fill="#1e40af">schema 校验</text>
+  <text x="530" y="198" text-anchor="middle" class="sub" fill="#1e40af">SourceTier 标注</text>
+  <text x="530" y="216" text-anchor="middle" class="tiny" fill="#1e40af">online 与 replay 共用输入格式</text>
 
-  <!-- Layer 2: Privacy (red highlight) -->
-  <rect x="20" y="168" width="860" height="40" rx="6" fill="#fef2f2" stroke="#ef4444" stroke-width="1.2"/>
-  <text x="35" y="188" font-size="10" font-weight="800" fill="#dc2626">L2 隐私边界</text>
-  <text x="130" y="188" font-size="9" fill="#991b1b">原始事件 — 脱敏 → 脱敏事件（丢弃原文/路径/负载，只保留 文本提示 + 语义提示）</text>
+  <line x1="610" y1="164" x2="652" y2="164" stroke="#2563eb" stroke-width="2.4" marker-end="url(#arrow)"/>
 
-  <line x1="450" y1="208" x2="450" y2="226" stroke="#0284c7" stroke-width="1.3" marker-end="url(#arrow)"/>
+  <rect x="652" y="104" width="160" height="120" rx="14" fill="#ffe4e6" stroke="#fda4af" class="box"/>
+  <text x="732" y="132" text-anchor="middle" class="step" fill="#9f1239">Privacy + Window</text>
+  <text x="732" y="158" text-anchor="middle" class="sub" fill="#9f1239">RawEvent → SanitizedEvent</text>
+  <text x="732" y="178" text-anchor="middle" class="sub" fill="#9f1239">原文 / 路径 / key 丢弃</text>
+  <text x="732" y="198" text-anchor="middle" class="sub" fill="#9f1239">10s StructuredContext</text>
+  <text x="732" y="216" text-anchor="middle" class="tiny" fill="#9f1239">模型与审计只见脱敏上下文</text>
 
-  <!-- Layer 3: Aggregation -->
-  <rect x="20" y="230" width="860" height="40" rx="6" fill="#e0f2fe" stroke="#7dd3fc" stroke-width="0.8"/>
-  <text x="35" y="250" font-size="10" font-weight="700" fill="#0369a1">L3 窗口聚合</text>
-  <text x="130" y="250" font-size="9" fill="#0e7490">脱敏事件 → 窗口聚合器（10s 窗口）→ 结构化上下文</text>
+  <!-- Evidence loop -->
+  <path d="M530,224 L530,268 L250,268" fill="none" stroke="#94a3b8" stroke-width="2" stroke-dasharray="6 6" marker-end="url(#arrow)"/>
+  <rect x="70" y="252" width="180" height="70" rx="14" fill="#f1f5f9" stroke="#cbd5e1" class="box"/>
+  <text x="160" y="280" text-anchor="middle" class="step" fill="#334155">Replay / Audit</text>
+  <text x="160" y="303" text-anchor="middle" class="sub" fill="#334155">同一份 trace 离线复现</text>
+  <text x="160" y="319" text-anchor="middle" class="tiny" fill="#334155">不依赖现场设备状态</text>
 
-  <line x1="450" y1="270" x2="450" y2="288" stroke="#0284c7" stroke-width="1.3" marker-end="url(#arrow)"/>
+  <line x1="250" y1="287" x2="452" y2="287" stroke="#2563eb" stroke-width="2.4" marker-end="url(#arrow)"/>
+  <rect x="452" y="252" width="180" height="70" rx="14" fill="#ede9fe" stroke="#c4b5fd" class="box"/>
+  <text x="542" y="280" text-anchor="middle" class="step" fill="#5b21b6">稳定审计哈希</text>
+  <text x="542" y="303" text-anchor="middle" class="sub" fill="#5b21b6">AuditRecord → sha256</text>
+  <text x="542" y="319" text-anchor="middle" class="tiny" fill="#5b21b6">c99c471c…16d7</text>
 
-  <!-- Layer 4: Decision -->
-  <rect x="20" y="292" width="860" height="40" rx="6" fill="#dbeafe" stroke="#93c5fd" stroke-width="0.8"/>
-  <text x="35" y="312" font-size="10" font-weight="700" fill="#0369a1">L4 决策</text>
-  <text x="130" y="312" font-size="9" fill="#1d4ed8">结构化上下文 → 决策路由器（4 级路由）→ 意图批次</text>
+  <line x1="632" y1="287" x2="690" y2="287" stroke="#2563eb" stroke-width="2.4" marker-end="url(#arrow)"/>
+  <rect x="690" y="252" width="190" height="70" rx="14" fill="#dcfce7" stroke="#86efac" class="box"/>
+  <text x="785" y="280" text-anchor="middle" class="step" fill="#166534">闭合性证据</text>
+  <text x="785" y="303" text-anchor="middle" class="sub" fill="#166534">Android 事件 → Rust 管线</text>
+  <text x="785" y="319" text-anchor="middle" class="tiny" fill="#166534">输入、脱敏、回放、审计均可复现</text>
 
-  <line x1="450" y1="332" x2="450" y2="350" stroke="#0284c7" stroke-width="1.3" marker-end="url(#arrow)"/>
-
-  <!-- Layer 5: Governance + Execution -->
-  <rect x="20" y="354" width="860" height="40" rx="6" fill="#fef2f2" stroke="#fca5a5" stroke-width="0.8"/>
-  <text x="35" y="374" font-size="10" font-weight="700" fill="#0369a1">L5 治理执行</text>
-  <text x="130" y="374" font-size="9" fill="#991b1b">意图批次 → 策略引擎（8 项检查）→ 动作生命周期 → 动作适配器 → 审计记录</text>
-
-  <!-- Right side: SourceTier legend (moved below to avoid overlap) -->
-  <rect x="20" y="398" width="860" height="18" rx="3" fill="#f8fafc" stroke="#e2e8f0" stroke-width="0.4"/>
-  <text x="30" y="411" font-size="7.5" fill="#64748b">来源层级：</text>
-  <rect x="82" y="403" width="10" height="10" rx="2" fill="#dbeafe" stroke="#93c5fd" stroke-width="0.3"/>
-  <text x="95" y="412" font-size="7.5" fill="#475569">公开接口（Android 侧）</text>
-  <rect x="252" y="403" width="10" height="10" rx="2" fill="#f0fdf4" stroke="#86efac" stroke-width="0.3"/>
-  <text x="265" y="412" font-size="7.5" fill="#475569">守护进程（Rust 侧）</text>
-  <text x="430" y="412" font-size="7.5" fill="#94a3b8">| 决策路由：规则 / 本地 / 云端 / 兜底 | 审计记录含完整迁移数组</text>
+  <!-- Bottom explanation -->
+  <rect x="82" y="374" width="796" height="84" rx="16" fill="#ffffff" stroke="#dbeafe" stroke-width="1.2"/>
+  <text x="480" y="404" text-anchor="middle" class="label">这页只证明“本地事件进入系统”</text>
+  <text x="480" y="430" text-anchor="middle" class="sub" fill="#475569">后续的策略裁决、授权动作和设备执行分别在下一页和设备执行证据页展开</text>
+  <text x="480" y="450" text-anchor="middle" class="tiny" fill="#64748b">smoke E2E 的价值：公开 API 实采事件能够进入 JSONL，被 Rust replay/audit 读取，并生成稳定审计 hash</text>
 </svg>

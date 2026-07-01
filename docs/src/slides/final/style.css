@@ -192,3 +192,35 @@
 .slidev-layout li {
   margin: 0.25rem 0;
 }
+
+.slidev-layout .diagram-frame {
+  height: 315px;
+  margin-top: 0.1rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.slidev-layout .diagram-frame img {
+  display: block;
+  max-width: 88%;
+  max-height: 100%;
+  width: auto;
+  height: auto;
+  object-fit: contain;
+}
+
+.slidev-layout .diagram-caption {
+  margin-top: 0.45rem;
+  text-align: center;
+  font-size: 0.78rem;
+  line-height: 1.35;
+  opacity: 0.75;
+}
+
+/* Hide Slidev's Goto popup during presentation.
+   It is triggered by pressing `g` or clicking the page number, and can look like
+   an unwanted right-side table of contents in fullscreen mode. */
+#slidev-goto-dialog {
+  display: none !important;
+}

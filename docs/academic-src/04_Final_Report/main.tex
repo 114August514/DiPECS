@@ -1,19 +1,301 @@
-\documentclass{article}
+\documentclass[12pt,a4paper]{article}
+\input{../dipecs-report-preamble}
 
-\usepackage[margin=1in]{geometry}
-\usepackage{hyperref}
-
-\title{DiPECS Final Report}
-\author{DiPECS Team}
-\date{\today}
+\renewcommand{\reporttitle}{DiPECS 结题研究报告}
+\renewcommand{\reportsubtitle}{端侧 AIOS 的隐私、治理、性能与动作闭环评估}
+\renewcommand{\reporttype}{结题研究报告}
+\renewcommand{\reportdate}{2026 年 7 月 1 日}
 
 \begin{document}
 
-\maketitle
+\pagenumbering{gobble}
+\makecover
+\clearpage
+\pagenumbering{arabic}
 
-\section{Status}
+{\hypersetup{linkcolor=black}\tableofcontents}
+\newpage
 
-This is a CI-ready LaTeX shell for the future formal final report.
-The current working content is maintained in the MkDocs research pages.
+\begin{dipecsabstract}
+\noindent\textbf{\zihao{-4} 摘要：}\zihao{-5}
+\textbf{目的：}评估 DiPECS 端侧 AIOS 原型在结题阶段能否在守住隐私与治理边界的同时保持轻量并带来可测体验收益。
+\textbf{方法：}从延迟、资源、稳定性、隐私、治理、用户体验和动作执行七个维度，在 Android 模拟器上运行端到端闭环并采集测量数据；所有结果均来自代码内测试或模拟器实测，并在正文中标注测量口径。
+\textbf{结果：}隐私空气隙将敏感文本泄漏从 22 条降至 0 条、模型输入从 63 KB 降至 645 B；核心管线在 128 ms 内处理 1631 条事件，峰值内存约 11 MB；PreWarm 在模拟器上使目标应用启动时间缩短 44\%$\sim$55\%；四类动作均能在模拟器端执行并生成终态审计事件。
+\textbf{结论：}DiPECS 在端侧实现了受控的隐私边界、动作治理边界和可审计执行链路；后续可在真实物理设备、更长运行周期和高权限采集路径上进一步验证。
+
+\vspace{0.5em}
+\noindent\textbf{\zihao{-4} 关键词：}\zihao{-5} 结题评估；端侧 AIOS；隐私空气隙；动作执行闭环；Android 模拟器
+\end{dipecsabstract}
+
+\section{引言}\label{sec:intro}
+
+端侧人工智能操作系统（AIOS）需要在本地上下文采集、大模型推理与系统动作执行之间建立可验证的边界。
+DiPECS 正是围绕这一需求构建的 Android/Linux 原型系统：通过分层管线把原始事件转换为结构化上下文，再经本地策略审查后执行授权动作，最终留下可回放的审计记录。
+
+结题阶段需要回答的核心问题是：DiPECS 的分层管线在端侧是否既能守住隐私与治理边界，又轻量到可以常驻，并带来可测的体验收益？
+为回答该问题，本报告从延迟、资源、稳定性、隐私、治理、用户体验和动作执行七个维度进行测量，所有数据均来自代码内测试或模拟器实测，并在正文中明确标注了每项结果的测量口径。
+
+\section{相关工作}\label{sec:related}
+
+AIOS 与 LLM OS 相关工作把大语言模型代理从单个应用提升到系统级平台，为端侧智能系统提供了``Agent 需要系统层支撑''的背景 \cite{aios,memgpt}。
+OS-Copilot、FRIDAY、UFO 等桌面代理证明了模型可以跨应用完成复杂任务，但其依赖的高权限 GUI 自动化接口难以直接迁移到 Android 普通应用环境 \cite{os-copilot,os-copilot-page,ufo}。
+
+在移动行为预测方面，FALCON、AppUsage2Vec、DeepAPP 等工作说明，利用位置、时间、历史序列等上下文预测用户下一次启动应用并做预加载，是可研究的系统优化方向 \cite{falcon,appusage2vec,deepapp}。
+然而，这些工作主要关注预测精度，较少处理动作授权、隐私空气隙和可审计执行。
+
+DiPECS 与上述工作的主要差异在于：它不是以模型能力为中心，而是以数据边界、隐私边界和动作边界为中心，将 LLM 或统计模型限制为结构化建议的生成者，把最终执行权保留在本地策略引擎中。
+
+\section{系统与方法}\label{sec:method}
+
+\subsection{系统架构}\label{subsec:architecture}
+
+DiPECS 的架构遵循``机制与策略分离''原则。
+Android 侧 Kotlin 采集器负责权限申请、通知监听、前台服务和设备状态采集；Rust 核心负责事件 schema、隐私空气隙、窗口聚合、决策路由、策略审查、动作生命周期和审计记录。
+采集层与核心层之间通过 JSONL 交换数据，使同一套 Rust 逻辑既能处理真实 Android trace，也能处理离线测试夹具。
+
+\subsection{评估维度}\label{subsec:dimensions}
+
+本报告从以下七个维度评估系统：
+
+\begin{enumerate}[label=(\arabic*)]
+  \item \textbf{决策延迟}：本地后端与云端 LLM 的决策耗时；
+  \item \textbf{资源开销}：核心管线 replay 与设备内运行的 CPU、内存占用；
+  \item \textbf{运行稳定性}：短时长跑中的内存增长与 CPU 占用；
+  \item \textbf{隐私边界}：原始敏感文本是否越过 PrivacyAirGap；
+  \item \textbf{治理边界}：PolicyEngine 对越权动作的拒绝能力；
+  \item \textbf{用户体验}：PreWarm 对启动延迟、ReleaseMemory 对 jank 的影响；
+  \item \textbf{动作执行闭环}：AndroidAdapter 经 HMAC 校验后在设备端执行并落审计。
+\end{enumerate}
+
+\subsection{测量环境}\label{subsec:environment}
+
+测量环境分为三类，报告中均明确标注：
+
+\begin{itemize}
+  \item \textbf{离线测试基准}：工作区内 \texttt{cargo test} 驱动，确定性、可在 CI 复现；用于延迟、replay 资源开销、隐私、治理、映射覆盖。
+  \item \textbf{模拟器实测}：Android Studio 模拟器 AVD \texttt{dipecs\_e2e}（system image android-35;google\_apis;x86\_64），经 adb 采样；用于设备内资源开销、稳定性、UX 和动作执行闭环 \cite{android-emulator,android-api-35}。
+  \item \textbf{云端直采}：真实 DeepSeek API，非 mock；用于云端延迟与场景决策质量。本报告按实验配置记录模型名为 \texttt{deepseek-v4-flash}，具体版本以服务商文档为准 \cite{deepseek-api}。
+\end{itemize}
+
+\textbf{口径声明}：模拟器为 AC 供电，电量/温度传感器不动，故凡涉及电量/温度者一律为按 CPU/PSS 换算的估算并如此标注；所有``设备内''证据均在 x86\_64 模拟器取得，物理 arm64 设备的迁移路径已打通，后续将在实机环境进一步验证。
+
+\section{实验结果}\label{sec:results}
+
+\subsection{决策延迟}\label{subsec:latency}
+
+本地后端（规则/轻量评估器）在亚毫秒级完成决策，云端 LLM 往返需数秒，相差 4$\sim$5 个数量级。
+这是``本地优先路由、云端仅处理复杂语义''策略的核心依据。
+表 \ref{tab:latency} 给出了离线基准测试结果。
+
+\begin{dipecstable}{决策延迟：本地后端 vs 云端 LLM（离线基准）}{tab:latency}
+  \begin{tabular}{lrrr}
+    \toprule
+    \rowcolor{gray!15}\textbf{后端} & \textbf{均值} & \textbf{p50} & \textbf{p95} \\
+    \midrule
+    RuleBased & $<$0.01 ms & $<$0.01 ms & 0.02 ms \\
+    \dtr
+    LocalEvaluator & 0.01 ms & 0.01 ms & 0.05 ms \\
+    \dtr
+    CloudLLM (DeepSeek deepseek-v4-flash) & 6958.16 ms & 7339.61 ms & 10050.08 ms \\
+    \bottomrule
+  \end{tabular}
+\end{dipecstable}
+
+云端直采 API 实测（live，morning-routine 场景，5 轮）进一步佐证了量级：p50 = 11331 ms、p95 = 12963 ms、成功率 100\%、错误 0。
+四个真实场景（circuit-breaker、low-battery、morning-routine、rich-workflow）均端到端产出结构化 intent（如 \texttt{SwitchToApp}、\texttt{CheckNotification} + \texttt{HandleFile}）、0 错误，延迟 6$\sim$14 秒。
+对应数据文件为 \texttt{data/evaluation/cloud-latency-*.json} 和 \texttt{data/evaluation/cloud-scenarios-*.json}（真实采集日期为 2026-07-01）。
+
+\subsection{资源开销与运行稳定性}\label{subsec:resource}
+
+\subsubsection{管线吞吐}
+
+对 2400 行合成大 trace（\texttt{android\_synthetic\_large.redacted.jsonl}，1631 条有效事件）做确定性 replay，结果见表 \ref{tab:replay}。
+
+\begin{dipecstable}{核心管线 replay 资源开销}{tab:replay}
+  \begin{tabular}{lr}
+    \toprule
+    \rowcolor{gray!15}\textbf{指标} & \textbf{数值} \\
+    \midrule
+    Wall time & 128.0 ms \\
+    \dtr
+    Peak RSS & 10.77 MB \\
+    \dtr
+    Events ingested & 1631 \\
+    \dtr
+    Windows closed & 58 \\
+    \dtr
+    Actions authorized & 206 \\
+    \dtr
+    Throughput & 12742.2 events/s \\
+    \bottomrule
+  \end{tabular}
+\end{dipecstable}
+
+核心管线开销较低：处理 1600$+$ 事件峰值内存约 11 MB、百毫秒内完成，不构成常驻负担。
+
+\subsubsection{设备内开销}
+
+表 \ref{tab:device-overhead} 给出了模拟器上 30 样本/模式的资源开销测量结果。
+
+\begin{dipecstable}{设备内资源开销（模拟器，30 样本/模式）}{tab:device-overhead}
+  \begin{tabular}{lrrrr}
+    \toprule
+    \rowcolor{gray!15}\textbf{模式} & \textbf{Avg CPU} & \textbf{Avg RSS} & \textbf{Avg PSS} & \textbf{Avg jank} \\
+    \midrule
+    baseline\_idle & 0.493\% & 118.30 MB & 36.02 MB & 0.0\% \\
+    \dtr
+    dipecs\_observe\_only & 0.387\% & 125.87 MB & 39.63 MB & 0.0\% \\
+    \dtr
+    dipecs\_action\_loop & 0.0\% & 132.80 MB & 41.62 MB & 0.0\% \\
+    \bottomrule
+  \end{tabular}
+\end{dipecstable}
+
+\textbf{结果解释}：模拟器环境下 CPU 读数存在正常方差（两次运行分别约为 1.15\% 与 0.4\%，后者低于基线），RSS 增量是更稳定可信的开销口径。可稳定报告的是：RSS 每叠加一层约 $+7\sim8$ MB（采集层 $+7.6$ MB，动作回路再 $+6.9$ MB），jank 均为 0。
+
+\subsubsection{稳定性}
+
+表 \ref{tab:stability} 给出了 4 分钟、8 样本、30 s 间隔的稳定性采样结果。
+
+\begin{dipecstable}{稳定性采样（4 分钟、8 样本、30 s 间隔）}{tab:stability}
+  \begin{tabular}{lrrl}
+    \toprule
+    \rowcolor{gray!15}\textbf{指标} & \textbf{数值} & \textbf{阈值} & \textbf{结论} \\
+    \midrule
+    RSS 变化 & $-5.41$ MB & --- & 未增长 \\
+    \dtr
+    PSS 增长/小时 & 3.91 MB/h & $<$20 & 通过 \\
+    \dtr
+    RSS 增长/小时 & 6.08 MB/h & $<$50 & 通过 \\
+    \dtr
+    平均 CPU & 0.95\% & $<$10 & 通过 \\
+    \bottomrule
+  \end{tabular}
+\end{dipecstable}
+
+短时长跑 RSS 未增长（甚至回落），表明系统具备作为设备常驻服务的基础。
+
+\subsection{隐私与治理边界}\label{subsec:privacy-governance}
+
+\subsubsection{隐私空气隙}
+
+在 circuit-breaker 场景下对比``无 DiPECS（naive 云端 prompt）''与``有 DiPECS''，结果见表 \ref{tab:privacy}。
+
+\begin{dipecstable}{隐私边界：有/无 DiPECS 对比}{tab:privacy}
+  \begin{tabular}{lrr}
+    \toprule
+    \rowcolor{gray!15}\textbf{指标} & \textbf{无 DiPECS} & \textbf{有 DiPECS} \\
+    \midrule
+    原始通知文本片段数 & 300 & 300 \\
+    \dtr
+    泄漏到模型输入/审计的数量 & 22 & \textbf{0} \\
+    \dtr
+    Prompt/模型输入大小 & 63178 bytes & 645 bytes \\
+    \bottomrule
+  \end{tabular}
+\end{dipecstable}
+
+\texttt{PrivacyAirGap} 使 \texttt{raw\_title}/\texttt{raw\_text} 等敏感原文不流入模型输入或审计流，同时把输入从 63 KB 压到 645 B——既保护隐私又降低模型成本。
+辅证包括：\texttt{replay\_audit\_leak\_test} 2/2 通过（审计流与 NDJSON 均不含 raw PII）；\texttt{golden\_trace\_integration\_test} 6/6 通过（确定性审计 hash 捕获任何管道状态变化）。
+
+\subsubsection{策略引擎}
+
+\texttt{policy\_engine\_test} 20/20 通过，覆盖：高风险默认拒绝、中风险按 capability 决定、低置信度拒绝、target 不在 context 拒绝、每 batch 动作上限、deferred urgency 过滤、FallbackNoOp 拦截 PreWarm。
+即使后端建议了动作，\texttt{PolicyEngine} 仍按风险/capability/target-in-context 多重规则复审，防止越权执行。
+
+\subsection{用户体验收益}\label{subsec:ux}
+
+动作的价值不仅在于``能调用''，还在于能否改善体验。
+表 \ref{tab:ux} 给出了两轮 UX 测量结果（各 5 样本/模式）。
+
+\begin{dipecstable}{UX 收益：PreWarm 启动加速 / ReleaseMemory 降 jank}{tab:ux}
+  \begin{tabular}{lrr}
+    \toprule
+    \rowcolor{gray!15}\textbf{指标} & \textbf{run1} & \textbf{run2} \\
+    \midrule
+    warm 启动 TotalTime & 1470.4 ms & 1551.6 ms \\
+    \dtr
+    PreWarm 启动 TotalTime & 664.6 ms & 872.6 ms \\
+    \dtr
+    PreWarm 加速 & 805.8 ms (54.8\%) & 679.0 ms (43.8\%) \\
+    \dtr
+    ReleaseMemory 前 jank & 19.05\% & 30.0\% \\
+    \dtr
+    ReleaseMemory 后 jank & 15.38\% & 30.0\% \\
+    \dtr
+    ReleaseMemory jank 改善 & 3.67 pp & 0.0 pp \\
+    \bottomrule
+  \end{tabular}
+\end{dipecstable}
+
+\textbf{结果解释}：PreWarm 两轮一致显著（启动快 44\%$\sim$55\%），是最稳定的 UX 收益证据；ReleaseMemory 对 jank 的影响有待更多轮次统计确认。
+
+\subsection{模拟器动作执行闭环}\label{subsec:action-loop}
+
+四类可转发动作（\texttt{NoOp} 永走本地 stub 不转发）在模拟器端逐一执行并见终态审计事件，结果见表 \ref{tab:actions}。
+
+\begin{dipecstable}{四类动作设备端执行覆盖（EXECUTED$\times$4）}{tab:actions}
+  \begin{tabular}{llrl}
+    \toprule
+    \rowcolor{gray!15}\textbf{动作类型} & \textbf{处理器终态审计事件} & \textbf{设备确认延迟} & \textbf{状态} \\
+    \midrule
+    KeepAlive & \texttt{keep\_alive\_job\_executed} & 21343 $\mu$s & EXECUTED \\
+    \dtr
+    ReleaseMemory & \texttt{release\_memory\_completed} & 13409 $\mu$s & EXECUTED \\
+    \dtr
+    PreWarmProcess & \texttt{own\_resources\_prewarmed} & 31231 $\mu$s & EXECUTED \\
+    \dtr
+    PrefetchFile & \texttt{prefetch\_succeeded} & 1069 $\mu$s & EXECUTED \\
+    \bottomrule
+  \end{tabular}
+\end{dipecstable}
+
+链路为：\texttt{AndroidAdapter} $\rightarrow$ execute 信封（canonical HMAC-SHA256 + freshness window）$\rightarrow$ 设备校验 $\rightarrow$ dispatch $\rightarrow$ 各处理器执行落审计。
+拒绝/失败类事件全 0、脱敏闸门干净。
+其中 PrefetchFile 实际下载 559 字节 \texttt{text/html}，证明异步下载链路亦通。
+
+\textbf{设备内直连回路}：把交叉编译的 \texttt{dipecsd} 推进模拟器内运行，直连 \texttt{127.0.0.1} 的 app 动作 socket、无 adb forward，判定 LOOP-CLOSED。
+这结构上根除了``开发机经 adb forward''通道特有的代理层数据/FIN 竞态，是最接近生产部署（\texttt{/system/bin/dipecsd}，与 app 同机走内核 loopback）的设备内回路。
+离线侧另有 \texttt{android\_bridge\_e2e\_test.rs} 以 mock socket 独立重算 canonical HMAC 互为印证。
+
+\subsection{信号到动作的映射覆盖}\label{subsec:mapping}
+
+\texttt{noop\_matrix} 覆盖 13 个信号模式，其中 9 个（69.2\%）产出真实动作，4 个（30.8\%）为当前待覆盖场景。
+典型映射包括：\texttt{low\_battery\_release\_memory} $\rightarrow$ ReleaseMemory、\texttt{file\_access\_prefetch} $\rightarrow$ PrefetchFile、\texttt{app\_foreground\_keepalive} $\rightarrow$ PreWarmProcess + KeepAlive。
+系统能把常见设备语义映射为维护动作，而非一律 Idle。
+
+\section{结果口径与后续工作}\label{sec:limitations}
+
+本报告的测量数据均来自代码内测试或 Android 模拟器实测，结果口径已在正文中分项说明。
+当前验证覆盖了隐私边界、治理边界、核心管线性能、动作执行闭环和 UX 收益等核心命题，后续工作可从以下方向继续深化：
+
+\begin{enumerate}[label=(\arabic*)]
+  \item \textbf{设备迁移}：当前在 x86\_64 模拟器完成闭环验证，物理 arm64 迁移路径已打通，可作为后续实机验证方向；
+  \item \textbf{长周期观测}：在更长运行周期下进一步观测资源占用与稳定性；
+  \item \textbf{UX 多轮统计}：补充 PreWarm 与 ReleaseMemory 的多轮样本分布，完善体验收益评估；
+  \item \textbf{信号覆盖扩展}：收敛剩余 4 个未触发动作的信号模式，提升映射覆盖率。
+\end{enumerate}
+
+\section{结论}\label{sec:conclusion}
+
+DiPECS 在结题阶段以测量数据支撑了核心命题：分层管线可有效控制隐私泄漏（22 $\rightarrow$ 0 泄漏、63 KB $\rightarrow$ 645 B）与治理（策略 20/20 复审），资源占用较低（replay 128 ms/11 MB、设备内每层 $+7\sim8$ MB、短跑无泄漏），并带来可测的体验收益（PreWarm 启动快约一半），动作链路在模拟器上形成设备内执行闭环（四类型 EXECUTED、设备内直连 LOOP-CLOSED）。
+
+上述测量均在代码内测试与 Android 模拟器环境下完成，结果口径已在正文中说明。后续工作将围绕物理 arm64 实机验证、更长稳定性观测、UX 多轮分布统计以及剩余信号模式覆盖展开。
+
+\appendix
+\section{复现说明}\label{app:reproduction}
+
+本报告的测量数据可基于以下信息复现：
+
+\begin{itemize}
+  \item \textbf{代码版本}：\texttt{d1178a6529daa3be7e2c0121fb0e7d652898c0ff}（main 分支）。
+  \item \textbf{离线测试}：在仓库根目录执行 \texttt{cargo test --workspace}，可复现隐私、治理、聚合和 replay 相关测试。
+  \item \textbf{模拟器实测}：使用 Android Studio 创建 AVD \texttt{dipecs\_e2e}，system image 为 \texttt{android-35;google\_apis;x86\_64} \cite{android-emulator,android-api-35}。
+  \item \textbf{云端延迟数据}：文件路径 \texttt{data/evaluation/cloud-latency-*.json} 与 \texttt{data/evaluation/cloud-scenarios-*.json}；若文件为 Git LFS 指针，请先执行 \texttt{git lfs pull}。
+  \item \textbf{设备内闭环}：按 \texttt{docs/src/team/deployment.md} 交叉编译 \texttt{dipecsd} 并推送至模拟器运行。
+\end{itemize}
+
+\bibliographystyle{unsrtnat}
+\bibliography{../refs}
 
 \end{document}

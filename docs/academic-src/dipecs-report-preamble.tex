@@ -1,0 +1,137 @@
+% Shared preamble for DiPECS academic reports.
+% Each report should start with:
+%   \documentclass[12pt,a4paper]{article}
+%   \input{../dipecs-report-preamble}
+% and define the metadata macros before \begin{document}.
+
+\usepackage[UTF8]{ctex}
+\usepackage{setspace}
+\usepackage{amsmath}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{tabularx}
+\usepackage[a4paper, left=2.5cm, right=2.5cm, top=2.5cm, bottom=2.5cm]{geometry}
+\usepackage{microtype}
+\usepackage{float}
+\usepackage[table]{xcolor}
+\usepackage{multirow}
+\usepackage{makecell}
+\usepackage{caption}
+\usepackage{titlesec}
+\usepackage{fancyhdr}
+\usepackage{lmodern}
+\usepackage{lastpage}
+\usepackage{enumitem}
+\usepackage[export]{adjustbox}
+\usepackage{indentfirst}
+\usepackage[super,square,sort&compress]{natbib}
+\usepackage{hyperref}
+
+\hypersetup{hidelinks}
+
+% Custom column types.
+\newcolumntype{P}[1]{>{\raggedright\arraybackslash}p{#1}}
+\newcolumntype{Q}[1]{>{\centering\arraybackslash}p{#1}}
+
+\setlength{\headheight}{14pt}
+\onehalfspacing
+\setstretch{1.5}
+\setlength{\parskip}{0.5em}
+
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[L]{\small\kaishu DiPECS 端侧 AIOS 原型研究}
+\fancyhead[R]{\small\kaishu \reporttype}
+\fancyfoot[C]{\thepage}
+\renewcommand{\headrulewidth}{0.4pt}
+\renewcommand{\footrulewidth}{0pt}
+
+\titleformat{\section}
+  {\color[RGB]{0,0,128}\bfseries\songti\zihao{4}}
+  {\thesection}{1em}{}
+\titleformat{\subsection}
+  {\color[RGB]{0,0,128}\bfseries\songti\zihao{5}}
+  {\thesubsection}{1em}{}
+\titleformat{\subsubsection}
+  {\color[RGB]{0,0,128}\songti\zihao{5}}
+  {\thesubsubsection}{1em}{}
+\titleformat{\paragraph}
+  {\color[RGB]{0,0,128}\bfseries\songti\zihao{-5}}
+  {\theparagraph}{1em}{}
+
+% Report metadata (must be redefined in each main file).
+\newcommand{\reporttitle}{}
+\newcommand{\reportsubtitle}{}
+\newcommand{\reporttype}{}
+\newcommand{\reportdate}{}
+
+% Cover page macro.
+\newcommand{\makecover}{%
+  \newgeometry{left=1.75cm, right=1.75cm, top=1.55cm, bottom=1.55cm}%
+  \begin{titlepage}
+    \thispagestyle{empty}
+    \centering
+    \vspace*{0.15cm}
+    \IfFileExists{../icon.png}{%
+      \includegraphics[width=0.40\textwidth]{../icon.png}%
+    }{%
+      \vspace{2cm}%
+    }%
+
+    \vspace{0.7cm}
+
+    {\heiti\zihao{2} \reporttitle \par}
+    \ifx\reportsubtitle\empty\else
+      \vspace{0.55em}
+      {\songti\zihao{4} ——\reportsubtitle \par}
+    \fi
+
+    \vspace{0.9cm}
+    {\songti\zihao{3} \reporttype \par}
+
+    \vspace{0.85cm}
+
+    {\songti\zihao{4}
+    \renewcommand{\arraystretch}{1.5}
+    \begin{tabular}{rl}
+      项目名称： & \underline{\makebox[7.4cm][c]{DiPECS}} \\
+      作者单位： & \underline{\makebox[7.4cm][c]{DiPECS Team}} \\
+      报告类型： & \underline{\makebox[7.4cm][c]{\reporttype}} \\
+      完成时间： & \underline{\makebox[7.4cm][c]{\reportdate}} \\
+    \end{tabular}
+    }
+  \end{titlepage}
+  \restoregeometry
+}
+
+% Abstract environment: produces a centered title block; caller supplies
+% \noindent\textbf{摘要：} and \noindent\textbf{关键词：} lines.
+\newenvironment{dipecsabstract}{%
+  \begin{center}
+    {\heiti\zihao{2} \reporttitle \par}
+    \ifx\reportsubtitle\empty\else
+      \vspace{0.45em}
+      {\songti\zihao{4} ——\reportsubtitle \par}
+    \fi
+  \end{center}
+  \vspace{1em}
+}{%
+  \vspace{1em}
+}
+
+% Lightweight table rule used between data rows.
+\newcommand{\dtr}{\specialrule{0.25pt}{0.25em}{0.25em}}
+
+% Standard DiPECS table environment: [H], centered, small, caption above,
+% label, and consistent row stretch.
+\newenvironment{dipecstable}[2]{%
+  \begin{table}[H]
+    \centering
+    \small
+    \caption{#1}
+    \label{#2}
+    \renewcommand{\arraystretch}{1.3}
+}{%
+  \end{table}
+}

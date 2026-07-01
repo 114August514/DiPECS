@@ -30,9 +30,16 @@ jobs:
   # 1. 编译 MkDocs 与 Rust API 文档
   build-docs:
     name: Build KB & API
+    needs: build-academic
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
+      - name: Download Academic PDFs
+        uses: actions/download-artifact@v4
+        with:
+          name: academic-pdfs
+          path: docs/src/academic/reports/
 
       - name: Cache Cargo
         uses: actions/cache@v4
@@ -99,25 +106,27 @@ jobs:
 
       - name: Build Academic Reports
         run: |
-          sudo apt-get update -qq && sudo apt-get install -y -qq texlive-latex-base texlive-latex-recommended texlive-xetex texlive-lang-chinese latexmk
+          sudo apt-get update -qq && sudo apt-get install -y -qq texlive-latex-base texlive-latex-extra texlive-xetex texlive-lang-chinese latexmk fonts-noto-cjk
           cd docs/academic-src
-          for tex in 01_Survey_Report/main.tex 02_Feasibility_Report/main.tex 03_Midterm_Report/main.tex 04_Final_Report/main.tex; do
-            latexmk -xelatex -halt-on-error -interaction=nonstopmode "$tex"
-          done
+          ../../scripts/build-academic-reports.sh
 
       - name: Collect PDFs
         run: |
           mkdir -p academic-pdfs
           for dir in 01_Survey_Report 02_Feasibility_Report 03_Midterm_Report 04_Final_Report; do
             pdf="docs/academic-src/${dir}/main.pdf"
-            [ -f "$pdf" ] && cp "$pdf" "academic-pdfs/$(echo $dir | sed 's/^[0-9]*_//').pdf"
+            if [ ! -f "$pdf" ]; then
+              echo "::error::缺少已编译 PDF: $pdf(latexmk 未产出?)"; exit 1
+            fi
+            cp "$pdf" "academic-pdfs/$(echo "$dir" | sed 's/^[0-9]*_//').pdf"
           done
-          touch academic-pdfs/.placeholder
+          ls -la academic-pdfs/
 
       - uses: actions/upload-artifact@v4
         with:
           name: academic-pdfs
           path: academic-pdfs/
+          if-no-files-found: error
 
   # 3. 整合站点结构
   deploy-site:

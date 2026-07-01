@@ -1,368 +1,331 @@
-\documentclass[UTF8,a4paper,12pt]{ctexart}
+\documentclass[12pt,a4paper]{article}
+\input{../dipecs-report-preamble}
 
-\usepackage[margin=1in]{geometry}
-\usepackage{array}
-\usepackage{booktabs}
-\usepackage{float}
-\usepackage{xcolor}
-\usepackage{hyperref}
-\setlength{\emergencystretch}{3em}
-
-\definecolor{reportlink}{RGB}{65, 145, 210}
-
-\hypersetup{
-  colorlinks=true,
-  linkcolor=reportlink,
-  urlcolor=reportlink,
-  citecolor=reportlink
-}
-
-\newcommand{\project}{DiPECS}
-
-\title{\project{} 中期报告}
-\author{\project{} Team}
-\date{2026 年 4 月 27 日}
+\renewcommand{\reporttitle}{DiPECS 中期进展报告}
+\renewcommand{\reportsubtitle}{端侧 AIOS 原型从概念到可运行系统的跨越}
+\renewcommand{\reporttype}{中期进展报告}
+\renewcommand{\reportdate}{2026 年 4 月 27 日}
 
 \begin{document}
 
-\maketitle
+\pagenumbering{gobble}
+\makecover
+\clearpage
+\pagenumbering{arabic}
 
-\begin{abstract}
-中期阶段，\project{} 完成了从项目设想到最小可执行原型的转变。项目目标是构建一个面向 Android 的
-用户意图预测与本地资源优化系统：在用户动作发生之前，通过本地采集和隐私脱敏形成结构化上下文，再由
-本地规则或云端模型输出候选意图，最后由本地策略引擎决定是否执行低风险优化动作。到中期节点，项目已经
-完成 Rust 核心类型体系、隐私空气隙、窗口聚合、规则式意图生成、策略校验、动作执行骨架、动作总线和
-离线测试框架；Android 侧完成了 UsageStats、通知和基础系统状态等采集方向的原型验证。下一阶段重点是
-打通 Android 到 Rust 的生产入口、完善 golden trace/replay、接入真实云端后端，并验证低风险动作是否带来
-可测的系统收益。
-\end{abstract}
-
-\newpage
 {\hypersetup{linkcolor=black}\tableofcontents}
 \newpage
 
-\section{项目定位}
+\begin{dipecsabstract}
+\noindent\textbf{\zihao{-4} 摘要：}\zihao{-5}
+\textbf{目的：}汇报 DiPECS 中期阶段的核心进展，验证 Rust 核心类型体系、隐私空气隙、窗口聚合、规则式意图生成、策略校验、动作执行骨架和离线测试框架是否已形成可运行链路。
+\textbf{方法：}以 Android 13（API 33）为中期开发基线，采用 Rust + Kotlin 工程路线，通过单元测试、离线 replay 和 Android 公开 API 原型验证各模块行为。
+\textbf{结果：}中期已完成核心类型、隐私脱敏、窗口聚合、规则决策、策略校验、动作总线、动作执行骨架和 golden trace/replay 测试框架；Android 侧完成了 UsageStats、通知和基础系统状态的采集验证；数据流已具备可脱敏、可聚合、可决策、可审查、可回放能力。
+\textbf{结论：}项目已跨越从概念到可运行原型的阶段，下一阶段需优先打通 Android 到 Rust 的生产入口、完善 golden trace/replay、接入真实云端后端，并验证低风险动作是否带来可测系统收益。
 
-\project{} 是一个面向 Android 端侧环境的意图预测系统原型。它的核心命题是：在用户动作实际发生之前，
-系统能否根据近期上下文预测用户可能需要的资源，并提前进行低风险准备，从而降低冷启动或跨应用切换时的
-可感知延迟。
+\vspace{0.5em}
+\noindent\textbf{\zihao{-4} 关键词：}\zihao{-5} 中期进展；Android 端侧系统；事件驱动架构；隐私空气隙；机制与策略分离
+\end{dipecsabstract}
+
+\section{引言}\label{sec:intro}
+
+DiPECS 是一个面向 Android 端侧环境的意图预测系统原型。
+其核心命题是：在用户动作实际发生之前，系统能否根据近期上下文预测用户可能需要的资源，并提前进行低风险准备，从而降低冷启动或跨应用切换时的可感知延迟。
 
 中期汇报时，项目目标平台设定为 Android 13（API 33）和可定制 AOSP 环境；实现语言采用 Rust + Kotlin。
-Rust 负责核心逻辑，包括事件 schema、隐私脱敏、上下文聚合、策略校验、动作状态机和离线回放；Kotlin 负责
-Android 应用层，包括权限、服务、系统 API 调用和用户界面。
+Rust 负责核心逻辑，包括事件 schema、隐私脱敏、上下文聚合、策略校验、动作状态机和离线回放；Kotlin 负责 Android 应用层，包括权限、服务、系统 API 调用和用户界面。
+需要说明的是，该目标平台为中期阶段的开发基线；结题验证已迁移至 Android 15（API 35）模拟器环境，详见结题报告。
 
-项目不把云端 LLM 视为直接控制设备的执行者。LLM 或本地规则只能输出结构化建议，例如 intent、confidence、
-risk 和 suggested actions；本地 Rust 策略模块保留最终执行权。这是中期阶段最重要的系统边界。
+项目不把云端 LLM 视为直接控制设备的执行者。
+LLM 或本地规则只能输出结构化建议，例如 intent、confidence、risk 和 suggested actions；本地 Rust 策略模块保留最终执行权。
+这是中期阶段最重要的系统边界。
 
-\section{系统闭环}
+\section{项目定位}\label{sec:positioning}
 
-中期阶段定义的闭环是：
+DiPECS 的研究定位可概括为三点：
+第一，它是端侧上下文 AIOS 原型，而不是单纯的 LLM 应用；系统关心的是采集、脱敏、聚合、决策、策略和审计之间的边界。
+第二，其默认数据源是现实可部署的数据源：Android 侧主要使用公开 API 生成 append-only JSONL；Linux daemon 侧使用本机进程和系统状态；离线 replay 使用相同 schema 验证管线行为。
+第三，它把动作安全置于模型能力之前：决策后端默认本地规则优先，云端 LLM 只有在环境变量和配置完整时才参与；所有动作建议都必须经过策略引擎和 \texttt{ActionLifecycle}，最终形成可审计的终态记录。
 
-\begin{center}
-\small
+\section{系统闭环}\label{sec:loop}
+
+中期阶段定义的系统闭环为：
 本地采集 $\rightarrow$ 隐私脱敏 $\rightarrow$ 上下文聚合 $\rightarrow$ 意图预测
-$\rightarrow$ 策略校验 $\rightarrow$ 本地优化执行 $\rightarrow$ 结果记录
-\end{center}
+$\rightarrow$ 策略校验 $\rightarrow$ 本地优化执行 $\rightarrow$ 结果记录。
+表 \ref{tab:loop} 对各阶段进行了说明。
 
-各阶段含义如下：
+\begin{dipecstable}{中期阶段定义的系统闭环}{tab:loop}
+  \begin{tabular}{P{2.4cm}P{10.2cm}}
+    \toprule
+    \rowcolor{gray!15}\textbf{阶段} & \textbf{内容} \\
+    \midrule
+    本地采集 & 通过 Android 公开 API 和系统状态接口采集应用切换、通知、时间、网络、电量等信号。 \\
+    \dtr
+    隐私脱敏 & 将通知文本、位置、文件路径等敏感信息转成粗粒度标签或摘要，避免 raw data 进入决策层。 \\
+    \dtr
+    上下文聚合 & 将连续事件按时间窗口聚合为 StructuredContext，形成可输入模型或规则的统一上下文。 \\
+    \dtr
+    意图预测 & 由规则基线或云端模型输出候选 intent、置信度、风险等级和建议动作。 \\
+    \dtr
+    策略校验 & PolicyEngine 根据风险、置信度、能力等级和动作类型判断是否允许执行。 \\
+    \dtr
+    本地执行 & 只执行低风险优化，如 KeepAlive、PreWarm / Prefetch 的安全子集或记录 hint。 \\
+    \dtr
+    结果记录 & 通过 trace、audit record 和 golden replay 验证行为是否可复现、可审计。 \\
+    \bottomrule
+  \end{tabular}
+\end{dipecstable}
 
-\begin{table}[H]
-\centering
-\small
-\begin{tabular}{p{0.20\linewidth}p{0.68\linewidth}}
-\toprule
-阶段 & 内容 \\
-\midrule
-本地采集 & 通过 Android 公开 API 和系统状态接口采集应用切换、通知、时间、网络、电量等信号。 \\
-隐私脱敏 & 将通知文本、位置、文件路径等敏感信息转成粗粒度标签或摘要，避免 raw data 进入决策层。 \\
-上下文聚合 & 将连续事件按时间窗口聚合为 StructuredContext，形成可输入模型或规则的统一上下文。 \\
-意图预测 & 由规则基线或云端模型输出候选 intent、置信度、风险等级和建议动作。 \\
-策略校验 & PolicyEngine 根据风险、置信度、能力等级和动作类型判断是否允许执行。 \\
-本地执行 & 只执行低风险优化，如 KeepAlive、Prewarm/Prefetch 的安全子集或记录 hint。 \\
-结果记录 & 通过 trace、audit record 和 golden replay 验证行为是否可复现、可审计。 \\
-\bottomrule
-\end{tabular}
-\caption{中期阶段定义的系统闭环}
-\end{table}
+\section{平台选择}\label{sec:platform}
 
-\section{平台选择}
+中期阶段选择 Android 13 作为目标平台，主要基于稳定性和可验证性：
 
-中期阶段选择 Android 13 作为目标平台，主要基于稳定性和可验证性。
-
-\begin{itemize}
-  \item Android 13 的公开 API 相对成熟，UsageStatsManager、NotificationListenerService 和基础设备状态接口
-  足以验证第一阶段算法闭环 \cite{android-usagestats,android-notification}。
-  \item AOSP 环境便于后续从普通 APK 原型逐步下沉到 root、daemon 或 framework 层，测试更强的资源调度能力。
-  \item Rust 交叉编译和 Android NDK 工具链已经可以支持核心库复用，降低后续 Kotlin/Rust 混合开发风险。
+\begin{enumerate}[label=(\arabic*)]
+  \item Android 13 的公开 API 相对成熟，UsageStatsManager、NotificationListenerService 和基础设备状态接口足以验证第一阶段算法闭环 \cite{android-usagestats,android-notification}；
+  \item AOSP 环境便于后续从普通 APK 原型逐步下沉到 root、daemon 或 framework 层，测试更强的资源调度能力；
+  \item Rust 交叉编译和 Android NDK 工具链已经可以支持核心库复用，降低后续 Kotlin/Rust 混合开发风险；
   \item Android 12 之后的系统具备 eBPF 基础能力，为后续内核级事件观测保留扩展空间 \cite{aosp-ebpf}。
-\end{itemize}
+\end{enumerate}
 
 因此，中期设计采用渐进路线：先在普通应用权限内验证采集、脱敏和策略闭环；再在更高权限环境中评估真实资源收益。
 
-\section{架构分层}
+\section{架构分层}\label{sec:architecture}
 
 中期阶段完成了对 Rust workspace 的分层梳理，目标是避免上层业务逻辑污染底层 schema 和策略边界。
-当前工程中的主要模块职责如下：
+表 \ref{tab:layers} 给出了主要模块的职责。
 
-\begin{table}[H]
-\centering
-\small
-\begin{tabular}{p{0.20\linewidth}p{0.25\linewidth}p{0.45\linewidth}}
-\toprule
-层级 & 模块 & 职责 \\
-\midrule
-协议层 & aios-spec & 定义 RawEvent、SanitizedEvent、StructuredContext、Intent、Action 和 trace schema。 \\
-核心层 & aios-core & 实现隐私空气隙、窗口聚合、策略引擎、动作生命周期和 trace 验证逻辑。 \\
-采集层 & aios-collector & 接入 Android JSONL、本机系统采集、进程/系统状态读取和采集统计。 \\
-决策层 & aios-agent & 提供 RuleBased、Cloud/Mock 后端和 DecisionRouter。 \\
-动作层 & aios-action & 接收 AuthorizedAction，提供离线 adapter 和默认执行器骨架。 \\
-工具层 & aios-cli / aios-daemon & 提供 replay、pipeline、daemon runtime 和观测入口。 \\
-\bottomrule
-\end{tabular}
-\caption{中期阶段的工程分层}
-\end{table}
+\begin{dipecstable}{中期阶段的工程分层}{tab:layers}
+  \begin{tabular}{P{1.8cm}P{3.0cm}P{7.8cm}}
+    \toprule
+    \rowcolor{gray!15}\textbf{层级} & \textbf{模块} & \textbf{职责} \\
+    \midrule
+    协议层 & aios-spec & 定义 RawEvent、SanitizedEvent、StructuredContext、Intent、Action 和 trace schema。 \\
+    \dtr
+    核心层 & aios-core & 实现隐私空气隙、窗口聚合、策略引擎、动作生命周期和 trace 验证逻辑。 \\
+    \dtr
+    采集层 & aios-collector & 接入 Android JSONL、本机系统采集、进程/系统状态读取和采集统计。 \\
+    \dtr
+    决策层 & aios-agent & 提供 RuleBased、Cloud/Mock 后端和 DecisionRouter。 \\
+    \dtr
+    动作层 & aios-action & 接收 AuthorizedAction，提供离线 adapter 和默认执行器骨架。 \\
+    \dtr
+    工具层 & aios-cli / aios-daemon & 提供 replay、pipeline、daemon runtime 和观测入口。 \\
+    \bottomrule
+  \end{tabular}
+\end{dipecstable}
 
-这套分层体现了机制与策略分离。云端或 agent 层可以提出建议，但 schema、policy 和 action lifecycle 位于
-本地核心层，负责最终边界控制。
+这套分层体现了机制与策略分离。
+云端或 agent 层可以提出建议，但 schema、policy 和 action lifecycle 位于本地核心层，负责最终边界控制。
 
-\section{机制与策略分离}
+\section{机制与策略分离}\label{sec:separation}
 
-中期汇报中强调了“云端负责 policy-like 推理，本地保留 mechanism 执行权”的原则。更准确地说，模型层负责
-意图理解和候选动作生成；本地核心负责确定性审查和执行。
+中期汇报中强调了``云端负责 policy-like 推理，本地保留 mechanism 执行权''的原则。
+更准确地说，模型层负责意图理解和候选动作生成；本地核心负责确定性审查和执行。
+表 \ref{tab:separation} 从多个维度对比了两层职责。
 
-\begin{table}[H]
-\centering
-\small
-\begin{tabular}{p{0.20\linewidth}p{0.34\linewidth}p{0.34\linewidth}}
-\toprule
-维度 & 云端/决策后端 & 本地 Rust core \\
-\midrule
-性质 & 非确定性推理或规则判断 & 确定性状态机和策略校验 \\
-职责 & 意图理解、模式推断、候选动作生成 & 脱敏、上下文聚合、权限与风险校验、审计 \\
-状态 & 可失败、可降级、可替换 & 可回放、可测试、可追责 \\
-安全边界 & 只输出结构化建议 & 保留最终授权和执行权 \\
-\bottomrule
-\end{tabular}
-\caption{机制与策略分离}
-\end{table}
+\begin{dipecstable}{机制与策略分离}{tab:separation}
+  \begin{tabular}{P{2.2cm}P{5.0cm}P{5.0cm}}
+    \toprule
+    \rowcolor{gray!15}\textbf{维度} & \textbf{云端/决策后端} & \textbf{本地 Rust core} \\
+    \midrule
+    性质 & 非确定性推理或规则判断 & 确定性状态机和策略校验 \\
+    \dtr
+    职责 & 意图理解、模式推断、候选动作生成 & 脱敏、上下文聚合、权限与风险校验、审计 \\
+    \dtr
+    状态 & 可失败、可降级、可替换 & 可回放、可测试、可追责 \\
+    \dtr
+    安全边界 & 只输出结构化建议 & 保留最终授权和执行权 \\
+    \bottomrule
+  \end{tabular}
+\end{dipecstable}
 
-该原则避免了让 LLM 直接调用 Android API 或系统命令。即使模型输出了动作，本地也会根据风险等级、置信度、
-动作白名单和上下文 target 检查决定是否授权。
+该原则避免了让 LLM 直接调用 Android API 或系统命令。
+即使模型输出了动作，本地也会根据风险等级、置信度、动作白名单和上下文 target 检查决定是否授权。
 
-\section{已完成工作}
+\section{中期成果}\label{sec:achievements}
 
-\subsection{基础采集原型}
+\subsection{里程碑状态}\label{subsec:milestones}
+
+表 \ref{tab:milestones} 汇总了中期阶段主要里程碑的完成情况。
+
+\begin{dipecstable}{中期阶段主要里程碑}{tab:milestones}
+  \begin{tabular}{P{5.0cm}P{2.0cm}P{5.2cm}}
+    \toprule
+    \rowcolor{gray!15}\textbf{里程碑} & \textbf{状态} & \textbf{说明} \\
+    \midrule
+    核心事件类型与 schema 定义 & 完成 & \texttt{RawEvent}、\texttt{SanitizedEvent}、\texttt{StructuredContext}、\texttt{IntentBatch} 等类型已定型。 \\
+    \dtr
+    \texttt{PrivacyAirGap} 隐私脱敏 & 完成 & 敏感字段不进入后续后端，回归测试覆盖泄漏场景。 \\
+    \dtr
+    \texttt{WindowAggregator} 窗口聚合 & 完成 & 事件序列可聚合为统一上下文。 \\
+    \dtr
+    RuleBased 规则意图生成 & 完成 & 本地规则基线可输出候选意图。 \\
+    \dtr
+    \texttt{PolicyEngine} 策略校验 & 完成 & 风险、置信度、capability、target 检查已落地。 \\
+    \dtr
+    \texttt{ActionLifecycle} 动作执行骨架 & 完成 & proposal、verdict、dispatch、终态审计链路已通。 \\
+    \dtr
+    \texttt{ActionBus} 动作总线 & 完成 & 采集与处理异步解耦。 \\
+    \dtr
+    GoldenTrace / replay 框架 & 骨架完成 & 数据结构与离线 replay 方向已确定，待扩充数据集并纳入回归。 \\
+    \dtr
+    Android 公开 API 采集验证 & 完成 & UsageStats、NotificationListener、设备状态已原型验证。 \\
+    \dtr
+    Android action bridge & 原型中 & 动作执行骨架已具备，真实 bridge 待结题阶段强化。 \\
+    \dtr
+    云端 LLM 后端 & 接口设计 & 已定义 \texttt{CloudLlmBackend} 与回退路径，真实云端接入待后续完成。 \\
+    \dtr
+    eBPF / Binder 高权限采集 & 后续阶段 & 当前仅留扩展接口，不作为中期默认目标。 \\
+    \bottomrule
+  \end{tabular}
+\end{dipecstable}
+
+\subsection{基础采集原型}\label{subsec:collection}
 
 Android 侧已经围绕公开 API 验证基础采集方向：
 
 \begin{itemize}
-  \item 使用 UsageStatsManager 采集应用使用和前后台切换信息。
-  \item 使用 NotificationListenerService 采集通知来源、类别、channel 和出现/撤销事件。
-  \item 采集基础设备上下文，如时间、网络、电量和屏幕状态 \cite{android-battery,android-power}。
+  \item 使用 UsageStatsManager 采集应用使用和前后台切换信息；
+  \item 使用 NotificationListenerService 采集通知来源、类别、channel 和出现/撤销事件；
+  \item 采集基础设备上下文，如时间、网络、电量和屏幕状态 \cite{android-battery,android-power}；
   \item 通过 append-only JSONL 或等价 trace 形式，将 Android 事件转入 Rust 侧处理链路。
 \end{itemize}
 
-这些采集源可以支撑第一阶段用户意图判断。中期阶段尚未把 Accessibility、Binder trace 或 eBPF 作为主路径，
-而是保留为后续增强方向 \cite{android-accessibility}。
+这些采集源可以支撑第一阶段用户意图判断。
+中期阶段尚未把 Accessibility、Binder trace 或 eBPF 作为主路径，而是保留为后续增强方向 \cite{android-accessibility}。
 
-\subsection{Rust 核心链路}
+\subsection{Rust 核心链路}\label{subsec:rust-core}
 
 中期阶段 Rust 侧已经完成最小闭环所需的主要模块：
 
 \begin{itemize}
-  \item \textbf{事件模型}：在 aios-spec 中定义 RawEvent、SanitizedEvent、StructuredContext、IntentBatch、
-  SuggestedAction 和 trace 相关类型。
-  \item \textbf{隐私脱敏}：PrivacyAirGap 将原始事件转换为脱敏事件，确保通知正文、文件路径等敏感字段不会进入后续后端。
-  \item \textbf{窗口聚合}：WindowAggregator 将事件按时间窗口组织为 StructuredContext，并生成 ContextSummary。
-  \item \textbf{意图生成}：规则后端/模拟后端可以根据通知、应用切换、屏幕状态、系统状态等信号生成候选 intent。
-  \item \textbf{策略校验}：PolicyEngine 根据风险、置信度和动作类型过滤不安全建议。
-  \item \textbf{动作执行骨架}：DefaultActionExecutor 和 OfflineAdapter 提供动作执行与模拟接口。
+  \item \textbf{事件模型}：在 aios-spec 中定义 RawEvent、SanitizedEvent、StructuredContext、IntentBatch、SuggestedAction 和 trace 相关类型；
+  \item \textbf{隐私脱敏}：PrivacyAirGap 将原始事件转换为脱敏事件，确保通知正文、文件路径等敏感字段不会进入后续后端；
+  \item \textbf{窗口聚合}：WindowAggregator 将事件按时间窗口组织为 StructuredContext，并生成 ContextSummary；
+  \item \textbf{意图生成}：规则后端/模拟后端可以根据通知、应用切换、屏幕状态、系统状态等信号生成候选 intent；
+  \item \textbf{策略校验}：PolicyEngine 根据风险、置信度和动作类型过滤不安全建议；
+  \item \textbf{动作执行骨架}：DefaultActionExecutor 和 OfflineAdapter 提供动作执行与模拟接口；
   \item \textbf{动作总线}：ActionBus 使用 channel 解耦采集、处理和执行链路。
 \end{itemize}
 
-\subsection{测试与验证}
+\subsection{测试与验证}\label{subsec:testing}
 
-中期阶段已经建立了覆盖核心模块的测试体系。测试重点包括：
+中期阶段已经建立了覆盖核心模块的测试体系，重点包括：
 
 \begin{itemize}
-  \item 隐私脱敏：验证 raw PII 不进入 SanitizedEvent 或 StructuredContext。
-  \item 窗口聚合：验证 foreground apps、notified apps、semantic hints、system status summary 的构建。
-  \item 策略引擎：验证风险等级、置信度、动作白名单和 target 检查。
-  \item 动作执行：验证不同 action type 的执行骨架和错误处理。
-  \item 模拟决策：验证多类信号能被转为 intent/action。
+  \item 隐私脱敏：验证 raw PII 不进入 SanitizedEvent 或 StructuredContext；
+  \item 窗口聚合：验证 foreground apps、notified apps、semantic hints、system status summary 的构建；
+  \item 策略引擎：验证风险等级、置信度、动作白名单和 target 检查；
+  \item 动作执行：验证不同 action type 的执行骨架和错误处理；
+  \item 模拟决策：验证多类信号能被转为 intent/action；
   \item 动作总线：验证采集与处理之间的异步边界。
 \end{itemize}
 
-GoldenTrace 数据结构和离线 replay 方向已经确定。中期之后，项目需要把它从测试骨架推进为稳定的回归基线。
+GoldenTrace 数据结构和离线 replay 方向已经确定。
+中期之后，项目需要把它从测试骨架推进为稳定的回归基线。
 
-\section{为什么需要这个系统}
+\section{研究背景与问题动机}\label{sec:motivation}
 
-\subsection{移动端体验痛点}
+\subsection{移动端体验痛点}\label{subsec:pain-point}
 
-移动端用户经常在聊天、浏览器、文档、开发工具或办公应用之间切换。传统系统通常在资源压力出现后才被动回收或
-重建进程；当用户再次打开应用时，Dex 加载、资源解析、数据库初始化和后台状态恢复都可能造成可感知延迟。
+移动端用户经常在聊天、浏览器、文档、开发工具或办公应用之间切换。
+传统系统通常在资源压力出现后才被动回收或重建进程；当用户再次打开应用时，Dex 加载、资源解析、数据库初始化和后台状态恢复都可能造成可感知延迟。
 
-\project{} 的思路是把部分冷启动成本提前：在高置信度场景中，系统可以保持短窗口内的关键进程或缓存资源，
-将部分冷启动转为热启动。中期阶段的目标不是立刻证明所有场景都有收益，而是先建立能够安全提出和审查这类动作的
-系统框架。FALCON 等移动端预启动工作说明，使用位置、时间等上下文预测 app 启动并做 prelaunch 是可研究的
-系统优化方向 \cite{falcon}。
+DiPECS 的思路是把部分冷启动成本提前：在高置信度场景中，系统可以保持短窗口内的关键进程或缓存资源，将部分冷启动转为热启动。
+中期阶段的目标不是立刻证明所有场景都有收益，而是先建立能够安全提出和审查这类动作的系统框架。
+FALCON 等移动端预启动工作说明，使用位置、时间等上下文预测 app 启动并做 prelaunch 是可研究的系统优化方向 \cite{falcon}。
 
-\subsection{语义鸿沟}
+\subsection{语义鸿沟}\label{subsec:semantic-gap}
 
-Android 能提供大量低层事件，例如包名、时间戳、UID、PID、通知 channel、网络和内存状态，但系统并不知道用户
-为什么切换应用、某条通知是否重要、某个进程是否值得保留。换言之，系统知道 What/When，却缺少 Why 和
-What-Inside。
+Android 能提供大量低层事件，例如包名、时间戳、UID、PID、通知 channel、网络和内存状态，但系统并不知道用户为什么切换应用、某条通知是否重要、某个进程是否值得保留。
+换言之，系统知道 What/When，却缺少 Why 和 What-Inside。
 
-\project{} 尝试在 PID 级事件和 intent 级语义之间建立中间层：用脱敏上下文和规则/模型生成候选意图，再用本地
-策略决定动作。这是项目相对普通日志采集器的主要区别。
+DiPECS 尝试在 PID 级事件和 intent 级语义之间建立中间层：用脱敏上下文和规则/模型生成候选意图，再用本地策略决定动作。
+这是项目相对普通日志采集器的主要区别。
 
-\section{技术路线}
+\section{技术路线}\label{sec:roadmap}
 
-\subsection{Android 信息来源}
+\subsection{Android 信息来源}\label{subsec:info-source}
 
-中期设计把信息来源分为三层：
+中期设计把信息来源分为三层，见表 \ref{tab:info-source}。
 
-\begin{table}[H]
-\centering
-\small
-\begin{tabular}{p{0.24\linewidth}p{0.62\linewidth}}
-\toprule
-层级 & 代表来源 \\
-\midrule
-公开 API & UsageStats、NotificationListener、Battery、Network、Screen state。 \\
-系统特权/开发者接口 & Accessibility、ADB、dumpsys、Shizuku 或 root 环境。 \\
-内核事件 & eBPF、Binder trace、文件 I/O、进程生命周期和内存压力事件。 \\
-\bottomrule
-\end{tabular}
-\caption{中期规划中的 Android 信息来源}
-\end{table}
+\begin{dipecstable}{中期规划中的 Android 信息来源}{tab:info-source}
+  \begin{tabular}{P{3.0cm}P{8.6cm}}
+    \toprule
+    \rowcolor{gray!15}\textbf{层级} & \textbf{代表来源} \\
+    \midrule
+    公开 API & UsageStats、NotificationListener、Battery、Network、Screen state。 \\
+    \dtr
+    系统特权/开发者接口 & Accessibility、ADB、dumpsys、Shizuku 或 root 环境。 \\
+    \dtr
+    内核事件 & eBPF、Binder trace、文件 I/O、进程生命周期和内存压力事件。 \\
+    \bottomrule
+  \end{tabular}
+\end{dipecstable}
 
 中期原型主要落在第一层，确保普通授权环境下可运行；第二、三层作为后续 AOSP/root 环境验证方向。
 
-\subsection{多源信息融合}
+\subsection{多源信息融合}\label{subsec:fusion}
 
-多源信息融合的核心是统一 schema。不同采集源输出格式不同、粒度不同、隐私风险不同，必须先归一化为 RawEvent，
-再通过 PrivacyAirGap 进入 SanitizedEvent。窗口聚合之后，DecisionRouter 和 PolicyEngine 只面对统一的
-StructuredContext，不需要理解每个采集源的原始细节。
+多源信息融合的核心是统一 schema。
+不同采集源输出格式不同、粒度不同、隐私风险不同，必须先归一化为 RawEvent，再通过 PrivacyAirGap 进入 SanitizedEvent。
+窗口聚合之后，DecisionRouter 和 PolicyEngine 只面对统一的 StructuredContext，不需要理解每个采集源的原始细节。
 
-这种设计使系统可以逐步扩展数据源。新增采集源只要能映射到 RawEvent 或 CollectorEnvelope，就能复用脱敏、
-聚合、决策和审计链路。
+这种设计使系统可以逐步扩展数据源。
+新增采集源只要能映射到 RawEvent 或 CollectorEnvelope，就能复用脱敏、聚合、决策和审计链路。
 
-\subsection{资源调度策略}
+\subsection{资源调度策略}\label{subsec:resource-policy}
 
-中期阶段定义了三类低风险动作方向：
+中期阶段定义了三类低风险动作方向，见表 \ref{tab:actions}。
 
-\begin{table}[H]
-\centering
-\small
-\begin{tabular}{p{0.20\linewidth}p{0.22\linewidth}p{0.46\linewidth}}
-\toprule
-动作方向 & 触发条件 & 内容 \\
-\midrule
-KeepAlive & 高置信度、低风险 & 短窗口保护相关进程或本系统任务，减少重建成本。 \\
-Prewarm/Prefetch & 中高置信度、target 明确 & 预读可访问资源或预热本应用/安全资源。 \\
-Hint/NoOp & 低置信度或风险不明 & 只记录候选，不做实际资源占用。 \\
-\bottomrule
-\end{tabular}
-\caption{中期阶段定义的动作方向}
-\end{table}
+\begin{dipecstable}{中期阶段定义的动作方向}{tab:actions}
+  \begin{tabular}{P{2.4cm}P{3.0cm}P{6.8cm}}
+    \toprule
+    \rowcolor{gray!15}\textbf{动作方向} & \textbf{触发条件} & \textbf{内容} \\
+    \midrule
+    KeepAlive & 高置信度、低风险 & 短窗口保护相关进程或本系统任务，减少重建成本。 \\
+    \dtr
+    PreWarm / Prefetch & 中高置信度、target 明确 & 预读可访问资源或预热本应用/安全资源。 \\
+    \dtr
+    Hint/NoOp & 低置信度或风险不明 & 只记录候选，不做实际资源占用。 \\
+    \bottomrule
+  \end{tabular}
+\end{dipecstable}
 
-实际执行时，动作必须经过 policy 检查。中期阶段更关注动作生命周期和策略边界，而不是直接追求强系统控制能力。
+实际执行时，动作必须经过 policy 检查。
+中期阶段更关注动作生命周期和策略边界，而不是直接追求强系统控制能力。
 
-\section{阶段性成果}
+\section{当前局限}\label{sec:limitations}
 
-到中期节点，项目已经完成以下成果：
+中期阶段仍存在以下局限：
 
-\begin{itemize}
-  \item 明确了 Android 端侧 AIOS 原型的研究定位和系统边界。
-  \item 建立了 Rust workspace 的协议层、核心层、采集层、决策层、动作层和工具层划分。
-  \item 实现了 RawEvent 到 SanitizedEvent，再到 StructuredContext 的核心数据流。
-  \item 建立了 PolicyEngine 和 ActionLifecycle 的早期形态，保证模型建议不会直接执行。
-  \item 完成了动作执行骨架和离线 adapter，为 replay 和测试打下基础。
-  \item 形成了基于测试和 golden trace 的可复现验证方向。
-\end{itemize}
-
-这些成果说明项目已经越过单纯方案设计阶段，进入可运行原型阶段。
-
-\section{存在问题}
-
-中期阶段仍存在以下问题：
-
-\begin{itemize}
-  \item Android 到 Rust 的生产入口仍需进一步稳定，JNI、JSONL 或 daemon 入口需要明确主路径。
-  \item 云端 LLM 当时仍处于 mock/proxy 或接口设计阶段，真实云端后端需要后续接入。
-  \item GoldenTrace 和 replay 还需要扩充数据集，覆盖通勤、学习、社交、办公等典型场景。
-  \item 真实 Android action bridge 尚不完整，许多动作只能离线模拟或本地 stub。
+\begin{enumerate}[label=(\arabic*)]
+  \item Android 到 Rust 的生产入口仍需进一步稳定，JNI、JSONL 或 daemon 入口需要明确主路径；
+  \item 云端 LLM 当时仍处于 mock/proxy 或接口设计阶段，真实云端后端需要后续接入；
+  \item GoldenTrace 和 replay 还需要扩充数据集，覆盖通勤、学习、社交、办公等典型场景；
+  \item 真实 Android action bridge 尚不完整，许多动作只能离线模拟或本地 stub；
   \item 内核级信息抽取、eBPF、Binder trace 和文件热点画像还停留在后续 root/AOSP 阶段。
-\end{itemize}
+\end{enumerate}
 
-\section{下一阶段计划}
+\section{后续计划}\label{sec:future}
 
-中期之后的计划包括：
+中期之后的工作计划包括：
 
-\begin{enumerate}
-  \item 完成 Android 原型端到端演示：采集、脱敏、预测、策略校验和本地动作记录。
-  \item 建立稳定 Golden Trace 数据集，并将 replay/audit hash 纳入回归测试。
-  \item 对比无预热、启发式规则和模型预测三种策略的动作数量、拒绝率、延迟收益和资源开销。
-  \item 接入真实云端 LLM 后端，同时保证网络失败时可以回退到 RuleBased 或 NoOp。
+\begin{enumerate}[label=(\arabic*)]
+  \item 完成 Android 原型端到端演示：采集、脱敏、预测、策略校验和本地动作记录；
+  \item 建立稳定 Golden Trace 数据集，并将 replay/audit hash 纳入回归测试；
+  \item 对比无预热、启发式规则和模型预测三种策略的动作数量、拒绝率、延迟收益和资源开销；
+  \item 接入真实云端 LLM 后端，同时保证网络失败时可以回退到 RuleBased 或 NoOp；
   \item 在权限更高的环境中验证 eBPF、Binder 和文件预读等增强能力，但不把它们作为普通 APK 阶段的前提。
 \end{enumerate}
 
-\section{核心贡献}
+\section{结论}\label{sec:conclusion}
 
-中期阶段形成的核心贡献可以概括为四点：
+中期阶段，DiPECS 已经完成从概念到最小可执行原型的主要跨越。
+项目证明了在 Android 公开 API 和 Rust 核心链路基础上，可以建立一条可脱敏、可聚合、可决策、可审查、可回放的数据流。
+接下来的关键不再是单纯增加更多规则，而是把 Android 真实输入、云端后端、golden trace 和 Android-safe 动作桥接接到同一条链路上，并用实验指标验证预测与优化是否真正带来收益。
 
-\begin{itemize}
-  \item \textbf{隐私 Air-Gap 架构}：敏感信息在本地确定性脱敏，后续决策后端只看到结构化上下文。
-  \item \textbf{确定性状态机和回放方向}：即使引入 LLM，系统仍能通过 trace 和 audit 记录复现关键行为。
-  \item \textbf{多源信息融合框架}：将 API 层、系统状态和未来内核事件统一到同一事件 schema。
-  \item \textbf{机制-策略分离}：模型提出建议，本地保留执行权，兼顾智能性和系统安全边界。
-\end{itemize}
-
-\section{结论}
-
-中期阶段，\project{} 已经完成从概念到最小可执行原型的主要跨越。项目证明了在 Android 公开 API 和 Rust
-核心链路基础上，可以建立一条可脱敏、可聚合、可决策、可审查、可回放的数据流。接下来的关键不再是单纯增加
-更多规则，而是把 Android 真实输入、云端后端、golden trace 和 Android-safe 动作桥接接到同一条链路上，
-并用实验指标验证预测与优化是否真正带来收益。
-
-\begin{thebibliography}{99}
-
-\bibitem{android-usagestats}
-Android Developers.
-\newblock UsageStatsManager.
-\newblock \href{https://developer.android.com/reference/android/app/usage/UsageStatsManager}{Android API reference}.
-
-\bibitem{android-notification}
-Android Developers.
-\newblock NotificationListenerService.
-\newblock \href{https://developer.android.com/reference/android/service/notification/NotificationListenerService}{Android API reference}.
-
-\bibitem{android-battery}
-Android Developers.
-\newblock BatteryManager.
-\newblock \href{https://developer.android.com/reference/android/os/BatteryManager}{Android API reference}.
-
-\bibitem{android-power}
-Android Developers.
-\newblock PowerManager.
-\newblock \href{https://developer.android.com/reference/android/os/PowerManager}{Android API reference}.
-
-\bibitem{android-accessibility}
-Android Developers.
-\newblock AccessibilityService.
-\newblock \href{https://developer.android.com/reference/android/accessibilityservice/AccessibilityService}{Android API reference}.
-
-\bibitem{aosp-ebpf}
-Android Open Source Project.
-\newblock Extend the kernel with eBPF.
-\newblock \href{https://source.android.com/docs/core/architecture/kernel/bpf}{AOSP documentation}.
-
-\bibitem{falcon}
-Tingxin Yan et al.
-\newblock FALCON: Fast App Launching via Predictive User Context.
-\newblock \href{https://www.microsoft.com/en-us/research/publication/fast-app-launching-for-mobile-devices-using-predictive-user-context/}{Microsoft Research page}.
-
-\end{thebibliography}
+\bibliographystyle{unsrtnat}
+\bibliography{../refs}
 
 \end{document}

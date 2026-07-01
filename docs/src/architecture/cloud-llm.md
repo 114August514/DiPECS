@@ -137,11 +137,11 @@ cargo test -p aios-agent --lib cloud_llm::cloud_bench_tests::latency -- --ignore
 
 ## 已有评估数据快照
 
-- `data/evaluation/cloud-latency-20260716-084110.json`
+- `data/evaluation/cloud-latency-20260701-084110.json`
   - DeepSeek `deepseek-v4-flash`
   - 5 轮 `morning-routine`
   - p50 ≈ 11.3 s，p95 ≈ 13.0 s，成功率 100%
-- `data/evaluation/cloud-scenarios-20260716-084010.json`
+- `data/evaluation/cloud-scenarios-20260701-084010.json`
   - 4 个场景全部成功
 
 ## 关键设计点

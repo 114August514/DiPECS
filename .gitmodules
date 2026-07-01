@@ -1,3 +1,6 @@
 [submodule "lab4/third_party/llama.cpp"]
 	path = lab4/third_party/llama.cpp
 	url = https://github.com/ggml-org/llama.cpp
+[submodule "TracePilot"]
+	path = third_party/TracePilot
+	url = https://github.com/OSH-2026/TracePilot.git

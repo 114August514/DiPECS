@@ -142,6 +142,7 @@ nav:
       - 中期报告: research/deliverables/midterm.md
       - 结题报告: research/deliverables/final.md
       - Peer Review: research/deliverables/peer-review.md
+      - 讲稿: research/deliverables/peer-review-script.md
     - 技术调研:
       - AIOS 参考架构: research/background/aios-arch.md
       - Android 数据源能力调研: research/background/android-data-sources.md

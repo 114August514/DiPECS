@@ -18,7 +18,7 @@
 \usepackage{multirow}
 \usepackage{makecell}
 \usepackage{caption}
-\usepackage{fontspec}
+\usepackage{titlesec}
 \usepackage{fancyhdr}
 \usepackage{lmodern}
 \usepackage{lastpage}
@@ -33,23 +33,6 @@
 % Custom column types.
 \newcolumntype{P}[1]{>{\raggedright\arraybackslash}p{#1}}
 \newcolumntype{Q}[1]{>{\centering\arraybackslash}p{#1}}
-
-% CJK font: prefer STSong, fallback to Noto Serif CJK SC, then SimSun.
-\IfFontExistsTF{STSong}{%
-  \let\songti\relax
-  \newCJKfontfamily\songti{STSong}[AutoFakeBold]
-  \setCJKmainfont{STSong}[AutoFakeBold]
-}{%
-  \IfFontExistsTF{Noto Serif CJK SC}{%
-    \let\songti\relax
-    \newCJKfontfamily\songti{Noto Serif CJK SC}[AutoFakeBold]
-    \setCJKmainfont{Noto Serif CJK SC}[AutoFakeBold]
-  }{%
-    \let\songti\relax
-    \newCJKfontfamily\songti{SimSun}[AutoFakeBold]
-    \setCJKmainfont{SimSun}[AutoFakeBold]
-  }%
-}
 
 \setlength{\headheight}{14pt}
 \onehalfspacing

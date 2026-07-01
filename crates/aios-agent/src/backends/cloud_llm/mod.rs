@@ -379,9 +379,8 @@ mod cloud_bench_tests {
         let notified: Vec<String> = notified_apps.into_iter().collect();
         let hints: Vec<SemanticHint> = all_hints.into_iter().collect();
         let file_activity: Vec<(ExtensionCategory, u32)> = hints
-            .iter()
-            .any(|h| *h == SemanticHint::FileMention)
-            .then(|| (ExtensionCategory::Unknown, 1u32))
+            .contains(&SemanticHint::FileMention)
+            .then_some((ExtensionCategory::Unknown, 1u32))
             .into_iter()
             .collect();
 

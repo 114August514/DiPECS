@@ -31,6 +31,7 @@ dependencies = [
  "aios-core",
  "aios-spec",
  "reqwest",
+ "rustls",
  "serde",
  "serde_json",
  "tracing",

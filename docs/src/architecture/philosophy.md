@@ -2,7 +2,7 @@
 
 > Status: Current  
 > Last verified: 2026-07-01  
-> 本页描述架构原则。当前可运行实现以 [当前实现总览](../current/overview.md)、[动作治理](../current/action-governance.md) 和源码为准。
+> 本页描述架构原则。当前可运行实现以 [当前实现总览](../architecture/index.md)、[动作治理](../architecture/action-governance.md) 和源码为准。
 
 ## OS = 对象 + API
 

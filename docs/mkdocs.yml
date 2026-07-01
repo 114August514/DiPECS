@@ -104,13 +104,31 @@ markdown_extensions:
 
 nav:
   - 项目概览: index.md
-  - 当前实现:
-    - current/overview.md
-    - 数据流: current/data-flow.md
-    - Daemon 运行时: current/runtime.md
-    - 动作治理: current/action-governance.md
-    - Android 桥接: current/android-bridge.md
-    - Replay 与审计: current/replay-audit.md
+  - 架构与实现:
+    - architecture/index.md
+    - 设计哲学: architecture/philosophy.md
+    - 代码地图: architecture/crates.md
+    - 状态机: architecture/states.md
+    - 数据流: architecture/data-flow.md
+    - 管线与运行时: architecture/pipeline.md
+    - 动作治理: architecture/action-governance.md
+    - 动作执行: architecture/action-execution.md
+    - 验证与审计: architecture/verification.md
+  - Android:
+    - 采集器: android/collector.md
+    - Action Bridge: android/action-bridge.md
+    - 动作能力边界: android/action-boundary.md
+    - 安全与隐私边界: android/security-privacy.md
+    - 真机/模拟器验证: android/real-device-validation.md
+  - RFC 与发布记录:
+    - RFC 流程: rfc/process.md
+    - RFC-0001 分层采集与决策路由重构: rfc/0001-layered-collection-and-decision-routing.md
+    - RFC-0002 Action Bus Governance: rfc/0002-action-bus-governance.md
+    - 发布记录:
+      - v0.2: rfc/releases/v0.2.md
+      - RuleBased 能力对齐: rfc/releases/rule-based-capability-conformance.md
+  - 评估与测试:
+    - 模拟器评估套件: evaluation/emulator-evaluation-suite.md
   - 调研分析:
     - research/index.md
     - 交付文档:
@@ -130,22 +148,6 @@ nav:
       - Slidev 源码: slides/midterm/slides.md
       - 答辩 Q&A: slides/midterm/QA.md
   - 参考资料: refs/index.md
-  - 系统设计:
-    - 架构概览: design/overview.md
-    - 设计哲学: design/philosophy.md
-    - 代码地图: design/crates-map.md
-    - Daemon 架构设计: design/daemon-architecture.md
-    - Android 接口最小可运行边界: design/android-interface-mvp.md
-    - Android 真机验证手册: design/android-real-device-validation.md
-    - Android 安全与隐私边界: design/android-security-privacy.md
-    - Android 动作能力边界: design/android-action-boundary.md
-    - Android 动作实现手册: design/android-action-implementation.md
-    - 状态机设计: design/states.md
-    - 版本发布: design/releases/v0.2.md
-    - RFC 提案:
-      - design/rfc/process.md
-      - RFC-0001 分层采集与决策路由重构: design/rfc/0001-layered-collection-and-decision-routing.md
-      - RFC-0002 Action Bus Governance: design/rfc/0002-action-bus-governance.md
   - 团队与开发:
     - 团队分工: team/roles.md
     - 会议纪要:

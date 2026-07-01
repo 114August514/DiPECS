@@ -1,10 +1,38 @@
-# Daemon 架构
+# 管线与运行时
 
 > Status: Current  
-> Last verified: 2026-06-30  
+> Last verified: 2026-07-01  
 > Runtime entry: `crates/aios-daemon/src/lib.rs`
 
-`dipecsd` 负责把采集、脱敏、聚合、决策、策略、动作治理和 runtime trace 组装成在线管线。它不定义协议，不直接实现 Android API，也不绕过 core 的授权状态机。
+`dipecsd` 是 DiPECS 在线管线的宿主。它负责把采集、脱敏、聚合、决策、策略、
+动作治理和 runtime trace 组装成在线管线，不定义协议，不直接实现 Android API，
+也不绕过 `aios-core` 的授权状态机。
+
+入口是 `crates/aios-daemon/src/main.rs`，实际逻辑在 `crates/aios-daemon/src/lib.rs`。
+
+## 启动方式
+
+前台开发模式：
+
+```bash
+RUST_LOG=info cargo run -p aios-daemon --bin dipecsd -- --no-daemon
+```
+
+接入 Android JSONL：
+
+```bash
+RUST_LOG=info cargo run -p aios-daemon --bin dipecsd -- \
+  --no-daemon \
+  --android-trace-jsonl path/to/actions.jsonl \
+  --trace-output data/evaluation/runtime.ndjson
+```
+
+等价环境变量：
+
+```bash
+DIPECS_ANDROID_TRACE_JSONL=path/to/actions.jsonl
+DIPECS_RUNTIME_TRACE_OUTPUT=data/evaluation/runtime.ndjson
+```
 
 ## 运行图
 
@@ -31,10 +59,11 @@
 │    ActionBus.raw_events_rx                                   │
 │        -> PrivacyAirGap                                      │
 │        -> WindowAggregator                                   │
-│        -> process_window                                     │
-│        -> DecisionRouter                                     │
+│        -> ModelMemoryStore.model_input(ctx)                  │
+│        -> DecisionRouter.evaluate_model_input                │
 │        -> ActionLifecycle                                    │
-│        -> DefaultActionExecutor                              │
+│        -> ModelMemoryStore.update()                          │
+│        -> ProfileSummarizer                                  │
 │        -> RuntimeTraceRecorder                               │
 └──────────────────────────────────────────────────────────────┘
 ```
@@ -52,8 +81,6 @@
 
 Android JSONL 只有在传入 `--android-trace-jsonl` 或设置 `DIPECS_ANDROID_TRACE_JSONL` 时启用。
 
-## Processing task
-
 processing loop 等待三类事件：
 
 1. shutdown signal
@@ -68,29 +95,37 @@ RawEvent + SourceTier
   -> window.push(SanitizedEvent)
 ```
 
-窗口到期或 flush 时：
+## 窗口处理
+
+窗口关闭后执行：
 
 ```text
 WindowAggregator.close(...)
   -> StructuredContext
-  -> pipeline::process_window(...)
+  -> ModelMemoryStore.model_input(ctx)
+  -> DecisionRouter.evaluate_model_input(input)
+  -> CapabilityLevel::for_route(route)
+  -> ActionLifecycle.run(window_ordinal, batch, route, backend_error, capability, ctx)
+  -> ModelMemoryStore.update(...)
 ```
 
-## Window processing
+`process_window` 会统计：
 
-`process_window` 只处理一个已关闭窗口：
+- 关闭窗口的事件数
+- 原始事件计数
+- decision route / model / latency / error
+- action audit records
+- executed / denied / failed 数量
+- model memory 更新（行为画像轮转、近期决策记录、反馈推导）
 
-```text
-router.evaluate(ctx)
-capability = CapabilityLevel::for_route(route)
-lifecycle.run(window_ordinal, batch, route, backend_error, capability, ctx)
-```
+## 默认周期
 
-返回的 `AuditRecord` 会用于：
-
-- 统计 executed / denied / failed
-- tracing log
-- optional runtime NDJSON
+| 项 | 周期 |
+| --- | --- |
+| Binder poll loop sleep | 100 ms |
+| Android JSONL poll | 500 ms |
+| system snapshot | 30 s |
+| context window | 10 s |
 
 ## Runtime trace
 
@@ -102,15 +137,16 @@ lifecycle.run(window_ordinal, batch, route, backend_error, capability, ctx)
 - decision route / model / rationale / error
 - audit records
 
-## 当前未实现或预留
+## 当前限制
 
-- Binder/eBPF：`BinderProbe` 没有加载 BPF ELF，没有 attach tracepoint，没有读取 perf/ring buffer。
-- fanotify：`RawEvent::FileSystemAccess` 存在，但 daemon 未接入采集器。
-- JNI ingress：文档历史上提到过，但当前生产入口是 JSONL tail。
+- `BinderProbe` 当前没有真实 eBPF 程序加载和 ring/perf buffer 读取逻辑；`poll()` 返回空。
+- fanotify / 文件系统采集器未接入 daemon loop。
+- daemon 直接运行在普通 Linux 上时，只能读取宿主 `/proc` 和系统 fallback 信息。
+- Android JSONL 不是自动发现路径，必须通过参数或环境变量提供。
 - daemon 内部不会直接生成 `AuthorizedAction`；这必须经过 `ActionLifecycle`。
 
 ## 相关文档
 
-- [当前 Daemon 运行时](../current/runtime.md)
-- [数据流](../current/data-flow.md)
-- [动作治理](../current/action-governance.md)
+- [数据流](data-flow.md)
+- [动作治理](action-governance.md)
+- [验证与审计](verification.md)

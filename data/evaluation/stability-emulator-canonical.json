@@ -1,0 +1,91 @@
+{
+  "schema_version": "dipecs.stability.v1",
+  "dataset_id": "stability-emulator-20260701-161316",
+  "status": "measured_android_emulator",
+  "environment": {
+    "device": "Android Studio emulator",
+    "package": "com.dipecs.collector",
+    "duration_minutes": 4,
+    "sample_interval_secs": 30,
+    "total_samples": 8,
+    "adb_serial": "emulator-5554"
+  },
+  "results": {
+    "rss_first_mb": 141.344,
+    "rss_last_mb": 135.934,
+    "rss_delta_mb": -5.41,
+    "rss_growth_per_hour_mb": 6.079,
+    "pss_first_mb": 35.381,
+    "pss_last_mb": 28.014,
+    "pss_delta_mb": -7.367,
+    "pss_growth_per_hour_mb": 3.912,
+    "avg_cpu_pct": 0.95,
+    "samples": [
+      {
+        "sample_index": 0,
+        "elapsed_secs": 0,
+        "cpu_pct": 0.0,
+        "rss_mb": 141.344,
+        "pss_mb": 35.381
+      },
+      {
+        "sample_index": 1,
+        "elapsed_secs": 31,
+        "cpu_pct": 0.0,
+        "rss_mb": 135.484,
+        "pss_mb": 27.761
+      },
+      {
+        "sample_index": 2,
+        "elapsed_secs": 61,
+        "cpu_pct": 0.0,
+        "rss_mb": 135.617,
+        "pss_mb": 27.792
+      },
+      {
+        "sample_index": 3,
+        "elapsed_secs": 92,
+        "cpu_pct": 0.0,
+        "rss_mb": 135.82,
+        "pss_mb": 27.956
+      },
+      {
+        "sample_index": 4,
+        "elapsed_secs": 122,
+        "cpu_pct": 0.0,
+        "rss_mb": 135.887,
+        "pss_mb": 27.976
+      },
+      {
+        "sample_index": 5,
+        "elapsed_secs": 153,
+        "cpu_pct": 0.0,
+        "rss_mb": 135.934,
+        "pss_mb": 28.022
+      },
+      {
+        "sample_index": 6,
+        "elapsed_secs": 183,
+        "cpu_pct": 7.6,
+        "rss_mb": 135.867,
+        "pss_mb": 27.951
+      },
+      {
+        "sample_index": 7,
+        "elapsed_secs": 214,
+        "cpu_pct": 0.0,
+        "rss_mb": 135.934,
+        "pss_mb": 28.014
+      }
+    ]
+  },
+  "thresholds": {
+    "max_rss_growth_per_hour_mb": 50.0,
+    "max_pss_growth_per_hour_mb": 20.0,
+    "max_avg_cpu_pct": 10.0
+  },
+  "conclusion": {
+    "accepted": true,
+    "note": "No significant memory leak detected"
+  }
+}

@@ -7,7 +7,7 @@
 use serde_json::Value;
 
 const DATA: &str =
-    include_str!("../../../data/evaluation/ux-metrics-emulator-20260701-150110.json");
+    include_str!("../../../data/evaluation/ux-metrics-emulator-20260701-151856.json");
 const EPSILON: f64 = 0.011;
 
 #[derive(Debug, Clone)]
@@ -43,6 +43,9 @@ fn number_or_zero(value: &Value, key: &str) -> f64 {
 }
 
 fn avg(values: &[f64]) -> f64 {
+    if values.is_empty() {
+        return 0.0;
+    }
     values.iter().sum::<f64>() / values.len() as f64
 }
 
@@ -81,9 +84,18 @@ fn recompute_run(run: &Value, expected_sample_count: usize) -> RunMetrics {
         .iter()
         .map(|s| number_or_zero(s, "cpu_pct"))
         .collect();
-    let rss: Vec<f64> = samples.iter().map(|s| number(s, "rss_mb")).collect();
-    let pss: Vec<f64> = samples.iter().map(|s| number(s, "pss_mb")).collect();
-    let jank: Vec<f64> = samples.iter().map(|s| number(s, "jank_pct")).collect();
+    let rss: Vec<f64> = samples
+        .iter()
+        .map(|s| number_or_zero(s, "rss_mb"))
+        .collect();
+    let pss: Vec<f64> = samples
+        .iter()
+        .map(|s| number_or_zero(s, "pss_mb"))
+        .collect();
+    let jank: Vec<f64> = samples
+        .iter()
+        .map(|s| number_or_zero(s, "jank_pct"))
+        .collect();
 
     RunMetrics {
         mode,
@@ -121,15 +133,27 @@ fn ux_metrics_schema_and_structure() {
     let runs = data["runs"].as_array().expect("runs must be an array");
     assert_eq!(
         runs.len(),
-        4,
-        "cold + prewarm + baseline_jank + post_release_jank"
+        5,
+        "system + cold + prewarm + baseline_jank + post_release_jank"
     );
 
     let modes: Vec<&str> = runs.iter().map(|r| r["mode"].as_str().unwrap()).collect();
+    assert!(modes.contains(&"no_dipecs_baseline"));
     assert!(modes.contains(&"cold_startup"));
     assert!(modes.contains(&"prewarm_startup"));
     assert!(modes.contains(&"baseline_jank"));
     assert!(modes.contains(&"post_release_jank"));
+
+    // Verify comparison section is present
+    let comp = &data["comparison"];
+    assert!(comp["without_dipecs"]["cold_startup_ms"].as_f64().unwrap() > 0.0);
+    assert!(comp["with_dipecs"]["prewarm_startup_ms"].as_f64().unwrap() > 0.0);
+    assert!(
+        comp["without_dipecs"]["system_free_ram_kb_avg"]
+            .as_f64()
+            .unwrap()
+            > 0.0
+    );
 }
 
 #[test]
@@ -142,6 +166,12 @@ fn ux_metrics_measurement_is_internally_consistent() {
         let mode = run["mode"].as_str().expect("mode");
         let computed = recompute_run(run, n);
         let summary = &run["summary"];
+
+        // System baseline has its own schema (only free_ram)
+        if mode == "no_dipecs_baseline" {
+            assert!(summary.get("avg_system_free_ram_kb").is_some());
+            continue;
+        }
 
         assert_close(
             computed.avg_rss_mb,

@@ -100,8 +100,8 @@ Android Gradle 构建依赖本机 Android SDK；当前本地未配置 `ANDROID_H
 
 ## 相关文档
 
-- [v0.2 发布说明](../../design/releases/v0.2.md)
-- [Daemon 架构设计](../../design/daemon-architecture.md)
-- [Android 接口 MVP](../../design/android-interface-mvp.md)
-- [Android action boundary](../../design/android-action-boundary.md)
-- [RFC-0001](../../design/rfc/0001-layered-collection-and-decision-routing.md)
+- [v0.2 发布说明](../../rfc/releases/v0.2.md)
+- [Daemon 架构设计](../../architecture/pipeline.md)
+- [Android 接口 MVP](../../android/collector.md)
+- [Android action boundary](../../android/action-boundary.md)
+- [RFC-0001](../../rfc/0001-layered-collection-and-decision-routing.md)

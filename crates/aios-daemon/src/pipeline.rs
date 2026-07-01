@@ -465,6 +465,9 @@ mod tests {
         StructuredContext,
     };
 
+    use crate::collection::{run_collection_loop, RawEventSource};
+    use tokio::sync::broadcast;
+
     // ── helpers ──────────────────────────────────────────────────
 
     fn empty_context(window_id: &str) -> StructuredContext {
@@ -1044,5 +1047,104 @@ mod tests {
         assert_eq!(summary.terminated_by, LoopTermination::ChannelClosed);
         assert_eq!(summary.events_processed, 2);
         assert_eq!(summary.windows_closed, 2, "两个非空窗口各由定时器关一次");
+    }
+
+    // ============================================================
+    // 真·双任务端到端: 真实 Task-1 (run_collection_loop) + 真实通道 +
+    // 真实 Task-2 (run_processing_loop) + 真实 shutdown 广播链。
+    // 只有「事件从哪来」是替身 (MockRawEventSource): 真实采集器要读真机
+    // /proc、电量、Binder, 不可确定性单测。
+    // ============================================================
+
+    /// 合成事件源: 第一次 poll 交出预置事件, 之后每 tick 返回空。
+    struct MockRawEventSource {
+        pending: Vec<aios_spec::IngestedRawEvent>,
+    }
+
+    impl RawEventSource for MockRawEventSource {
+        fn poll(&mut self, _now_ms: i64) -> Vec<aios_spec::IngestedRawEvent> {
+            std::mem::take(&mut self.pending)
+        }
+    }
+
+    /// T5: 两个任务都是真的。真实采集循环把合成源的事件推进真实 `ActionBus` 通道,
+    /// 真实处理循环消费; 用真实 shutdown 广播触发收尾链:
+    /// broadcast → Task-1 `try_recv` → return → drop sender → 通道关闭 → Task-2 flush。
+    ///
+    /// 确定性来自采集循环「先 poll 后查 shutdown」+ mpsc「关闭前必先交付缓冲」:
+    /// 无论 shutdown 何时触发, 首次 poll 的事件都会先入通道并被处理。
+    #[tokio::test]
+    async fn dual_task_full_pipeline_real_shutdown_chain() {
+        let (raw_tx, raw_rx, _itx, _irx) = ActionBus::new(64).split();
+        let (shutdown_tx, shutdown_rx) = broadcast::channel(1);
+
+        // 真实 Task-1: run_collection_loop + 合成源 (发两条事件, 之后每 tick 空)。
+        let source = MockRawEventSource {
+            pending: vec![ingest(SYSTEM_LOW_BATTERY_LINE), ingest(APP_TRANSITION_LINE)],
+        };
+        let collect_handle = tokio::spawn(run_collection_loop(
+            Box::new(source),
+            raw_tx,
+            shutdown_rx,
+            Duration::from_millis(1),
+        ));
+
+        // 真实 Task-2 依赖。
+        let trace_path = temp_trace_path("dual");
+        let mut recorder = RuntimeTraceRecorder::new(&trace_path).unwrap();
+        let router = DecisionRouter::default();
+        let policy = PolicyEngine::default();
+        let adapter = DefaultActionExecutor::new();
+        let lifecycle = ActionLifecycle::new(&policy, &adapter);
+        let mut memory = ModelMemoryStore::new(5);
+        let config = ModelMemoryConfig::default();
+        let mut worker = ProfileSummaryWorker::new(None, 10);
+        let sanitizer = DefaultPrivacyAirGap;
+        let window = WindowAggregator::new(3600, timestamp_ms());
+
+        // 触发真实 shutdown 链。
+        let control = async {
+            shutdown_tx.send(()).unwrap();
+        };
+
+        let summary = {
+            let mut deps = WindowProcessingDeps {
+                router: &router,
+                lifecycle: &lifecycle,
+                memory: &mut memory,
+                memory_config: &config,
+                profile_summary_worker: Some(&mut worker),
+                trace_recorder: Some(&mut recorder),
+            };
+            let (summary, ()) = tokio::join!(
+                run_processing_loop(
+                    raw_rx,
+                    &sanitizer,
+                    window,
+                    Duration::from_secs(3600),
+                    &mut deps,
+                ),
+                control,
+            );
+            summary
+        };
+        collect_handle.await.unwrap();
+        drop(recorder);
+
+        assert_eq!(summary.terminated_by, LoopTermination::ChannelClosed);
+        assert_eq!(
+            summary.events_processed, 2,
+            "两条采集事件穿过真实通道被处理"
+        );
+        assert_eq!(summary.windows_closed, 1);
+
+        // trace 里应有真实审计记录。
+        let content = std::fs::read_to_string(&trace_path).unwrap();
+        assert_eq!(content.lines().count(), 1);
+        let rec: serde_json::Value = serde_json::from_str(content.lines().next().unwrap()).unwrap();
+        assert_eq!(rec["stage"], "daemon_window");
+        assert!(rec["audit"].as_array().is_some_and(|a| !a.is_empty()));
+
+        let _ = std::fs::remove_file(&trace_path);
     }
 }

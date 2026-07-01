@@ -23,38 +23,25 @@
 //! - BinderProbe/FanotifyMonitor: interfaces complete; real fd/eBPF attach requires privileged deployment
 //! - Decision routing: RuleBased, LocalEvaluator, CloudLlm, and FallbackNoOp
 //! - Action execution: Android bridge plus local fallback behavior
-use std::collections::HashMap;
-use std::time::{Duration, SystemTime};
+use std::time::Duration;
 
 use aios_action::{AndroidAdapter, AndroidBridgeConfig, DefaultActionExecutor};
 use aios_agent::{DecisionRouter, ProfileSummarizer};
-use aios_collector::{
-    android_jsonl::AndroidJsonlTailer,
-    binder_probe::BinderProbe,
-    proc_reader::{self, ProcReader},
-    system_collector::SystemStateCollector,
-};
 use aios_core::action_bus::ActionBus;
 use aios_core::action_lifecycle::ActionLifecycle;
-use aios_core::collector_ingress::RustCollectorIngress;
 use aios_core::context_builder::WindowAggregator;
 use aios_core::context_memory::{ModelMemoryConfig, ModelMemoryStore};
 use aios_core::governance::ActionAdapter;
 use aios_core::policy_engine::PolicyEngine;
 use aios_core::privacy_airgap::DefaultPrivacyAirGap;
-use aios_spec::RawEvent;
 
+mod collection;
 mod daemon;
 pub mod pipeline;
 
+use collection::{run_collection_loop, SystemRawEventSource, BINDER_POLL_INTERVAL_MS};
 use pipeline::{timestamp_ms, ProfileSummaryWorker, RuntimeTraceRecorder, WindowProcessingDeps};
 
-/// System state collection interval, in seconds.
-const SYS_POLL_INTERVAL_SECS: u64 = 30;
-/// Binder event polling interval, in milliseconds.
-const BINDER_POLL_INTERVAL_MS: u64 = 100;
-/// Android JSONL file polling interval, in milliseconds.
-const ANDROID_JSONL_POLL_INTERVAL_MS: u64 = 500;
 /// Context window duration, in seconds.
 const WINDOW_DURATION_SECS: u64 = 10;
 const ANDROID_TRACE_JSONL_ENV: &str = "DIPECS_ANDROID_TRACE_JSONL";
@@ -94,131 +81,16 @@ pub async fn run() -> anyhow::Result<()> {
     // raw 通道才会关闭, Task 2 处理循环据此 flush 最后窗口并退出。
     let (collect_raw_tx, raw_rx, _intent_tx, _intent_rx) = ActionBus::new(4096).split();
     // ---- Task 1: collection ----
-    let mut collect_shutdown = daemon::install_signal_handlers();
-    let collect_handle = tokio::spawn(async move {
-        tracing::info!("collection task started");
-
-        let ingress = RustCollectorIngress;
-        let mut android_tailer = android_trace_jsonl.map(AndroidJsonlTailer::new);
-        let mut last_android_jsonl_poll =
-            SystemTime::now() - Duration::from_millis(ANDROID_JSONL_POLL_INTERVAL_MS);
-        let mut binder_probe = BinderProbe::new();
-        match binder_probe.try_init() {
-            Ok(true) => tracing::info!("Binder probe initialized with eBPF"),
-            Ok(false) => {
-                tracing::warn!("Binder probe unavailable; running without IPC monitoring")
-            },
-            Err(e) => tracing::error!("Binder probe init failed: {}", e),
-        }
-
-        let mut prev_proc_snapshots: HashMap<u32, proc_reader::ProcSnapshot> = HashMap::new();
-        let mut last_sys_poll = SystemTime::now() - Duration::from_secs(SYS_POLL_INTERVAL_SECS);
-
-        loop {
-            let now = timestamp_ms();
-            // /proc polling
-            {
-                let snapshots = ProcReader::scan_all();
-                let curr_map: HashMap<u32, proc_reader::ProcSnapshot> =
-                    snapshots.iter().map(|s| (s.pid, s.clone())).collect();
-
-                let changed = proc_reader::diff_snapshots(&prev_proc_snapshots, &curr_map);
-                for snap in &changed {
-                    let event = ingress.accept_internal(
-                        RawEvent::ProcStateChange(ProcReader::to_event(snap, now)),
-                        "ProcReader",
-                        now,
-                    );
-                    if collect_raw_tx.send(event).await.is_err() {
-                        tracing::debug!("collection: raw channel closed");
-                        return;
-                    }
-                }
-                prev_proc_snapshots = curr_map;
-            }
-
-            // System state collection
-            {
-                let elapsed = SystemTime::now()
-                    .duration_since(last_sys_poll)
-                    .unwrap_or_default();
-                if elapsed.as_secs() >= SYS_POLL_INTERVAL_SECS {
-                    let sys_event = SystemStateCollector::snapshot(now);
-                    let event = ingress.accept_internal(
-                        RawEvent::SystemState(sys_event),
-                        "SystemStateCollector",
-                        now,
-                    );
-                    if collect_raw_tx.send(event).await.is_err() {
-                        tracing::debug!("collection: raw channel closed");
-                        return;
-                    }
-                    last_sys_poll = SystemTime::now();
-                }
-            }
-            // Binder event polling
-            {
-                let binder_events = binder_probe.poll();
-                for tx in &binder_events {
-                    let event = ingress.accept_internal(
-                        RawEvent::BinderTransaction(tx.to_event()),
-                        "BinderProbe",
-                        now,
-                    );
-                    if collect_raw_tx.send(event).await.is_err() {
-                        tracing::debug!("collection: raw channel closed");
-                        return;
-                    }
-                }
-            }
-
-            // Android collector JSONL ingress. This is the production bridge
-            // for the phase-1 app: the app owns public Android API collection,
-            // Rust owns schema validation and the downstream privacy pipeline.
-            if let Some(tailer) = android_tailer.as_mut() {
-                let elapsed = SystemTime::now()
-                    .duration_since(last_android_jsonl_poll)
-                    .unwrap_or_default();
-                if elapsed >= Duration::from_millis(ANDROID_JSONL_POLL_INTERVAL_MS) {
-                    match tailer.poll() {
-                        Ok(envelopes) => {
-                            for envelope in envelopes {
-                                match ingress.accept(envelope) {
-                                    Ok(event) => {
-                                        if collect_raw_tx.send(event).await.is_err() {
-                                            tracing::debug!("collection: raw channel closed");
-                                            return;
-                                        }
-                                    },
-                                    Err(error) => {
-                                        tracing::warn!(
-                                            error = %error,
-                                            "Android JSONL envelope rejected"
-                                        );
-                                    },
-                                }
-                            }
-                        },
-                        Err(error) => {
-                            tracing::warn!(
-                                path = %tailer.path().display(),
-                                error = %error,
-                                "Android JSONL poll failed"
-                            );
-                        },
-                    }
-                    last_android_jsonl_poll = SystemTime::now();
-                }
-            }
-            // Check shutdown signal (non-blocking)
-            if collect_shutdown.try_recv().is_ok() {
-                tracing::info!("collection task shutting down");
-                return;
-            }
-
-            tokio::time::sleep(Duration::from_millis(BINDER_POLL_INTERVAL_MS)).await;
-        }
-    });
+    let collect_shutdown = daemon::install_signal_handlers();
+    // Task 1 通过真实采集循环把事件推进 raw 通道。事件源是 SystemRawEventSource
+    // (封装 proc/sys/binder/android 采集器); 收到 shutdown 即返回, sender 落地关闭通道。
+    let collect_source = SystemRawEventSource::new(android_trace_jsonl);
+    let collect_handle = tokio::spawn(run_collection_loop(
+        Box::new(collect_source),
+        collect_raw_tx,
+        collect_shutdown,
+        Duration::from_millis(BINDER_POLL_INTERVAL_MS),
+    ));
 
     // ---- Task 2: processing pipeline (main task) ----
     tracing::info!("processing task started");

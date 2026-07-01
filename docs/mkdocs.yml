@@ -115,7 +115,11 @@ nav:
     - 模型记忆与行为画像: architecture/model-memory.md
     - 云端 LLM 后端: architecture/cloud-llm.md
     - 动作治理: architecture/action-governance.md
+    - 动作适配器: architecture/action-adapters.md
     - 动作执行: architecture/action-execution.md
+    - 隐私脱敏: architecture/privacy-airgap.md
+    - 策略规则: architecture/policy-rules.md
+    - 安全模型: architecture/security-model.md
     - 验证与审计: architecture/verification.md
   - Android:
     - 采集器: android/collector.md
@@ -158,6 +162,7 @@ nav:
   - 参考资料:
     - refs/index.md
     - Schema 参考: refs/schemas.md
+    - CLI 参考: refs/cli.md
   - 团队与开发:
     - 团队分工: team/roles.md
     - 会议纪要:
@@ -182,6 +187,7 @@ nav:
     - 环境配置: team/environment.md
     - 开发指南: team/dev.md
     - 开发工作流: team/workflows.md
+    - 测试策略: team/testing.md
     - 调试指南: team/debugging.md
     - 编码规范:
       - team/conventions/index.md

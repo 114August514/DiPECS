@@ -32,7 +32,7 @@ fn load_scenario_events(name: &str) -> Vec<serde_json::Value> {
     let file = File::open(&path).unwrap_or_else(|_| panic!("open {}", path.display()));
     BufReader::new(file)
         .lines()
-        .filter_map(|l| l.ok())
+        .map_while(Result::ok)
         .filter(|l| !l.trim().is_empty())
         .map(|l| serde_json::from_str(&l).expect("valid JSON"))
         .collect()
@@ -64,10 +64,16 @@ fn dipecs_pipeline(events: &[serde_json::Value]) -> (String, usize, usize) {
     for raw in events {
         if let Some(re) = raw_event_object(raw) {
             // 收集 raw_title/raw_text 作为 ground-truth 敏感内容。
-            if let Some(title) = re.pointer("/NotificationPosted/raw_title").and_then(|v| v.as_str()) {
+            if let Some(title) = re
+                .pointer("/NotificationPosted/raw_title")
+                .and_then(|v| v.as_str())
+            {
                 raw_texts.push(title.to_string());
             }
-            if let Some(text) = re.pointer("/NotificationPosted/raw_text").and_then(|v| v.as_str()) {
+            if let Some(text) = re
+                .pointer("/NotificationPosted/raw_text")
+                .and_then(|v| v.as_str())
+            {
                 raw_texts.push(text.to_string());
             }
 
@@ -82,10 +88,7 @@ fn dipecs_pipeline(events: &[serde_json::Value]) -> (String, usize, usize) {
                 raw_event,
             };
             if let Ok(ingested) = ingress.accept(envelope) {
-                let san = sanitizer.sanitize_with_tier(
-                    ingested.raw_event,
-                    ingested.source_tier,
-                );
+                let san = sanitizer.sanitize_with_tier(ingested.raw_event, ingested.source_tier);
                 sanitized_events.push(san);
             }
         }
@@ -122,10 +125,7 @@ fn dipecs_pipeline(events: &[serde_json::Value]) -> (String, usize, usize) {
 #[test]
 fn baseline_privacy_and_governance_comparison() {
     let events = load_scenario_events("circuit-breaker");
-    let raw_events: Vec<serde_json::Value> = events
-        .iter()
-        .filter_map(|e| raw_event_object(e))
-        .collect();
+    let raw_events: Vec<serde_json::Value> = events.iter().filter_map(raw_event_object).collect();
 
     let naive = naive_prompt(&raw_events);
     let (dipecs_input, raw_text_count, leaks_in_dipecs) = dipecs_pipeline(&events);
@@ -142,7 +142,12 @@ fn baseline_privacy_and_governance_comparison() {
                 .pointer("/NotificationPosted/raw_text")
                 .and_then(|v| v.as_str())
                 .map(String::from);
-            title.into_iter().chain(text.into_iter()).collect::<Vec<_>>().into_iter().next()
+            title
+                .into_iter()
+                .chain(text)
+                .collect::<Vec<_>>()
+                .into_iter()
+                .next()
         })
         .filter(|needle| !needle.is_empty() && naive.contains(needle.as_str()))
         .collect::<HashSet<_>>()
@@ -153,7 +158,10 @@ fn baseline_privacy_and_governance_comparison() {
     println!("leaked into naive cloud prompt          : {naive_leaks}");
     println!("leaked into DiPECS model input/audit    : {leaks_in_dipecs}");
     println!("naive prompt bytes                      : {}", naive.len());
-    println!("DiPECS intent_batch bytes               : {}", dipecs_input.len());
+    println!(
+        "DiPECS intent_batch bytes               : {}",
+        dipecs_input.len()
+    );
 
     assert!(
         naive_leaks > 0,
@@ -179,11 +187,8 @@ fn cloud_baseline_action_suggestions() {
         .expect("API key");
 
     let events = load_scenario_events("circuit-breaker");
-    let raw_events: Vec<serde_json::Value> = events
-        .iter()
-        .filter_map(|e| raw_event_object(e))
-        .take(5)
-        .collect();
+    let raw_events: Vec<serde_json::Value> =
+        events.iter().filter_map(raw_event_object).take(5).collect();
     let prompt = naive_prompt(&raw_events);
 
     let start = Instant::now();

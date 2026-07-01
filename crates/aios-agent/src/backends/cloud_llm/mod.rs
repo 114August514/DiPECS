@@ -95,7 +95,7 @@ mod latency_tests {
             return 0.0;
         }
         let idx = (p / 100.0 * (sorted_us.len() as f64 - 1.0)).round() as usize;
-        sorted_us[idx.min(sorted_us.len() - 1).max(0)] as f64
+        sorted_us[idx.min(sorted_us.len() - 1)] as f64
     }
 
     fn stats(name: &str, latencies_us: &[u64]) {
@@ -143,7 +143,10 @@ mod latency_tests {
         );
         let cloud = CloudLlmBackend::try_new(cloud_config).expect("cloud backend init failed");
 
-        println!("\n=== Decision backend latency comparison ({} rounds) ===", rounds);
+        println!(
+            "\n=== Decision backend latency comparison ({} rounds) ===",
+            rounds
+        );
 
         let mut rule_lat = Vec::with_capacity(rounds);
         for _ in 0..rounds {

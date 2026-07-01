@@ -38,7 +38,10 @@ fn read_cpu_times() -> Option<(u64, u64)> {
 fn cpu_clock_ticks_per_sec() -> u64 {
     // Linux _SC_CLK_TCK is virtually always 100; avoid pulling in libc for a test.
     // If paranoid, run `getconf CLK_TCK` at test time.
-    if let Ok(out) = std::process::Command::new("getconf").arg("CLK_TCK").output() {
+    if let Ok(out) = std::process::Command::new("getconf")
+        .arg("CLK_TCK")
+        .output()
+    {
         if out.status.success() {
             if let Ok(s) = std::str::from_utf8(&out.stdout) {
                 if let Ok(v) = s.trim().parse::<u64>() {
@@ -66,8 +69,7 @@ fn replay_large_trace_resource_overhead() {
     let start_wall = Instant::now();
     let (start_utime, start_stime) = read_cpu_times().expect("read /proc/self/stat");
 
-    let summary = run(reader, &mut writer, 60, Stage::Execute)
-        .expect("replay should succeed");
+    let summary = run(reader, &mut writer, 60, Stage::Execute).expect("replay should succeed");
 
     let wall_ms = start_wall.elapsed().as_millis() as f64;
     let (end_utime, end_stime) = read_cpu_times().expect("read /proc/self/stat");

@@ -516,3 +516,92 @@ fn test_sanitize_with_tier_overrides_public_api_to_daemon() {
     let sanitized = sanitizer.sanitize_with_tier(raw, SourceTier::Daemon);
     assert_eq!(sanitized.source_tier, SourceTier::Daemon);
 }
+
+// ===== 之前缺失的 variant 测试 =====
+
+#[test]
+fn test_screen_state_sanitized() {
+    let sanitizer = DefaultPrivacyAirGap;
+    let raw = RawEvent::ScreenState(ScreenStateEvent {
+        timestamp_ms: 1000,
+        state: ScreenState::Interactive,
+    });
+    let sanitized = sanitizer.sanitize(raw);
+
+    assert_eq!(sanitized.source_tier, SourceTier::PublicApi);
+    assert!(sanitized.app_package.is_none());
+    match sanitized.event_type {
+        SanitizedEventType::Screen { state } => {
+            assert_eq!(state, ScreenState::Interactive);
+        },
+        _ => panic!("expected Screen event"),
+    }
+}
+
+#[test]
+fn test_system_state_sanitized() {
+    let sanitizer = DefaultPrivacyAirGap;
+    let raw = RawEvent::SystemState(SystemStateEvent {
+        timestamp_ms: 2000,
+        battery_pct: Some(85),
+        is_charging: true,
+        network: NetworkType::Wifi,
+        ringer_mode: RingerMode::Vibrate,
+        location_type: LocationType::Unknown,
+        headphone_connected: false,
+        bluetooth_connected: true,
+    });
+    let sanitized = sanitizer.sanitize(raw);
+
+    assert_eq!(sanitized.source_tier, SourceTier::PublicApi);
+    assert!(sanitized.app_package.is_none());
+    match sanitized.event_type {
+        SanitizedEventType::SystemStatus {
+            battery_pct,
+            is_charging,
+            network,
+            ringer_mode,
+            ..
+        } => {
+            assert_eq!(battery_pct, Some(85));
+            assert!(is_charging);
+            assert_eq!(network, NetworkType::Wifi);
+            assert_eq!(ringer_mode, RingerMode::Vibrate);
+        },
+        _ => panic!("expected SystemStatus event"),
+    }
+}
+
+#[test]
+fn test_notification_interaction_drops_key_and_preserves_package() {
+    let sanitizer = DefaultPrivacyAirGap;
+    let raw = RawEvent::NotificationInteraction(NotificationInteractionRawEvent {
+        timestamp_ms: 1000,
+        package_name: "com.example.app".into(),
+        notification_key: "0|com.example|42|alice-thread|10042".into(),
+        action: NotificationAction::Tapped,
+    });
+    let sanitized = sanitizer.sanitize(raw);
+
+    assert_eq!(sanitized.source_tier, SourceTier::PublicApi);
+    assert_eq!(sanitized.app_package.as_deref(), Some("com.example.app"));
+    match sanitized.event_type {
+        SanitizedEventType::Notification {
+            source_package,
+            group_key,
+            title_hint,
+            text_hint,
+            semantic_hints,
+            ..
+        } => {
+            assert_eq!(source_package, "com.example.app");
+            // notification_key 必须被丢弃
+            assert!(group_key.is_none());
+            // 交互事件无标题/正文
+            assert_eq!(title_hint.length_chars, 0);
+            assert_eq!(text_hint.length_chars, 0);
+            assert!(semantic_hints.is_empty());
+        },
+        _ => panic!("expected Notification event"),
+    }
+}

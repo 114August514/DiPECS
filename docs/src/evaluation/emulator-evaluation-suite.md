@@ -245,7 +245,37 @@ cargo test -p aios-agent --lib cloud_llm::cloud_bench_tests::latency  -- --ignor
 
 ---
 
-## 五、CI 性能回归门禁
+## 五、隐私脱敏验证
+
+> 问题：如何确保 PII 在任何情况下都不会越过 `PrivacyAirGap`？
+
+### 三层防御
+
+| 层 | 文件 | 测试数 | 方法 |
+|---|------|-------|------|
+| 结构验证 | `privacy_airgap_test.rs` | 20 | 固定 scenario，断言 `SanitizedEvent` 结构正确（TextHint / SemanticHint / ExtensionCategory） |
+| JSON 子串扫描 | `privacy_leak_test.rs` | 5 (12 Case) | 构造含已知 PII 的 `RawEvent`，脱敏后序列化为 JSON，扫描整个 JSON 字符串断言 forbidden 子串不存在 |
+| 属性测试 | `privacy_airgap_property_test.rs` | 6 | 对**所有** `RawEvent` variant × 多样化输入（10 种文本 profile、6 种路径、4 种 notification_key、4 种 Binder method），收集 PII 字符串 → 脱敏 → JSON → 断言零泄露 |
+
+**属性测试覆盖的输入维度：**
+
+| 维度 | 样本数 | 覆盖 |
+|------|-------|------|
+| 通知文本 | 10 | CJK 姓名/电话/验证码/emoji/零宽字符/RTL 覆盖/金融信息/超长文本/空文本/混合语言 |
+| 文件路径 | 6 | 内部数据目录/SD 卡文档/DCIM 照片/APK 下载/中文文件名/缓存临时文件 |
+| notification_key | 4 | 联系人 tag/中文 tag/电话号码 tag/空 tag |
+| Binder method | 4 | share intent/enqueue notification/bind service/plain launch |
+
+**CI 门禁：** 三层测试共 31 条，全部在 `cargo test -p aios-core` 中自动执行。新增 `RawEvent` variant 时，`property_all_variants_covered` 会强制开发者同步更新测试。
+
+```bash
+cargo test -p aios-core -- privacy       # 只跑隐私相关测试
+cargo test -p aios-core                  # 全部 core 测试 (含隐私三层)
+```
+
+---
+
+## 六、CI 性能回归门禁
 
 所有数据集测试内嵌阈值断言，CI 自动 block 超标的 merge：
 
@@ -259,7 +289,7 @@ cargo test -p aios-agent --lib cloud_llm::cloud_bench_tests::latency  -- --ignor
 
 ---
 
-## 六、综合总览
+## 七、综合总览
 
 | 维度 | 投入 | 回报 |
 |------|------|------|
@@ -308,4 +338,9 @@ crates/aios-agent/src/backends/cloud_llm/mod.rs
   latency_tests                       云端延迟对比 (1, ignored)
   cloud_bench_tests                   云端 benchmark + smoke + 上下文验证 (4, 2 ignored)
   mock_cloud_e2e_tests                E2E mock 测试 (4)
+
+crates/aios-core/tests/
+  privacy_airgap_test.rs              结构验证 (20) — 所有 RawEvent variant 覆盖
+  privacy_leak_test.rs                JSON 子串扫描 (5, 12 Case) — 已知 PII 向量
+  privacy_airgap_property_test.rs     属性测试 (6) — 多样化输入 × 全 variant 覆盖
 ```

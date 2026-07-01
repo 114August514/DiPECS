@@ -100,9 +100,3 @@ fn replay_large_trace_resource_overhead() {
         "peak RSS should stay under 512 MiB, got {peak_rss_kb} KiB"
     );
 }
-
-#[test]
-#[cfg(not(target_os = "linux"))]
-fn replay_large_trace_resource_overhead() {
-    println!("resource overhead test is Linux-only");
-}

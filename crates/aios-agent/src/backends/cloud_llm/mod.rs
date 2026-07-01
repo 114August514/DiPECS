@@ -94,8 +94,9 @@ mod latency_tests {
         if sorted_us.is_empty() {
             return 0.0;
         }
-        let idx = (p / 100.0 * (sorted_us.len() as f64 - 1.0)).round() as usize;
-        sorted_us[idx.min(sorted_us.len() - 1)] as f64
+        let idx = (p / 100.0 * (sorted_us.len() as f64 - 1.0)).floor() as usize;
+        let idx = idx.clamp(0, sorted_us.len() - 1);
+        sorted_us[idx] as f64
     }
 
     fn stats(name: &str, latencies_us: &[u64]) {

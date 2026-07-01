@@ -58,9 +58,21 @@ measure_action() {
   local line
   line="$(cat "$tmp")"
   rm -f "$tmp"
-  # device={"status":"ok","summary":"...","latency_us":NNNN}
+
   local device_us
-  device_us="$(printf '%s' "$line" | grep -oE '"latency_us":[0-9]+' | grep -oE '[0-9]+' || echo NA)"
+  device_us="$(printf '%s' "$line" | python3 -c '
+import sys, json
+try:
+    data = json.load(sys.stdin)
+    v = data.get("latency_us")
+    print(int(v) if isinstance(v, (int, float)) and v is not None else "NA")
+except Exception:
+    print("NA")
+' 2>/dev/null || echo NA)"
+
+  if [ "$device_us" = "NA" ]; then
+    ((na_count++)) || true
+  fi
   printf '%s\t%s\t%s\n' "$atype" "$target" "$device_us"
 }
 
@@ -71,12 +83,17 @@ main() {
   echo "=== 动作设备侧确认延迟 sweep ==="
   printf '%s\t%s\t%s\n' "action_type" "target" "device_latency_us"
 
+  local na_count=0
+
   measure_action KeepAlive "work:collector_heartbeat"
   measure_action ReleaseMemory "cache:prefetch"
   measure_action PreWarmProcess "own:warmup"
   measure_action PrefetchFile "url:https://example.com/"
 
   echo
+  if [ "$na_count" -gt 0 ]; then
+    echo "警告:$na_count 次测量未能解析 latency_us,请检查设备回执格式。" >&2
+  fi
   echo "说明:device_latency_us 来自设备 AuthorizedActionSocketServer 回执中的 latency_us,"
   echo "表示设备从 accept 到 dispatch 完成并发出 {status:ok} 的耗时。"
   echo "KeepAlive/ReleaseMemory/PreWarmProcess 是同步或近同步完成;PrefetchFile 是异步派发,"

@@ -131,27 +131,19 @@ fn baseline_privacy_and_governance_comparison() {
     let (dipecs_input, raw_text_count, leaks_in_dipecs) = dipecs_pipeline(&events);
 
     // Count how many raw texts appear in naive prompt.
-    let naive_leaks = raw_events
+    let naive_leaks: HashSet<_> = raw_events
         .iter()
-        .filter_map(|re| {
-            let title = re
-                .pointer("/NotificationPosted/raw_title")
-                .and_then(|v| v.as_str())
-                .map(String::from);
-            let text = re
-                .pointer("/NotificationPosted/raw_text")
-                .and_then(|v| v.as_str())
-                .map(String::from);
-            title
-                .into_iter()
-                .chain(text)
-                .collect::<Vec<_>>()
-                .into_iter()
-                .next()
+        .flat_map(|re| {
+            [
+                "/NotificationPosted/raw_title",
+                "/NotificationPosted/raw_text",
+            ]
+            .iter()
+            .filter_map(|ptr| re.pointer(ptr).and_then(|v| v.as_str()).map(String::from))
         })
         .filter(|needle| !needle.is_empty() && naive.contains(needle.as_str()))
-        .collect::<HashSet<_>>()
-        .len();
+        .collect();
+    let naive_leaks = naive_leaks.len();
 
     println!("\n=== baseline comparison (circuit-breaker scenario) ===");
     println!("raw notification text snippets total    : {raw_text_count}");
@@ -173,7 +165,10 @@ fn baseline_privacy_and_governance_comparison() {
     );
 }
 
-/// 可选:把 naive prompt 发到真实 DeepSeek,对比返回延迟和动作建议。
+/// 可选:把包含 raw_title/raw_text 的 naive prompt 发到真实 DeepSeek,
+/// 演示无 DiPECS 基线时原始通知文本直接离设备的隐私风险。
+/// 这是一个故意不安全的对照组,切勿复制到生产代码。
+///
 /// 运行方式:
 ///   DIPECS_CLOUD_LLM_API_KEY=sk-xxx cargo test -p aios-agent --test baseline_comparison_test cloud_baseline -- --ignored --nocapture
 #[test]
@@ -182,6 +177,8 @@ fn cloud_baseline_action_suggestions() {
     use std::env;
     use std::time::Instant;
 
+    // This intentionally demonstrates the privacy leak of a non-DiPECS baseline:
+    // raw notification text leaves the device.
     let api_key = env::var("DIPECS_CLOUD_LLM_API_KEY")
         .or_else(|_| env::var("DEEPSEEK_API_KEY"))
         .expect("API key");

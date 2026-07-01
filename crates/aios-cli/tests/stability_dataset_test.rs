@@ -112,7 +112,7 @@ fn stability_no_memory_leak() {
 fn stability_conclusion_matches_data() {
     let data = fixture();
     let conclusion = &data["conclusion"];
-    assert_eq!(conclusion["accepted"].as_bool().unwrap(), true);
+    assert!(conclusion["accepted"].as_bool().unwrap());
 
     let results = &data["results"];
     let rss_growth = number(results, "rss_growth_per_hour_mb");

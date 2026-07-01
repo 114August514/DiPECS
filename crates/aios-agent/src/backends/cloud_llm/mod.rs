@@ -551,7 +551,7 @@ mod mock_cloud_e2e_tests {
         let body = response_body.to_string();
         thread::spawn(move || {
             let listener = TcpListener::bind(("127.0.0.1", port)).expect("bind mock");
-            for mut stream in listener.incoming().flatten() {
+            if let Some(Ok(mut stream)) = listener.incoming().next() {
                 let mut reader = BufReader::new(&stream);
                 let mut content_length = 0usize;
                 loop {
@@ -574,7 +574,6 @@ mod mock_cloud_e2e_tests {
                     body.len()
                 );
                 stream.write_all(resp.as_bytes()).ok();
-                break; // One request per test
             }
         });
     }

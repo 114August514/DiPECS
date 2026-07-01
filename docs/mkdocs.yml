@@ -133,6 +133,7 @@ nav:
   - 评估与测试:
     - 模拟器评估套件: evaluation/emulator-evaluation-suite.md
     - 评估场景与数据集: evaluation/scenarios.md
+    - 评估工具: evaluation/tools.md
   - 调研分析:
     - research/index.md
     - 交付文档:
@@ -151,7 +152,9 @@ nav:
     - 中期演示:
       - Slidev 源码: slides/midterm/slides.md
       - 答辩 Q&A: slides/midterm/QA.md
-  - 参考资料: refs/index.md
+  - 参考资料:
+    - refs/index.md
+    - Schema 参考: refs/schemas.md
   - 团队与开发:
     - 团队分工: team/roles.md
     - 会议纪要:
@@ -175,6 +178,7 @@ nav:
     - CI 质检体系: team/ci.md
     - 环境配置: team/environment.md
     - 开发指南: team/dev.md
+    - 开发工作流: team/workflows.md
     - 调试指南: team/debugging.md
     - 编码规范:
       - team/conventions/index.md

@@ -20,6 +20,34 @@
 **价值**:本地规则/轻量模型可在亚毫秒级完成决策,而云端 LLM 往返需要数秒。
 DiPECS 默认优先走本地路由,仅在复杂语义时才考虑云端,显著降低交互延迟。
 
+### 1.1 云端后端直采 API 实测(DeepSeek live)
+
+数据:`data/evaluation/cloud-latency-20260716-084110.json`、`cloud-scenarios-20260716-084010.json`
+(`status: measured_live_api`;数据集 ID 内的 `20260716` 系生成机时钟偏差,真实采集/提交日期为
+2026-07-01)。模型 `deepseek-v4-flash`,provider DeepSeek。
+
+延迟(morning-routine,5 轮):
+
+| 指标 | 数值 |
+| --- | --- |
+| p50 | 11331 ms |
+| p95 | 12963 ms |
+| min / max | 5527 / 12963 ms |
+| 成功率 | 100.0% |
+| 错误数 | 0 |
+
+场景决策质量(4 个真实场景,全部成功产出 intent、0 错误):
+
+| 场景 | 产出 intent | 延迟 |
+| --- | --- | --- |
+| circuit-breaker | Idle | 9180 ms |
+| low-battery | Idle | 6213 ms |
+| morning-routine | CheckNotification + HandleFile(Image) | 14175 ms |
+| rich-workflow | SwitchToApp(com.example.chat) | 10012 ms |
+
+**价值**:真实云端后端(非 mock)能端到端产出结构化 intent,佐证第 1 节的量级对比——
+云端往返 6–14 秒,与本地亚毫秒决策相差 4–5 个数量级,支撑"本地优先、云端仅兜复杂语义"的路由策略。
+
 ## 2. 资源开销:replay 2400 行大 trace
 
 测试:`crates/aios-cli/tests/resource_overhead_test.rs::replay_large_trace_resource_overhead`
@@ -119,13 +147,66 @@ target-in-context 等多重规则进行二阶审查,防止越权执行。
 
 ## 7. 使用建议(PPT 引用)
 
-- **延迟**:放本地 vs 云端柱状图,数量级差异(~7s vs <0.1ms)。
+- **延迟**:放本地 vs 云端柱状图,数量级差异(~7s vs <0.1ms);云端可用 live DeepSeek p50 11.3s(§1.1)。
 - **隐私**:放"naive prompt 63KB / DiPECS 645B" + "22 leaks / 0 leaks" 对比。
-- **资源**:放"1631 events / 128 ms / 10.8MB RSS" 三数字。
+- **资源**:放"1631 events / 128 ms / 10.8MB RSS" 三数字;设备内可补"每叠一层 +7–8MB RSS、jank 0"(§8.1)。
 - **治理**:放 policy_engine_test 20/20 + denial reasons 列表。
 - **UX 动作延迟**:放四类型设备确认延迟(KeepAlive ~21ms,ReleaseMemory ~13ms,PreWarm ~31ms,Prefetch ~1ms)。
+- **启动加速**:放 warm 1470ms → prewarm 665ms(快 54.8%),PreWarm 的 UX 收益(§8.3)。
+- **稳定性**:放 4 分钟长跑 RSS 无增长、PSS 3.9MB/h < 阈值,支撑"可常驻"(§8.2)。
 
-## 8. 已补充
+## 8. 补充实测数据(设备内 / 长跑 / UX)
 
-- `tests/scenarios/action-latency-sweep.sh`:已在 Android Emulator `dipecs_e2e` 上运行,
-  四类动作设备侧确认延迟见第 5 节表格。
+> 以下为 value-metrics 首版之后补测的设备内数据(均在 Android 模拟器 `dipecs_e2e`,
+> android-35 x86_64 上采集),单列于此,未改动前 6 节。
+
+- `tests/scenarios/action-latency-sweep.sh`:已在模拟器运行,四类动作设备侧确认延迟见第 5 节表格。
+
+### 8.1 设备内资源开销(模拟器,30 样本/模式)
+
+数据:`data/evaluation/resource-overhead-emulator-20260701-162742.json`
+(30 样本/模式,较早先 10 样本的 `-131525` 更稳)。
+
+| 模式 | Avg CPU | Avg RSS | Avg PSS | Avg jank |
+| --- | ---: | ---: | ---: | ---: |
+| baseline_idle | 0.493% | 118.30 MB | 36.02 MB | 0.0% |
+| dipecs_observe_only | 0.387% | 125.87 MB | 39.63 MB | 0.0% |
+| dipecs_action_loop | 0.0% | 132.80 MB | 41.62 MB | 0.0% |
+
+**读法(诚实)**:模拟器上 CPU 占用落在测量噪声内(两次运行分别测得约 1.15% 与约 0.4%/0,
+甚至出现"观测 < 基线"的负差),不宜作精确 CPU 结论;**稳定可报的是 RSS 每叠一层约 +7–8 MB**
+(采集 +7.6 MB,动作回路再 +6.9 MB),jank 全 0。电量/温度为 AC 供电下的换算估算,非燃料计实测。
+
+### 8.2 运行稳定性(长跑无内存泄漏)
+
+数据:`data/evaluation/stability-emulator-canonical.json`(4 分钟、8 样本、30s 间隔)。
+
+| 指标 | 数值 | 阈值 | 结论 |
+| --- | ---: | ---: | --- |
+| RSS 变化 | −5.41 MB | — | 未增长 |
+| PSS 增长/小时 | 3.91 MB/h | < 20 | 通过 |
+| RSS 增长/小时 | 6.08 MB/h | < 50 | 通过 |
+| 平均 CPU | 0.95% | < 10 | 通过 |
+
+**价值**:短时长跑未见显著内存增长(RSS 甚至回落),支撑"可作设备常驻服务"的论点。
+(注:4 分钟为短窗观测,长期泄漏需更长跑验证。)
+
+### 8.3 UX 收益:PreWarm 启动加速 / ReleaseMemory 降 jank
+
+数据:`ux-metrics-emulator-20260701-150110.json`(run1)、`-151856.json`(run2),各 5 样本/模式。
+
+| 指标 | run1 | run2 |
+| --- | ---: | ---: |
+| warm 启动 TotalTime | 1470.4 ms | 1551.6 ms |
+| prewarm 启动 TotalTime | 664.6 ms | 872.6 ms |
+| **PreWarm 加速** | **805.8 ms(54.8%)** | **679.0 ms(43.8%)** |
+| ReleaseMemory 前 jank | 19.05% | 30.0% |
+| ReleaseMemory 后 jank | 15.38% | 30.0% |
+| ReleaseMemory jank 改善 | 3.67 pp | 0.0 pp |
+
+**读法(诚实)**:**PreWarm 两轮一致显著**(启动快 44–55%),是最硬的 UX 收益证据;
+**ReleaseMemory 降 jank 两轮不一致**(run1 有、run2 无),只能作弱证据,建议补几轮取分布再下结论。
+
+### 8.4 云端直采 API
+
+见 §1.1(延迟 + 场景决策质量,live DeepSeek)。

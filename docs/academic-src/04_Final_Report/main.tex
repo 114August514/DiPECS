@@ -1,19 +1,268 @@
-\documentclass{article}
+\documentclass[UTF8,a4paper,12pt]{ctexart}
 
 \usepackage[margin=1in]{geometry}
+\usepackage{array}
+\usepackage{booktabs}
+\usepackage{float}
+\usepackage{xcolor}
 \usepackage{hyperref}
+\setlength{\emergencystretch}{3em}
 
-\title{DiPECS Final Report}
-\author{DiPECS Team}
-\date{\today}
+\definecolor{reportlink}{RGB}{65, 145, 210}
+
+\hypersetup{
+  colorlinks=true,
+  linkcolor=reportlink,
+  urlcolor=reportlink,
+  citecolor=reportlink
+}
+
+\newcommand{\project}{DiPECS}
+
+\title{\project{} 结题报告}
+\author{\project{} Team}
+\date{2026 年 7 月 1 日}
 
 \begin{document}
 
 \maketitle
 
-\section{Status}
+\begin{abstract}
+\project{} 是一个面向 Android/Linux 的端侧 AIOS 原型:把管线拆成采集、隐私脱敏、上下文聚合、
+决策路由、策略审查、授权动作执行等相互隔离的层,使本地原始信号不会直接流入模型后端或动作执行器。
+结题阶段,系统已在 Android 模拟器上跑通端到端闭环,并围绕\textbf{延迟、资源、稳定性、隐私、治理、
+用户体验、真机动作执行}七个维度采集了真实测量数据。本报告汇总这些可复现的量化结果,并\textbf{诚实标注
+每项数据的口径与局限}(估算 vs 实测、单轮 vs 多轮、模拟器 vs 物理机)。全部数据来自代码内测试与设备实测,
+非估算叙述;详细设计与叙事见 MkDocs 研究页与前序调研/可行性/中期报告。
+\end{abstract}
 
-This is a CI-ready LaTeX shell for the future formal final report.
-The current working content is maintained in the MkDocs research pages.
+\newpage
+{\hypersetup{linkcolor=black}\tableofcontents}
+\newpage
+
+\section{评估目标与方法}
+
+评估回答一个问题:\project{} 的分层管线在端侧是否\emph{既守得住隐私/治理边界,又轻到可以常驻、
+并带来可测的体验收益}。为此设定七个维度,每个维度对应一份可复现的数据产物(见
+\texttt{data/evaluation/})。
+
+测量环境分三类,报告中均明确标注:
+
+\begin{itemize}
+  \item \textbf{离线测试基准}——工作区内 \texttt{cargo test} 驱动,确定性、可在 CI 复现;
+        用于延迟、replay 资源开销、隐私、治理、映射覆盖。
+  \item \textbf{模拟器实测}——Android Studio 模拟器 AVD \texttt{dipecs\_e2e}(system image
+        android-35;google\_apis;x86\_64),经 adb 采样;用于设备内资源开销、稳定性、UX、
+        真机动作执行闭环。
+  \item \textbf{云端直采}——真实 DeepSeek API(\texttt{deepseek-v4-flash}),非 mock;用于云端延迟
+        与场景决策质量。
+\end{itemize}
+
+\textbf{口径声明}:模拟器为 AC 供电,电量/温度传感器不动,故凡涉及电量/温度者一律为按 CPU/PSS 换算的
+\emph{估算}并如此标注;所有"真机"证据均在 x86\_64 模拟器取得,物理 arm64 设备的迁移路径已打通但尚未
+实机验证。
+
+\section{决策延迟:本地优先的量级优势}
+
+本地后端(规则/轻量评估器)在亚毫秒级完成决策,云端 LLM 往返需数秒,相差 4$\sim$5 个数量级。
+这是"本地优先路由、云端仅兜复杂语义"策略的核心依据。
+
+\begin{table}[H]
+\centering
+\caption{决策延迟:本地后端 vs 云端 LLM(离线基准)}
+\begin{tabular}{lrrr}
+\toprule
+后端 & 均值 & p50 & p95 \\
+\midrule
+RuleBased & 0.00 ms & 0.00 ms & 0.02 ms \\
+LocalEvaluator & 0.01 ms & 0.01 ms & 0.05 ms \\
+CloudLLM (DeepSeek deepseek-v4-flash) & 6958.16 ms & 7339.61 ms & 10050.08 ms \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+云端\textbf{直采 API 实测}(live,morning-routine 场景,5 轮)进一步佐证量级:p50 $=$ 11331 ms、
+p95 $=$ 12963 ms、成功率 100\%、错误 0。四个真实场景(circuit-breaker、low-battery、morning-routine、
+rich-workflow)均端到端产出结构化 intent(如 \texttt{SwitchToApp}、\texttt{CheckNotification} $+$
+\texttt{HandleFile})、0 错误,延迟 6$\sim$14 秒。数据:\texttt{cloud-latency-*.json}、
+\texttt{cloud-scenarios-*.json}(数据集 ID 时间戳系生成机时钟偏差,真实采集日期 2026-07-01)。
+
+\section{资源开销与运行稳定性}
+
+\subsection{管线吞吐(replay 大 trace,离线基准)}
+
+对 2400 行合成大 trace(\texttt{android\_synthetic\_large.redacted.jsonl},1631 条有效事件)做
+确定性 replay:
+
+\begin{table}[H]
+\centering
+\caption{核心管线 replay 资源开销}
+\begin{tabular}{lr}
+\toprule
+指标 & 数值 \\
+\midrule
+Wall time & 128.0 ms \\
+Peak RSS & 10.77 MB \\
+Events ingested & 1631 \\
+Windows closed & 58 \\
+Actions authorized & 206 \\
+Throughput & 12742.2 events/s \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+核心管线极轻:处理 1600$+$ 事件峰值内存约 11 MB、百毫秒内完成,不构成常驻负担。
+
+\subsection{设备内开销(模拟器,30 样本/模式)}
+
+\begin{table}[H]
+\centering
+\caption{设备内资源开销(模拟器,30 样本/模式)}
+\begin{tabular}{lrrrr}
+\toprule
+模式 & Avg CPU & Avg RSS & Avg PSS & Avg jank \\
+\midrule
+baseline\_idle & 0.493\% & 118.30 MB & 36.02 MB & 0.0\% \\
+dipecs\_observe\_only & 0.387\% & 125.87 MB & 39.63 MB & 0.0\% \\
+dipecs\_action\_loop & 0.0\% & 132.80 MB & 41.62 MB & 0.0\% \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\textbf{诚实读法}:模拟器上 CPU 占用落在测量噪声内(两次运行分别测得约 1.15\% 与约 0.4\%/0,甚至出现
+"观测 $<$ 基线"的负差),不宜下精确 CPU 结论;\textbf{可稳定报告的是 RSS 每叠一层约 $+7\sim8$ MB}
+(采集 $+7.6$ MB,动作回路再 $+6.9$ MB),jank 全 0。
+
+\subsection{稳定性:短时长跑无内存泄漏}
+
+\begin{table}[H]
+\centering
+\caption{稳定性采样(4 分钟、8 样本、30s 间隔)}
+\begin{tabular}{lrrl}
+\toprule
+指标 & 数值 & 阈值 & 结论 \\
+\midrule
+RSS 变化 & $-5.41$ MB & --- & 未增长 \\
+PSS 增长/小时 & 3.91 MB/h & $<20$ & 通过 \\
+RSS 增长/小时 & 6.08 MB/h & $<50$ & 通过 \\
+平均 CPU & 0.95\% & $<10$ & 通过 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+短时长跑 RSS 未增长(甚至回落),支撑"可作设备常驻服务"。注:4 分钟为短窗观测,长期泄漏需更长跑复验。
+
+\section{隐私与治理边界}
+
+\subsection{隐私空气隙:原文不越界}
+
+在 circuit-breaker 场景下对比"无 \project{}(naive 云端 prompt)"与"有 \project{}":
+
+\begin{table}[H]
+\centering
+\caption{隐私边界:有/无 \project{} 对比}
+\begin{tabular}{lrr}
+\toprule
+指标 & 无 \project{} & 有 \project{} \\
+\midrule
+原始通知文本片段数 & 300 & 300 \\
+泄漏到模型输入/审计的数量 & 22 & \textbf{0} \\
+Prompt/模型输入大小 & 63178 bytes & 645 bytes \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\texttt{PrivacyAirGap} 确保 \texttt{raw\_title}/\texttt{raw\_text} 等敏感原文不流入模型输入或审计流,
+同时把输入从 63 KB 压到 645 B——既护隐私又降模型成本。辅证:\texttt{replay\_audit\_leak\_test}
+2/2 通过(审计流与 NDJSON 均不含 raw PII)、\texttt{golden\_trace\_integration\_test} 6/6
+(确定性审计 hash 捕获任何管道状态变化)。
+
+\subsection{策略引擎:二阶治理审查}
+
+\texttt{policy\_engine\_test} 20/20 全过,覆盖:高风险默认拒绝、中风险按 capability 决定、低置信度拒绝、
+target 不在 context 拒绝、每 batch 动作上限、deferred urgency 过滤、FallbackNoOp 拦截 PreWarm。
+即使后端建议了动作,\texttt{PolicyEngine} 仍按风险/capability/target-in-context 多重规则复审,防越权执行。
+
+\section{用户体验收益}
+
+动作不是"能调用"而是"改善体验"。两轮 UX 测量(各 5 样本/模式):
+
+\begin{table}[H]
+\centering
+\caption{UX 收益:PreWarm 启动加速 / ReleaseMemory 降 jank}
+\begin{tabular}{lrr}
+\toprule
+指标 & run1 & run2 \\
+\midrule
+warm 启动 TotalTime & 1470.4 ms & 1551.6 ms \\
+prewarm 启动 TotalTime & 664.6 ms & 872.6 ms \\
+\textbf{PreWarm 加速} & \textbf{805.8 ms (54.8\%)} & \textbf{679.0 ms (43.8\%)} \\
+ReleaseMemory 前 jank & 19.05\% & 30.0\% \\
+ReleaseMemory 后 jank & 15.38\% & 30.0\% \\
+ReleaseMemory jank 改善 & 3.67 pp & 0.0 pp \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\textbf{诚实读法}:\textbf{PreWarm 两轮一致显著}(启动快 44$\sim$55\%),是最硬的 UX 收益证据;
+\textbf{ReleaseMemory 降 jank 两轮不一致}(run1 有、run2 无),仅作弱证据,建议补多轮取分布再定论。
+
+\section{真机动作执行闭环}
+
+四类可转发动作(\texttt{NoOp} 永走本地 stub 不转发)在真机逐一执行并见终态审计事件:
+
+\begin{table}[H]
+\centering
+\caption{四类动作设备端执行覆盖(EXECUTED $\times$4)}
+\begin{tabular}{llrl}
+\toprule
+动作类型 & 处理器终态审计事件 & 设备确认延迟 & 状态 \\
+\midrule
+KeepAlive & \texttt{keep\_alive\_job\_executed} & 21343 us & EXECUTED \\
+ReleaseMemory & \texttt{release\_memory\_completed} & 13409 us & EXECUTED \\
+PreWarmProcess & \texttt{own\_resources\_prewarmed} & 31231 us & EXECUTED \\
+PrefetchFile & \texttt{prefetch\_succeeded} & 1069 us & EXECUTED \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+链路:\texttt{AndroidAdapter} $\rightarrow$ execute 信封(canonical HMAC-SHA256 $+$ freshness window)
+$\rightarrow$ 设备校验 $\rightarrow$ dispatch $\rightarrow$ 各处理器执行落审计,拒绝/失败类事件全 0、脱敏闸门干净。
+其中 PrefetchFile 真下行 559 字节 \texttt{text/html},证异步下载链路亦通。
+
+\textbf{更强的一环——设备内直连回路}:把交叉编译的 \texttt{dipecsd} 推进模拟器\emph{内}运行,直连
+\texttt{127.0.0.1} 的 app 动作 socket、\textbf{无 adb forward},判定 \textbf{LOOP-CLOSED}。这结构上
+根除了"开发机经 adb forward"通道特有的代理层数据/FIN 竞态,是最接近生产
+(\texttt{/system/bin/dipecsd},与 app 同机走内核 loopback)的真机回路。离线侧另有
+\texttt{android\_bridge\_e2e\_test.rs} 以 mock socket 独立重算 canonical HMAC 互为印证。
+
+\section{信号到动作的映射覆盖}
+
+\texttt{noop\_matrix} 覆盖 13 个信号模式,其中 9 个(69.2\%)产出真实动作,4 个(30.8\%)当前为
+NoOp 盲区。典型:\texttt{low\_battery\_release\_memory} $\rightarrow$ ReleaseMemory、
+\texttt{file\_access\_prefetch} $\rightarrow$ PrefetchFile、\texttt{app\_foreground\_keepalive}
+$\rightarrow$ PreWarmProcess $+$ KeepAlive。系统能把常见设备语义映射为维护动作,而非一律 Idle。
+
+\section{有效性威胁与局限(诚实边界)}
+
+\begin{itemize}
+  \item \textbf{电量/温度为估算}:模拟器 AC 供电、传感器不动,相关值按 CPU/PSS 换算,非 Android
+        燃料计实测,不能当精确功耗结论。
+  \item \textbf{CPU 开销在噪声内}:模拟器 CPU 两次测量不一致且接近/低于基线;RSS 增量才是可稳报的开销口径。
+  \item \textbf{UX 部分结果单薄}:ReleaseMemory 降 jank 仅 run1 出现,需更多轮次;PreWarm 结论则稳健。
+  \item \textbf{"真机"实为 x86\_64 模拟器}:物理 arm64 迁移路径已打通(ABI 自动探测 $+$ NDK 交叉编译),
+        但未实机跑过;结论措辞应为"模拟器实测"。
+  \item \textbf{稳定性窗口短}:4 分钟 8 样本仅证短时无泄漏,长期行为待补。
+  \item \textbf{部分 trace 为 Git LFS 指针}:独立复核需先 \texttt{git lfs pull} 对应文件。
+\end{itemize}
+
+\section{结论}
+
+\project{} 在结题阶段以真实数据支撑了核心命题:分层管线\textbf{守得住}隐私(22 $\rightarrow$ 0 泄漏、
+63 KB $\rightarrow$ 645 B)与治理(策略 20/20 复审),\textbf{足够轻}(replay 128 ms/11 MB、设备内每层
+$+7\sim8$ MB、短跑无泄漏),并带来\textbf{可测的体验收益}(PreWarm 启动快约一半),动作链路在模拟器上
+\textbf{真机执行闭环}(四类型 EXECUTED、设备内直连 LOOP-CLOSED)。局限已如上诚实列明——主要是电量为估算、
+UX 部分结果需多轮、以及物理 arm64 实机验证尚缺。后续工作聚焦:物理 arm64 迁移实测、更长稳定性观测、
+补齐 UX 多轮分布,以及收敛剩余 4 个信号映射盲区。
 
 \end{document}

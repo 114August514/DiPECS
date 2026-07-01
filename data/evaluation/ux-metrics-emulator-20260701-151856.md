@@ -1,6 +1,6 @@
 # DiPECS Emulator UX Metrics Measurement
 
-- Dataset: `ux-metrics-emulator-20260701-150110.json`
+- Dataset: `ux-metrics-emulator-20260701-151856.json`
 - Status: measured on Android Studio emulator
 - Sample interval: 3 seconds
 - Samples per mode: 5
@@ -9,19 +9,19 @@
 
 | Mode | TotalTime avg | RSS avg | PSS avg |
 | --- | ---: | ---: | ---: |
-| warm_startup | 1470.4 ms | 171.907 MB | 52.828 MB |
-| prewarm_startup | 664.6 ms | 171.896 MB | 52.793 MB |
+| warm_startup | 1551.6 ms | 172.319 MB | 53.175 MB |
+| prewarm_startup | 872.6 ms | 175.762 MB | 56.666 MB |
 
-**PreWarm effect:** 805.8 ms faster (54.8%)
+**PreWarm effect:** 679.0 ms faster (43.8%)
 
 ## Jank / Memory (dumpsys gfxinfo + meminfo)
 
 | Mode | Avg jank | Avg RSS | Avg PSS |
 | --- | ---: | ---: | ---: |
-| baseline_jank | 19.05% | 164.233 MB | 43.657 MB |
-| post_release_jank | 15.38% | 164.999 MB | 43.967 MB |
+| baseline_jank | 30.0% | 164.374 MB | 43.804 MB |
+| post_release_jank | 30.0% | 165.113 MB | 44.135 MB |
 
-**ReleaseMemory effect:** jank 3.67 pp, PSS -0.31 MB
+**ReleaseMemory effect:** jank 0.0 pp, PSS -0.331 MB
 
 ## Conclusion
 

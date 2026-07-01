@@ -185,7 +185,7 @@ DURATION_MINUTES=60 SAMPLE_INTERVAL_SECS=30 ./tools/collect-stability.sh
 | `cloud_errors_on_dead_port` | 不可达端口 → 返回 error |
 | `circuit_breaker_counts_errors` | 连续 3 次错误全部捕获 |
 
-### 真实 API Benchmark (2 个，需 API key)
+### 真实 API Benchmark
 
 ```bash
 source .env
@@ -193,12 +193,25 @@ cargo test -p aios-agent --lib cloud_llm::cloud_bench_tests::smoke   -- --ignore
 cargo test -p aios-agent --lib cloud_llm::cloud_bench_tests::latency  -- --ignored --nocapture
 ```
 
-| 测试 | 说明 |
-|------|------|
-| `smoke` | 4 场景 × 1 次，验证全部返回有效决策 |
-| `latency` | 10 轮 DeepSeek，输出 p50/p95/p99，生成 JSON 数据集 |
+**Smoke 结果 (4 场景 × 1 次)：**
 
-> 当前 WSL 环境 reqwest TLS 有问题 (已有问题)，非 WSL 或修复后可正常跑。
+| 场景 | 延迟 | 决策 |
+|------|-----:|------|
+| circuit-breaker | 9.2s | Idle |
+| low-battery | 6.2s | Idle |
+| morning-routine | 14.2s | CheckNotification, HandleFile |
+| rich-workflow | 10.0s | SwitchToApp |
+
+**Latency Benchmark (5 轮，morning-routine)：**
+
+| 指标 | 值 |
+|------|----:|
+| min | 5.5s |
+| p50 | 11.3s |
+| p95 | 13.0s |
+| success_rate | 100% |
+
+> DeepSeek v4-flash 延迟在 5-15s 范围，成功率 100%。复杂场景 (morning-routine) 返回多意图决策。
 
 ---
 

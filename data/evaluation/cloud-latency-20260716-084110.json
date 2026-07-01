@@ -1,0 +1,27 @@
+{
+  "conclusion": {
+    "accepted": true
+  },
+  "dataset_id": "cloud-latency-20260716-084110",
+  "environment": {
+    "model": "deepseek-v4-flash",
+    "provider": "deepseek",
+    "rounds": 5,
+    "scenario": "morning-routine"
+  },
+  "results": {
+    "errors": 0,
+    "latency_max_ms": 12963,
+    "latency_min_ms": 5527,
+    "latency_p50_ms": 11331,
+    "latency_p95_ms": 12963,
+    "non_trivial_rate_pct": 0.0,
+    "success_rate_pct": 100.0
+  },
+  "schema_version": "dipecs.cloud_latency.v1",
+  "status": "measured_live_api",
+  "thresholds": {
+    "max_p95_latency_ms": 30000,
+    "min_success_rate_pct": 90.0
+  }
+}

@@ -156,10 +156,9 @@ impl RawEventSource for SystemRawEventSource {
         // 这是 phase-1 app 的生产桥:app 负责公开 Android API 采集,Rust 负责
         // schema 校验与下游隐私管线。
         if let Some(tailer) = self.android_tailer.as_mut() {
-            if self
-                .last_android_jsonl_poll
-                .is_none_or(|t| t.elapsed() >= Duration::from_millis(ANDROID_JSONL_POLL_INTERVAL_MS))
-            {
+            if self.last_android_jsonl_poll.is_none_or(|t| {
+                t.elapsed() >= Duration::from_millis(ANDROID_JSONL_POLL_INTERVAL_MS)
+            }) {
                 match tailer.poll() {
                     Ok(envelopes) => {
                         for envelope in envelopes {

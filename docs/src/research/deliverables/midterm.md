@@ -36,7 +36,7 @@
 
 ## 架构变更
 
-中期阶段完成了一次关键重构：daemon 二进制已独立为 `aios-daemon`，修正了反向依赖，恢复 `spec` 作为协议中心、`core` 负责审查、`collector` 负责采集、`agent` 负责决策、`action` 负责授权动作执行的边界。详见 [v0.2 发布说明](../../design/releases/v0.2.md)。
+中期阶段完成了一次关键重构：daemon 二进制已独立为 `aios-daemon`，修正了反向依赖，恢复 `spec` 作为协议中心、`core` 负责审查、`collector` 负责采集、`agent` 负责决策、`action` 负责授权动作执行的边界。详见 [v0.2 发布说明](../../rfc/releases/v0.2.md)。
 
 ## 待解决问题
 

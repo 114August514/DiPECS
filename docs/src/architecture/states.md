@@ -130,5 +130,5 @@ Proposed
 
 ## 相关文档
 
-- [动作治理](../current/action-governance.md)
-- [RFC-0002 Action Bus Governance](rfc/0002-action-bus-governance.md)
+- [动作治理](action-governance.md)
+- [RFC-0002 Action Bus Governance](../rfc/0002-action-bus-governance.md)

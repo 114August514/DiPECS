@@ -36,7 +36,7 @@ Cloud LLM 是可选后端；默认路径由本地 `RuleBasedBackend`、`LocalEva
 
     与源码对齐的运行链路、数据流、动作治理、Android 桥接和 replay/audit。
 
-    [:octicons-arrow-right-24: 查看当前实现](current/overview.md)
+    [:octicons-arrow-right-24: 查看当前实现](architecture/index.md)
 
 -   :material-book-open-page-variant:{ .lg .middle } __系统设计__
 
@@ -44,7 +44,7 @@ Cloud LLM 是可选后端；默认路径由本地 `RuleBasedBackend`、`LocalEva
 
     架构原则、模块边界、代码地图、RFC 和历史设计说明。
 
-    [:octicons-arrow-right-24: 进入系统设计](design/overview.md)
+    [:octicons-arrow-right-24: 进入系统设计](architecture/index.md)
 
 -   :material-language-rust:{ .lg .middle } __Rust API 参考__
 

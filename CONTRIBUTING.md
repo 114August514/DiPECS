@@ -54,10 +54,10 @@ CI 红了不能合并。依赖审计和 CI 细节见 [CI 质检体系](https://1
 - `aios-collector` 是 Rust 采集层入口，负责接入 app/system 来源并输出 `CollectorEnvelope` / `RawEvent`。
 - `aios-core` 负责隐私脱敏、窗口聚合和策略审查。
 - `aios-agent` 只接收 `StructuredContext`，统一输出 `IntentBatch`。
-- `aios-action` 只执行 `PolicyEngine` 授权后的 `AuthorizedAction`。
+- `aios-action` 只执行 `PolicyEngine` 授权后的 `AuthorizedAction`，并依赖 `aios-core` 获取 `ActionAdapter` trait 和 `AuthorizedAction` 类型。
 - `aios-daemon` 只做运行时装配和生命周期管理。
 
-依赖方向：`aios-spec -> collector/core/action/agent -> aios-daemon`。禁止循环依赖，禁止让 action 读取采集或推理内部状态。详细说明见 [代码地图](https://114august514.github.io/DiPECS/design/crates-map/) 和 [RFC-0001](https://114august514.github.io/DiPECS/design/rfc/0001-layered-collection-and-decision-routing/)。
+依赖方向：`aios-spec -> collector/core/agent -> aios-daemon`，`aios-action` 额外依赖 `aios-core`（为了 `ActionAdapter` trait 和 `AuthorizedAction` 类型）。禁止循环依赖，禁止让 action 读取采集或推理内部状态。详细说明见 [代码地图](https://114august514.github.io/DiPECS/design/crates-map/) 和 [RFC-0001](https://114august514.github.io/DiPECS/design/rfc/0001-layered-collection-and-decision-routing/)。
 
 ## Pull Requests
 
@@ -90,6 +90,7 @@ docs(readme): clarify collector boundary
 - 新决策规则：补 `aios-agent` 后端测试，并说明后端能力上限。
 - 新动作：补 `PolicyEngine` 审查测试和 `aios-action` 执行结果测试。
 - Android 采集能力：先在 `apps/android-collector` 证明真实 API 能看到稳定字段，再接入 `aios-collector`。
+- 端到端回路变更：补充或更新 `tests/scenarios/` 下的场景脚本。action-loop 变更需通过 mock-socket 验证。
 
 ## Safety
 

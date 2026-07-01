@@ -1,7 +1,7 @@
 # 设计哲学
 
-> Status: Partially current  
-> Last verified: 2026-06-30  
+> Status: Current  
+> Last verified: 2026-07-01  
 > 本页描述架构原则。当前可运行实现以 [当前实现总览](../current/overview.md)、[动作治理](../current/action-governance.md) 和源码为准。
 
 ## OS = 对象 + API
@@ -23,13 +23,13 @@ verify(Action, Policy)   → AuthorizedAction | Denied
 
 ### 1. `aios-spec` — 宪法层
 
-整个项目的 **Single Source of Truth**。定义核心数据结构、Trait 接口和 Function Calling Schema。
+整个项目的 **Single Source of Truth**。定义核心数据结构、Trait 接口和跨模块协议。
 
-工程意义：只要 `spec` 不动，各组可以并行开发。协议变更必须走 RFC 流程。云端返回的 JSON 必须完美契合这里的 Rust `struct`——模型升级导致格式变化时，spec 必须能兼容。
+工程意义：只要 `spec` 不动，各组可以并行开发。协议变更必须走 RFC 流程。
 
 ### 2. `aios-action` — 触手层
 
-AIOS 与底层 Android/Linux 的动作执行边界。它只接收 `PolicyEngine` 审查通过的 `AuthorizedAction`，不读取 app、collector 或 agent 的内部状态。
+AIOS 与底层 Android/Linux 的动作执行边界。它只接收 `ActionLifecycle` 审查通过的 `AuthorizedAction`，通过 `ActionAdapter` 接口执行。`aios-action` 依赖 `aios-core` 获取 `ActionAdapter` trait 和 `AuthorizedAction` 类型。
 
 - **PreWarmProcess**：预热目标应用进程
 - **PrefetchFile**：预取热点文件到页缓存
@@ -37,7 +37,7 @@ AIOS 与底层 Android/Linux 的动作执行边界。它只接收 `PolicyEngine`
 - **ReleaseMemory**：释放非关键内存
 - **NoOp**：安全兜底
 
-当前实现保留本地 replay fallback，并已经把 Android 可执行的 `PrefetchFile(url:/uri:)` 通过 authenticated localhost bridge 接到 Android collector。更高权限的 syscall 路线不作为当前 Android public-API 主线。
+当前实现保留本地 replay fallback，并已经把 Android 可执行的子集通过 authenticated localhost bridge 接到 Android collector。更高权限的 syscall 路线不作为当前 Android public-API 主线。
 
 ### 3. `aios-core` — 脊梁层
 
@@ -46,10 +46,10 @@ AIOS 与底层 Android/Linux 的动作执行边界。它只接收 `PolicyEngine`
 - **调度**：决定哪个 Action 先执行
 - **策略引擎 (Policy Engine)**：内核级"防火墙"，根据 Policy 判定 AI 产生的动作是否安全（例如深夜不能自动支付、转账必须人工确认）
 - **Privacy Filter (隐私滤镜)**：数据出海前进行正则或轻量语义脱敏——这是 DiPECS 最核心的模块之一
-- **Action Verifier**：云端 LLM 可能产生错误指令，执行前必须做 100% 静态类型检查和安全过滤
+- **动作生命周期 (ActionLifecycle)**：`AuthorizedAction` 的唯一构造点，结合 PolicyEngine 和 ActionAdapter 驱动动作授权与执行
 - **Trace Engine**：全链路确定性记录，支持 Golden Trace 回归验证
 
-实现方式：Rust 同步优先（不引入不必要的 async），异步点集中在系统边界。
+实现方式：核心逻辑保持同步 (Sync)，异步点集中在系统边界（tokio mpsc channel 和 daemon 调度）。
 
 ### 4. `aios-agent` — 决策层
 
@@ -77,11 +77,11 @@ apps/android-collector / daemon sources
     -> CollectorEnvelope / RawEvent
     -> PrivacyAirGap
     -> WindowAggregator
-    -> DecisionRouter
-    -> PolicyEngine
+    -> ModelMemoryStore / DecisionRouter
+    -> ActionLifecycle
     -> AuthorizedAction
-    -> ActionExecutor
-    -> Trace
+    -> ActionAdapter
+    -> AuditRecord / runtime trace
 ```
 
 主链路环节：
@@ -90,16 +90,12 @@ apps/android-collector / daemon sources
 2. **Ingress** — `aios-collector` 规范化为 `CollectorEnvelope` / `RawEvent`
 3. **Redaction** — `PrivacyAirGap` 抹除 PII，输出 `SanitizedEvent`
 4. **Aggregation** — `WindowAggregator` 生成 `StructuredContext`
-5. **Reasoning** — `DecisionRouter` 选择规则、本地、云端或 fallback 后端
-6. **Authorization** — `PolicyEngine` 结合 `CapabilityLevel` 审查动作
-7. **Execution** — `ActionExecutor` 只执行 `AuthorizedAction`
-8. **Observation** — `ActionResult` 和 Trace 进入回归验证
+5. **Memory** — `ModelMemoryStore` 基于脱敏窗口和审计记录构建 `ModelInput`（含行为画像和近期反馈）
+6. **Reasoning** — `DecisionRouter` 选择规则、本地、云端或 fallback 后端
+7. **Authorization & Execution** — `ActionLifecycle` 结合 `PolicyEngine` 逐动作审查授权，通过 `ActionAdapter` 执行
+8. **Observation** — `AuditRecord` 和 runtime trace 进入回归验证
 
 系统要解决的最核心问题不是"模型准不准"，而是**语义鸿沟**：云端说"把这个文件发给张三"，本地 OS 必须精准定位——哪个文件？哪个张三？对应的 fd 是什么？App 权限够不够？
-
-> Action Bus 是 AI 时代的系统调用接口。传统 `syscall` 传的是寄存器数值，AI-syscall 传的是语义对象。
->
-> — JYY
 
 ## 一个意图的生命周期
 
@@ -111,11 +107,13 @@ apps/android-collector / daemon sources
 4. **审计** (Policy Engine)：查询策略，发现"支付额度 > 20 需要人工确认"
 5. **交互**：弹出确认框给用户
 6. **执行** (`aios-action`)：用户确认后，通过 action executor 调用支付
-7. **观测**：管理员看到支付 Action 生命周期结束，状态变为 `COMPLETED`
+7. **观测**：管理员看到支付 Action 生命周期结束，状态变为 `Succeeded`
 
 ## 工程防线
 
 - **`data/traces`** — 离线轨迹数据是算法组的"粮草"。开发时大量依赖离线 Trace 回放测试 Action Bus 逻辑，而非每次都调云端 API
-- **`tools/aios-replay`** — 调试组的"时光机"。系统崩溃时一帧帧重放失败过程，定位错误 Action
-- **`docs/rfc`** — 架构组的"刹车闸"。防止接口每天变化导致项目无法编译
+- **`tests/scenarios/`** — 端到端验证脚本（action-loop 模拟器 + emulator e2e），mock-socket 全套回路验证
+- **`data/evaluation/`** — 动作回路和模拟器 e2e 评估结果存档
+- **`aios-cli`** — 调试组的"时光机"。系统崩溃时一帧帧重放失败过程，定位错误 Action
+- **`docs/src/design/rfc`** — 架构组的"刹车闸"。防止接口每天变化导致项目无法编译
 - **`scripts/setup-env.sh`** — 新人的"入职礼"。10 分钟内跑通 Hello World

@@ -2,6 +2,7 @@
 set -euo pipefail
 
 ADB="${ADB:-}"
+PYTHON="${PYTHON:-}"
 PACKAGE="${PACKAGE:-com.dipecs.collector}"
 SAMPLES_PER_MODE="${SAMPLES_PER_MODE:-10}"
 SAMPLE_INTERVAL_SECS="${SAMPLE_INTERVAL_SECS:-10}"
@@ -17,6 +18,19 @@ if [[ -z "$ADB" ]]; then
     ADB="/mnt/c/Users/33207/AppData/Local/Android/Sdk/platform-tools/adb.exe"
   else
     echo "adb not found. Set ADB=/path/to/adb or install Android platform-tools in WSL." >&2
+    exit 1
+  fi
+fi
+
+if [[ -z "$PYTHON" ]]; then
+  # Prefer Windows Python (not WSL Python) so socket connections reach the
+  # Windows-side adb forward — WSL2 localhost forwarding is unreliable for this.
+  if [[ -x "/mnt/c/Users/33207/AppData/Local/Programs/Python/Python313/python.exe" ]]; then
+    PYTHON="/mnt/c/Users/33207/AppData/Local/Programs/Python/Python313/python.exe"
+  elif command -v python3 >/dev/null 2>&1; then
+    PYTHON="$(command -v python3)"
+  else
+    echo "python3 not found. Set PYTHON=/path/to/python3" >&2
     exit 1
   fi
 fi
@@ -41,7 +55,7 @@ round3() {
 
 avg_json_field() {
   local file="$1" mode="$2" field="$3"
-  python3 - "$file" "$mode" "$field" <<'PY'
+  "$PYTHON" - "$file" "$mode" "$field" <<'PY'
 import json, sys
 path, mode, field = sys.argv[1:]
 data = json.load(open(path, encoding="utf-8"))
@@ -53,7 +67,7 @@ PY
 
 parse_size_mb() {
   local raw="${1:-0}"
-  python3 - "$raw" <<'PY'
+  "$PYTHON" - "$raw" <<'PY'
 import re, sys
 raw = sys.argv[1].strip()
 m = re.match(r"^([0-9.]+)([KMG]?)$", raw)
@@ -95,7 +109,7 @@ get_meminfo() {
   pss="$(printf '%s\n' "$mem" | sed -n 's/.*TOTAL PSS:[[:space:]]*\([0-9][0-9]*\).*/\1/p' | head -n 1)"
   rss="${rss:-0}"
   pss="${pss:-0}"
-  python3 - "$rss" "$pss" <<'PY'
+  "$PYTHON" - "$rss" "$pss" <<'PY'
 import sys
 rss, pss = [int(x or 0) for x in sys.argv[1:]]
 print(round(rss / 1024, 3), round(pss / 1024, 3))
@@ -146,7 +160,7 @@ sample_json() {
   read -r battery ac < <(get_battery)
   thermal="$(get_thermal)"
   ts="$(date -u +%s%3N)"
-  python3 - "$idx" "$ts" "$mode" "$pid" "$cpu" "$top_res" "$rss" "$pss" "$battery" "$ac" "$thermal" "$total_frames" "$janky_frames" "$jank_pct" <<'PY'
+  "$PYTHON" - "$idx" "$ts" "$mode" "$pid" "$cpu" "$top_res" "$rss" "$pss" "$battery" "$ac" "$thermal" "$total_frames" "$janky_frames" "$jank_pct" <<'PY'
 import json, sys
 idx, ts, mode, pid, cpu, top_res, rss, pss, battery, ac, thermal, total_frames, janky_frames, jank_pct = sys.argv[1:]
 obj = {
@@ -181,10 +195,10 @@ stop_collector() {
 
 send_action_loop() {
   local sender="tests/scenarios/lib/action-forensic-sender.py"
-  python3 "$sender" "$ACTION_HOST" "$PORT" "$TOKEN" 1.0 KeepAlive work:collector_heartbeat Immediate >/dev/null || true
-  python3 "$sender" "$ACTION_HOST" "$PORT" "$TOKEN" 1.0 ReleaseMemory cache:prefetch Immediate >/dev/null || true
-  python3 "$sender" "$ACTION_HOST" "$PORT" "$TOKEN" 1.0 PreWarmProcess own:warmup Immediate >/dev/null || true
-  python3 "$sender" "$ACTION_HOST" "$PORT" "$TOKEN" 1.0 PrefetchFile url:https://example.com/ Immediate >/dev/null || true
+  "$PYTHON" "$sender" "$ACTION_HOST" "$PORT" "$TOKEN" 1.0 KeepAlive work:collector_heartbeat Immediate >/dev/null || true
+  "$PYTHON" "$sender" "$ACTION_HOST" "$PORT" "$TOKEN" 1.0 ReleaseMemory cache:prefetch Immediate >/dev/null || true
+  "$PYTHON" "$sender" "$ACTION_HOST" "$PORT" "$TOKEN" 1.0 PreWarmProcess own:warmup Immediate >/dev/null || true
+  "$PYTHON" "$sender" "$ACTION_HOST" "$PORT" "$TOKEN" 1.0 PrefetchFile url:https://example.com/ Immediate >/dev/null || true
 }
 
 collect_mode() {
@@ -198,7 +212,7 @@ collect_mode() {
     local sample
     sample="$(sample_json "$mode" "$i")"
     echo "$sample" >> "$tmp"
-    python3 - "$sample" <<'PY' >&2
+    "$PYTHON" - "$sample" <<'PY' >&2
 import json, sys
 s = json.loads(sys.argv[1])
 print(f"  {s['mode']}[{s['sample_index']}] cpu={s['cpu_pct']}% rss={s['rss_mb']}MB pss={s['pss_mb']}MB battery={s['battery_pct']}% thermal={s['thermal_c']}C jank={s['jank_pct']}%")
@@ -258,7 +272,7 @@ json_path="$OUT_DIR/resource-overhead-emulator-$timestamp.json"
 md_path="$OUT_DIR/resource-overhead-emulator-$timestamp.md"
 adb_serial="$(adb_cmd get-serialno | tr -d '\r')"
 
-python3 - "$tmpdir/baseline.jsonl" "$tmpdir/observe.jsonl" "$tmpdir/action.jsonl" "$json_path" "$md_path" "$timestamp" "$SAMPLE_INTERVAL_SECS" "$SAMPLES_PER_MODE" "$PACKAGE" "$adb_serial" <<'PY'
+"$PYTHON" - "$tmpdir/baseline.jsonl" "$tmpdir/observe.jsonl" "$tmpdir/action.jsonl" "$json_path" "$md_path" "$timestamp" "$SAMPLE_INTERVAL_SECS" "$SAMPLES_PER_MODE" "$PACKAGE" "$adb_serial" <<'PY'
 import json, sys, datetime, pathlib
 baseline_path, observe_path, action_path, json_path, md_path, timestamp, interval, samples_per, package, adb_serial = sys.argv[1:]
 

@@ -184,6 +184,14 @@ fn forwarded_actions_envelope_and_ok_maps_to_succeeded() {
             expires > issued,
             "{action_type:?}: expires must be after issued"
         );
+        // freshness 窗口必须恰为 ANDROID_ACTION_PAYLOAD_TTL_MS(60_000ms)。`expires > issued`
+        // 挡不住 TTL 常量被改大/改小或计算漂移;此处钉死窗口宽度,守住客户端 freshness 构造。
+        // 常量在 aios-action 内为 crate-private,故按本仓库 golden 值惯例直接钉字面量。
+        assert_eq!(
+            expires - issued,
+            60_000,
+            "{action_type:?}: freshness window must equal ANDROID_ACTION_PAYLOAD_TTL_MS (60_000ms)",
+        );
         let action = v["action"]
             .as_str()
             .expect("action carried as the serialized AuthorizedAction string");

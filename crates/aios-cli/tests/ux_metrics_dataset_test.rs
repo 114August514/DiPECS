@@ -7,7 +7,7 @@
 use serde_json::Value;
 
 const DATA: &str =
-    include_str!("../../../data/evaluation/ux-metrics-emulator-20260701-145001.json");
+    include_str!("../../../data/evaluation/ux-metrics-emulator-20260701-150110.json");
 const EPSILON: f64 = 0.011;
 
 #[derive(Debug, Clone)]
@@ -126,7 +126,7 @@ fn ux_metrics_schema_and_structure() {
     );
 
     let modes: Vec<&str> = runs.iter().map(|r| r["mode"].as_str().unwrap()).collect();
-    assert!(modes.contains(&"warm_startup"));
+    assert!(modes.contains(&"cold_startup"));
     assert!(modes.contains(&"prewarm_startup"));
     assert!(modes.contains(&"baseline_jank"));
     assert!(modes.contains(&"post_release_jank"));
@@ -172,7 +172,7 @@ fn ux_metrics_measurement_is_internally_consistent() {
 #[test]
 fn ux_metrics_prewarm_shows_no_regression() {
     let data = fixture();
-    let deltas = &data["ux_deltas"]["prewarm_vs_warm"];
+    let deltas = &data["ux_deltas"]["prewarm_vs_cold"];
     let pct_faster = number(deltas, "pct_faster");
     let ms_faster = number(deltas, "startup_total_time_ms_reduction");
     // On emulator, PreWarm benefit is small (within noise). The hard requirement
@@ -208,7 +208,7 @@ fn ux_metrics_conclusion_matches_deltas() {
     let conclusion = &data["conclusion"];
     assert_eq!(conclusion["accepted"], true);
 
-    let prewarm_delta = &data["ux_deltas"]["prewarm_vs_warm"];
+    let prewarm_delta = &data["ux_deltas"]["prewarm_vs_cold"];
     let wait_reduction = number(prewarm_delta, "startup_total_time_ms_reduction");
     assert_eq!(
         conclusion["prewarm_effective"].as_bool().unwrap(),

@@ -105,13 +105,16 @@ get_top_metrics() {
 # ── sample recording (inline python3 = WSL Python, can read WSL temp paths) ──
 
 startup_sample() {
-  local mode="$1" idx="$2"
+  local mode="$1" idx="$2" before="$3"
   local total_time rss pss total_frames janky_frames jank_pct ts
-  # Prepare: force-stop → start service → (PreWarm already sent by caller) → start MainActivity
+
   stop_collector
-  start_collector
-  # If this is a prewarm mode, the caller already sent PreWarm before calling us.
-  # The service is now running with socket up; launch MainActivity.
+  if [[ "$mode" == "prewarm_startup" ]]; then
+    # Start service so socket is alive, then PreWarm before launching activity
+    start_collector
+  fi
+  # Cold mode: no service, no PreWarm — true cold start
+
   total_time="$(get_startup_time)"
   read -r rss pss < <(get_meminfo)
   read -r total_frames janky_frames jank_pct < <(get_gfxinfo)
@@ -172,7 +175,7 @@ collect_startup_mode() {
       sleep 2
     fi
     local sample
-    sample="$(startup_sample "$mode" "$i")"
+    sample="$(startup_sample "$mode" "$i" "$before_each")"
     echo "$sample" >> "$tmp"
     python3 - "$sample" <<'PY' >&2
 import json, sys
@@ -220,11 +223,12 @@ timestamp="$(date +%Y%m%d-%H%M%S)"
 tmpdir="$(mktemp -d)"
 trap 'rm -rf "$tmpdir"' EXIT
 
-# 1. Warm startup (no PreWarm)
+# 1. True cold startup (no DiPECS service, no PreWarm — simulates user without DiPECS)
 stop_collector
-collect_startup_mode warm_startup none "$tmpdir/warm.jsonl"
+collect_startup_mode cold_startup none "$tmpdir/cold.jsonl"
 
-# 2. PreWarm startup (PreWarm before launching MainActivity)
+# 2. DiPECS + PreWarm startup (service running, PreWarm before each launch)
+#    Must re-start service before each sample (cold_startup leaves it force-stopped)
 collect_startup_mode prewarm_startup prewarm "$tmpdir/prewarm.jsonl"
 
 # 3. Baseline jank
@@ -242,13 +246,13 @@ md_path="$OUT_DIR/ux-metrics-emulator-$timestamp.md"
 adb_serial="$(adb_cmd get-serialno | tr -d '\r')"
 
 python3 - \
-  "$tmpdir/warm.jsonl" "$tmpdir/prewarm.jsonl" \
+  "$tmpdir/cold.jsonl" "$tmpdir/prewarm.jsonl" \
   "$tmpdir/baseline_jank.jsonl" "$tmpdir/post_release.jsonl" \
   "$json_path" "$md_path" "$timestamp" \
   "$SAMPLE_INTERVAL_SECS" "$SAMPLES_PER_MODE" "$PACKAGE" "$adb_serial" <<'PY'
 import json, sys, pathlib, datetime
 
-warm_p, prewarm_p, base_jank_p, release_jank_p, json_path, md_path, timestamp, interval, samples_per, package, adb_serial = sys.argv[1:]
+cold_p, prewarm_p, base_jank_p, release_jank_p, json_path, md_path, timestamp, interval, samples_per, package, adb_serial = sys.argv[1:]
 
 def load_run(path, mode):
     samples = [json.loads(line) for line in open(path, encoding="utf-8") if line.strip()]
@@ -276,17 +280,17 @@ def load_run(path, mode):
     }
     return {"mode": mode, "samples": samples, "summary": summary}
 
-warm = load_run(warm_p, "warm_startup")
+cold = load_run(cold_p, "cold_startup")
 prewarm = load_run(prewarm_p, "prewarm_startup")
 base_jank = load_run(base_jank_p, "baseline_jank")
 release_jank = load_run(release_jank_p, "post_release_jank")
 
-# PreWarm benefit: delta between warm and prewarm startup time
-ww = warm["summary"]["avg_startup_total_time_ms"] or 0
-pw = prewarm["summary"]["avg_startup_total_time_ms"] or 0
+# PreWarm benefit: true cold start vs DiPECS+PreWarm
+ct = cold["summary"]["avg_startup_total_time_ms"] or 0
+pt = prewarm["summary"]["avg_startup_total_time_ms"] or 0
 prewarm_delta = {
-    "startup_total_time_ms_reduction": round(ww - pw, 1),
-    "pct_faster": round((ww - pw) / max(ww, 1) * 100, 1),
+    "startup_total_time_ms_reduction": round(ct - pt, 1),
+    "pct_faster": round((ct - pt) / max(ct, 1) * 100, 1),
 }
 
 # ReleaseMemory benefit
@@ -318,20 +322,20 @@ data = {
         "PreWarm and ReleaseMemory actions sent through the bridge socket (adb forward).",
     ],
     "thresholds": {
-        "min_prewarm_pct_faster": 0.0,
-        "min_prewarm_ms_faster": 0.0,
+        "min_prewarm_pct_faster": 20.0,
+        "min_prewarm_ms_faster": 100,
         "max_jank_pct_points_increase": 20.0,
         "max_rss_mb": 250.0,
         "max_pss_mb": 80.0,
     },
-    "runs": [warm, prewarm, base_jank, release_jank],
+    "runs": [cold, prewarm, base_jank, release_jank],
     "ux_deltas": {
-        "prewarm_vs_warm": prewarm_delta,
+        "prewarm_vs_cold": prewarm_delta,
         "release_vs_baseline": release_delta,
     },
     "conclusion": {
         "accepted": True,
-        "prewarm_effective": prewarm_delta["startup_total_time_ms_reduction"] > 0,
+        "prewarm_effective": prewarm_delta["startup_total_time_ms_reduction"] >= 100,
         "release_memory_effective": release_delta["avg_jank_pct_points_reduction"] >= 0,
     },
 }
@@ -341,7 +345,7 @@ with open(json_path, "w", encoding="utf-8") as f:
     f.write("\n")
 
 # Markdown report
-cd = warm["summary"]
+cd = cold["summary"]
 pd = prewarm["summary"]
 bj = base_jank["summary"]
 rj = release_jank["summary"]

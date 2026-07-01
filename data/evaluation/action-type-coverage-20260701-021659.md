@@ -3,7 +3,7 @@
 - 运行时间: 20260701-021659
 - 设备: emulator-5554(Android 模拟器,debug build,headless）
 - 数据来源: **[EXECUTED]**(四个可转发动作类型逐一在真机执行,各见终态审计事件)
-- trace 文件: `data/traces/action-type-coverage-20260701-021659.jsonl`(21 行,`pm clear` 后全新落盘,逐事件可归属本轮)
+- trace 文件: `data/traces/action-type-coverage-20260701-021659.jsonl`(21 行,`pm clear` 后全新落盘,逐事件可归属本轮;Git LFS pointer,独立核验需 `git lfs pull data/traces/action-type-coverage-20260701-021659.jsonl`)
 - 发送通道: 验证通道取证发送器 `tests/scenarios/lib/action-forensic-sender.py`(走与生产 `AndroidAdapter` 逐字节一致的 execute 信封;非生产发送路径,见下"诚实边界")
 
 ## 为什么是"全类型"

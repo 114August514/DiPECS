@@ -251,7 +251,7 @@ mod tests {
     use std::net::{Shutdown, TcpListener};
     use std::thread;
 
-    use super::{action_signature, send_ping};
+    use super::{action_signature, send_action, send_ping};
 
     #[test]
     fn ping_payload_is_valid_json() {
@@ -371,9 +371,11 @@ mod tests {
     }
 
     #[test]
-    fn send_action_constructs_valid_json_payload() {
+    fn send_action_includes_auth_token_and_signature() {
+        // 验证 send_action 发出的 payload 必须包含 auth_token 和 action_signature,
+        // 且两者随 token 变化而变化——这是 Android bridge 鉴权的基础。
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
-        let _port = listener.local_addr().unwrap().port();
+        let port = listener.local_addr().unwrap().port();
 
         let received = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
         let received_clone = received.clone();
@@ -389,49 +391,77 @@ mod tests {
                 }
             }
             *received_clone.lock().unwrap() = buf;
-            // Send a minimal response so the client doesn't hang.
-            stream.write_all(b"ok").ok();
+            stream.write_all(br#"{"status":"ok"}"#).ok();
             stream.flush().ok();
+            stream.shutdown(Shutdown::Write).ok();
         });
 
-        // The send_action function sends to a real socket, but since the
-        // upstream server may not exist we just verify the payload construction
-        // via the signature logic below. The socket test above verifies
-        // the TCP write path.
-        //
-        // Verify the payload JSON structure independently:
-        let payload = serde_json::json!({
-            "intent_id": "cli-manual-action",
-            "coord": {
-                "window_ordinal": 0,
-                "intent_ordinal": 0,
-                "action_ordinal": 0,
-            },
-            "action": {
-                "action_type": "PrefetchFile",
-                "target": "url:https://example.test/f",
-                "urgency": "Immediate",
-            },
-            "effect": "PureRead",
-            "authorized_at_ms": 1000i64,
-            "auth_token": "test-token",
-            "issued_at_ms": 1000i64,
-            "expires_at_ms": 106000i64,
-            "action_signature": action_signature(
-                "test-token",
-                1000,
-                106000,
-                "PrefetchFile",
-                "url:https://example.test/f",
-                "Immediate",
-            ),
-        })
-        .to_string();
+        send_action(
+            "127.0.0.1",
+            port,
+            "cli-test-token",
+            "PrefetchFile",
+            "url:https://example.test/f",
+            "Immediate",
+        )
+        .unwrap();
 
-        let parsed: serde_json::Value = serde_json::from_str(&payload).unwrap();
-        assert_eq!(parsed["action"]["action_type"], "PrefetchFile");
-        assert_eq!(parsed["action"]["target"], "url:https://example.test/f");
-        assert_eq!(parsed["action"]["urgency"], "Immediate");
+        let buf = received.lock().unwrap();
+        let text = std::str::from_utf8(&buf).unwrap();
+        let parsed: serde_json::Value = serde_json::from_str(text).unwrap();
+
+        assert_eq!(
+            parsed["auth_token"].as_str().unwrap(),
+            "cli-test-token",
+            "payload must carry auth_token"
+        );
+        let sig = parsed["action_signature"].as_str().unwrap();
+        assert!(!sig.is_empty(), "action_signature must not be empty");
+
+        // 不同 token 必须产生不同 signature(即 HMAC 确实绑定了 token)。
+        let alt_sig = action_signature(
+            "different-token",
+            parsed["issued_at_ms"].as_i64().unwrap(),
+            parsed["expires_at_ms"].as_i64().unwrap(),
+            "PrefetchFile",
+            "url:https://example.test/f",
+            "Immediate",
+        );
+        assert_ne!(sig, alt_sig, "signature must be token-sensitive");
+    }
+
+    #[test]
+    fn send_action_empty_token_is_documented() {
+        // 当前实现允许空 token:payload 中 auth_token 为空,signature 用空 key 计算。
+        // 本测试把该行为钉死,以便未来若加入"拒绝空 token"校验时有明确回归基线。
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+
+        let received = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let received_clone = received.clone();
+        thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut buf = Vec::new();
+            let mut chunk = [0u8; 1024];
+            loop {
+                match stream.read(&mut chunk) {
+                    Ok(0) => break,
+                    Ok(n) => buf.extend_from_slice(&chunk[..n]),
+                    Err(_) => break,
+                }
+            }
+            *received_clone.lock().unwrap() = buf;
+            stream.write_all(br#"{"status":"ok"}"#).ok();
+            stream.flush().ok();
+            stream.shutdown(Shutdown::Write).ok();
+        });
+
+        send_action("127.0.0.1", port, "", "NoOp", "", "IdleTime").unwrap();
+
+        let buf = received.lock().unwrap();
+        let text = std::str::from_utf8(&buf).unwrap();
+        let parsed: serde_json::Value = serde_json::from_str(text).unwrap();
+        assert_eq!(parsed["auth_token"].as_str().unwrap(), "");
         assert!(!parsed["action_signature"].as_str().unwrap().is_empty());
     }
 }

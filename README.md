@@ -249,14 +249,14 @@ PYTHONPATH=. uv run mkdocs build
 PYTHONPATH=. uv run mkdocs serve
 ```
 
-- [Architecture Overview](docs/src/design/overview.md)
-- [Daemon Architecture](docs/src/design/daemon-architecture.md)
-- [Android Interface MVP](docs/src/design/android-interface-mvp.md)
-- [Android Real-Device Validation](docs/src/design/android-real-device-validation.md)
-- [Android Security and Privacy Boundary](docs/src/design/android-security-privacy.md)
-- [Android Action Boundary](docs/src/design/android-action-boundary.md)
-- [RFC-0001](docs/src/design/rfc/0001-layered-collection-and-decision-routing.md)
-- [Android Collector](apps/android-collector/README.md)
+- [Architecture Overview](docs/src/architecture/index.md)
+- [Pipeline and Runtime](docs/src/architecture/pipeline.md)
+- [Android Collector](docs/src/android/collector.md)
+- [Android Real-Device Validation](docs/src/android/real-device-validation.md)
+- [Android Security and Privacy Boundary](docs/src/android/security-privacy.md)
+- [Android Action Boundary](docs/src/android/action-boundary.md)
+- [RFC-0001](docs/src/rfc/0001-layered-collection-and-decision-routing.md)
+- [Android Collector App](apps/android-collector/README.md)
 
 ## License
 

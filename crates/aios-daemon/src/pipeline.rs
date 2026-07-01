@@ -5,6 +5,7 @@
 use std::fs::{File, OpenOptions};
 use std::io::Write;
 use std::path::Path;
+use std::sync::Arc;
 use std::thread::{self, JoinHandle};
 
 use aios_agent::{DecisionRouter, ProfileSummarizer};
@@ -12,7 +13,7 @@ use aios_collector::collection_stats::RawEventStats;
 use aios_core::action_lifecycle::ActionLifecycle;
 use aios_core::context_memory::{ModelMemoryConfig, ModelMemoryStore};
 use aios_spec::IngestedRawEvent;
-use aios_spec::{CapabilityLevel, RecentDecisionRecord};
+use aios_spec::{CapabilityLevel, RecentDecisionRecord, UserBehaviorProfile};
 use serde_json::json;
 
 /// Append-only NDJSON recorder for daemon window processing.
@@ -178,6 +179,10 @@ pub(crate) fn process_window(
     }
 }
 
+type SummarizerFn = Arc<
+    dyn Fn(&UserBehaviorProfile, &[RecentDecisionRecord]) -> Result<String, String> + Send + Sync,
+>;
+
 /// Non-blocking profile compression worker.
 ///
 /// The decision path keeps using local counters and the last completed summary.
@@ -188,6 +193,7 @@ pub(crate) struct ProfileSummaryWorker {
     interval_windows: u32,
     pending: Option<JoinHandle<ProfileSummaryJobResult>>,
     last_started_window: u32,
+    summarizer_fn: Option<SummarizerFn>,
 }
 
 struct ProfileSummaryJobResult {
@@ -203,6 +209,24 @@ impl ProfileSummaryWorker {
             interval_windows,
             pending: None,
             last_started_window: 0,
+            summarizer_fn: None,
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn with_summarizer_fn(
+        interval_windows: u32,
+        f: impl Fn(&UserBehaviorProfile, &[RecentDecisionRecord]) -> Result<String, String>
+            + Send
+            + Sync
+            + 'static,
+    ) -> Self {
+        Self {
+            summarizer: None,
+            interval_windows,
+            pending: None,
+            last_started_window: 0,
+            summarizer_fn: Some(Arc::new(f)),
         }
     }
 
@@ -241,9 +265,9 @@ impl ProfileSummaryWorker {
     }
 
     pub(crate) fn maybe_start(&mut self, memory: &ModelMemoryStore) {
-        let Some(summarizer) = self.summarizer.clone() else {
+        if self.summarizer_fn.is_none() && self.summarizer.is_none() {
             return;
-        };
+        }
         if self.pending.is_some() || self.interval_windows == 0 {
             return;
         }
@@ -258,6 +282,26 @@ impl ProfileSummaryWorker {
         let profile = memory.behavior_profile();
         let recent = memory.recent_feedback();
         self.last_started_window = windows;
+
+        if let Some(f) = self.summarizer_fn.clone() {
+            self.pending = Some(thread::spawn(move || {
+                let result = f(&profile, &recent);
+                ProfileSummaryJobResult {
+                    observed_windows: windows,
+                    recent,
+                    result,
+                }
+            }));
+            tracing::info!(
+                observed_windows = windows,
+                "profile summary refresh started"
+            );
+            return;
+        }
+
+        let Some(summarizer) = self.summarizer.clone() else {
+            return;
+        };
         self.pending = Some(thread::spawn(move || {
             let result = summarizer.summarize(&profile, &recent);
             ProfileSummaryJobResult {
@@ -289,4 +333,345 @@ pub enum ProcessingEvent {
 
 pub fn should_stop_processing(event: &ProcessingEvent) -> bool {
     matches!(event, ProcessingEvent::RawChannelClosed)
+}
+
+// ============================================================
+// Unit tests
+// ============================================================
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::Read;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    use aios_agent::DecisionRouter;
+    use aios_collector::collection_stats::RawEventStats;
+    use aios_core::action_lifecycle::ActionLifecycle;
+    use aios_core::context_memory::{ModelMemoryConfig, ModelMemoryStore};
+    use aios_core::governance::{ActionAdapter, AuthorizedAction};
+    use aios_core::policy_engine::PolicyEngine;
+    use aios_spec::governance::{ActionOutcome, AdapterError};
+    use aios_spec::{
+        ContextSummary, DecisionBackendResult, DecisionRoute, IntentBatch, SourceTier,
+        StructuredContext,
+    };
+
+    // ── helpers ──────────────────────────────────────────────────
+
+    fn empty_context(window_id: &str) -> StructuredContext {
+        StructuredContext {
+            window_id: window_id.into(),
+            window_start_ms: 0,
+            window_end_ms: 10000,
+            duration_secs: 10,
+            events: vec![],
+            summary: ContextSummary {
+                foreground_apps: vec![],
+                notified_apps: vec![],
+                all_semantic_hints: vec![],
+                file_activity: vec![],
+                latest_system_status: None,
+                source_tier: SourceTier::PublicApi,
+            },
+        }
+    }
+
+    fn empty_decision(window_id: &str) -> DecisionBackendResult {
+        DecisionBackendResult {
+            route: DecisionRoute::RuleBased,
+            intent_batch: IntentBatch {
+                window_id: window_id.into(),
+                intents: vec![],
+                generated_at_ms: 0,
+                model: "test".into(),
+            },
+            rationale_tags: vec![],
+            latency_us: 0,
+            error: None,
+        }
+    }
+
+    fn advance_memory_to_windows(memory: &mut ModelMemoryStore, n: u32) {
+        for i in 0..n {
+            let wid = format!("w{}", i);
+            let ctx = empty_context(&wid);
+            let decision = empty_decision(&wid);
+            memory.observe_window(&ctx, &decision, &[]);
+        }
+    }
+
+    // ── mock adapter ────────────────────────────────────────────
+
+    struct OkAdapter;
+    impl ActionAdapter for OkAdapter {
+        fn name(&self) -> &'static str {
+            "ok"
+        }
+        fn execute(&self, authorized: &AuthorizedAction) -> Result<ActionOutcome, AdapterError> {
+            Ok(ActionOutcome {
+                action_type: format!("{:?}", authorized.action().action_type),
+                target: authorized.action().target.clone(),
+                summary: "ok".into(),
+                latency_us: 0,
+            })
+        }
+    }
+
+    struct FailAdapter;
+    impl ActionAdapter for FailAdapter {
+        fn name(&self) -> &'static str {
+            "fail"
+        }
+        fn execute(&self, _authorized: &AuthorizedAction) -> Result<ActionOutcome, AdapterError> {
+            Err(AdapterError::SimulatedResourceUnavailable(
+                "disk full".into(),
+            ))
+        }
+    }
+
+    // ============================================================
+    // ProfileSummaryWorker tests
+    // ============================================================
+
+    #[test]
+    fn worker_with_no_summarizer_never_starts() {
+        let mut worker = ProfileSummaryWorker::new(None, 10);
+        let mut memory = ModelMemoryStore::new(5);
+        advance_memory_to_windows(&mut memory, 10);
+
+        worker.maybe_start(&memory);
+        assert!(worker.pending.is_none());
+        // poll should also no-op; no llm_summary set
+        worker.poll(&mut memory);
+        let summary = memory.behavior_profile().summary;
+        assert!(
+            !summary.contains("llm_summary="),
+            "expected no llm_summary in profile, got: {summary}"
+        );
+    }
+
+    #[test]
+    fn poll_noops_when_no_pending_job() {
+        let mut worker = ProfileSummaryWorker::new(None, 10);
+        let mut memory = ModelMemoryStore::new(5);
+
+        worker.poll(&mut memory);
+        let summary = memory.behavior_profile().summary;
+        assert!(
+            !summary.contains("llm_summary="),
+            "expected no llm_summary in profile, got: {summary}"
+        );
+    }
+
+    #[test]
+    fn maybe_start_skips_before_interval() {
+        let mut worker = ProfileSummaryWorker::with_summarizer_fn(5, |_, _| Ok("hello".into()));
+        let mut memory = ModelMemoryStore::new(5);
+        // 3 windows, interval is 5
+        advance_memory_to_windows(&mut memory, 3);
+
+        worker.maybe_start(&memory);
+        assert!(worker.pending.is_none());
+    }
+
+    #[test]
+    fn maybe_start_spawns_when_interval_met() {
+        let mut worker = ProfileSummaryWorker::with_summarizer_fn(5, |_, _| Ok("hello".into()));
+        let mut memory = ModelMemoryStore::new(5);
+        advance_memory_to_windows(&mut memory, 25); // multiple of 5
+
+        worker.maybe_start(&memory);
+        assert!(worker.pending.is_some());
+    }
+
+    #[test]
+    fn maybe_start_skips_when_pending_exists() {
+        let mut worker = ProfileSummaryWorker::with_summarizer_fn(5, |_, _| Ok("hello".into()));
+        let mut memory = ModelMemoryStore::new(5);
+        advance_memory_to_windows(&mut memory, 10);
+
+        // first call spawns
+        worker.maybe_start(&memory);
+        assert!(worker.pending.is_some());
+        // second call skips because pending is still Some
+        worker.maybe_start(&memory);
+        assert!(worker.pending.is_some());
+    }
+
+    #[test]
+    fn maybe_start_skips_same_last_started_window() {
+        let mut worker = ProfileSummaryWorker::with_summarizer_fn(5, |_, _| Ok("hello".into()));
+        let mut memory = ModelMemoryStore::new(5);
+        advance_memory_to_windows(&mut memory, 10);
+
+        // spawn and complete
+        worker.maybe_start(&memory);
+        // give the thread a moment to finish
+        std::thread::sleep(std::time::Duration::from_millis(10));
+        worker.poll(&mut memory);
+
+        // observation_windows is still 10, same as last_started_window
+        worker.maybe_start(&memory);
+        assert!(worker.pending.is_none());
+    }
+
+    #[test]
+    fn poll_collects_finished_job_and_sets_summary() {
+        let mut worker = ProfileSummaryWorker::with_summarizer_fn(5, |_, _| {
+            Ok("compressed behavior profile".into())
+        });
+        let mut memory = ModelMemoryStore::new(5);
+        advance_memory_to_windows(&mut memory, 10);
+
+        worker.maybe_start(&memory);
+        // wait for the thread to complete
+        std::thread::sleep(std::time::Duration::from_millis(20));
+        worker.poll(&mut memory);
+
+        let summary = memory.behavior_profile().summary;
+        assert!(
+            summary.starts_with("llm_summary=compressed behavior profile;"),
+            "expected llm summary in profile, got: {summary}"
+        );
+        assert!(worker.pending.is_none());
+        assert_eq!(worker.last_started_window, 10);
+    }
+
+    #[test]
+    fn poll_handles_failed_summarization_gracefully() {
+        let mut worker =
+            ProfileSummaryWorker::with_summarizer_fn(5, |_, _| Err("summarization failed".into()));
+        let mut memory = ModelMemoryStore::new(5);
+        advance_memory_to_windows(&mut memory, 10);
+
+        worker.maybe_start(&memory);
+        std::thread::sleep(std::time::Duration::from_millis(20));
+        worker.poll(&mut memory);
+
+        // llm_summary should not be set after a failed summarization
+        let summary = memory.behavior_profile().summary;
+        assert!(
+            !summary.contains("llm_summary="),
+            "expected no llm_summary after failure, got: {summary}"
+        );
+        assert!(worker.pending.is_none());
+    }
+
+    // ============================================================
+    // process_window tests
+    // ============================================================
+
+    fn make_deps<'a>(
+        router: &'a DecisionRouter,
+        lifecycle: &'a ActionLifecycle<'a>,
+        memory: &'a mut ModelMemoryStore,
+        memory_config: &'a ModelMemoryConfig,
+        trace_recorder: Option<&'a mut RuntimeTraceRecorder>,
+    ) -> WindowProcessingDeps<'a> {
+        WindowProcessingDeps {
+            router,
+            lifecycle,
+            memory,
+            memory_config,
+            profile_summary_worker: None,
+            trace_recorder,
+        }
+    }
+
+    #[test]
+    fn process_window_increments_observation_windows() {
+        let router = DecisionRouter::default();
+        let policy = PolicyEngine::default();
+        let adapter = OkAdapter;
+        let lifecycle = ActionLifecycle::new(&policy, &adapter);
+        let mut memory = ModelMemoryStore::new(5);
+        let config = ModelMemoryConfig::default();
+        let stats = RawEventStats::default();
+        let ctx = empty_context("w-test");
+
+        let before = memory.observation_windows();
+        let mut deps = make_deps(&router, &lifecycle, &mut memory, &config, None);
+        process_window(0, &ctx, &stats, &mut deps);
+        assert_eq!(memory.observation_windows(), before + 1);
+    }
+
+    #[test]
+    fn process_window_handles_empty_context_without_panic() {
+        let router = DecisionRouter::default();
+        let policy = PolicyEngine::default();
+        let adapter = OkAdapter;
+        let lifecycle = ActionLifecycle::new(&policy, &adapter);
+        let mut memory = ModelMemoryStore::new(5);
+        let config = ModelMemoryConfig::default();
+        let stats = RawEventStats::default();
+        let ctx = empty_context("w-empty");
+
+        let mut deps = make_deps(&router, &lifecycle, &mut memory, &config, None);
+        process_window(0, &ctx, &stats, &mut deps);
+        // no panic
+    }
+
+    #[test]
+    fn process_window_with_failing_adapter_does_not_panic() {
+        let router = DecisionRouter::default();
+        let policy = PolicyEngine::default();
+        let adapter = FailAdapter;
+        let lifecycle = ActionLifecycle::new(&policy, &adapter);
+        let mut memory = ModelMemoryStore::new(5);
+        let config = ModelMemoryConfig::default();
+        let stats = RawEventStats::default();
+        let ctx = empty_context("w-fail");
+
+        let mut deps = make_deps(&router, &lifecycle, &mut memory, &config, None);
+        process_window(0, &ctx, &stats, &mut deps);
+        // no panic on adapter failure
+    }
+
+    #[test]
+    fn process_window_writes_trace_record() {
+        let path = std::env::temp_dir().join(format!(
+            "dipecs-daemon-trace-{}.ndjson",
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let mut recorder = RuntimeTraceRecorder::new(&path).unwrap();
+
+        let router = DecisionRouter::default();
+        let policy = PolicyEngine::default();
+        let adapter = OkAdapter;
+        let lifecycle = ActionLifecycle::new(&policy, &adapter);
+        let mut memory = ModelMemoryStore::new(5);
+        let config = ModelMemoryConfig::default();
+        let stats = RawEventStats::default();
+        let ctx = empty_context("w-trace");
+
+        let mut deps = make_deps(
+            &router,
+            &lifecycle,
+            &mut memory,
+            &config,
+            Some(&mut recorder),
+        );
+        process_window(0, &ctx, &stats, &mut deps);
+        drop(recorder);
+
+        let mut content = String::new();
+        std::fs::File::open(&path)
+            .unwrap()
+            .read_to_string(&mut content)
+            .unwrap();
+        let lines: Vec<&str> = content.lines().collect();
+        assert_eq!(lines.len(), 1, "expected exactly one NDJSON line");
+
+        let parsed: serde_json::Value = serde_json::from_str(lines[0]).unwrap();
+        assert_eq!(parsed["stage"], "daemon_window");
+        assert_eq!(parsed["window_ordinal"], 0);
+        assert_eq!(parsed["window_id"], "w-trace");
+        assert!(parsed["audit"].is_array());
+
+        let _ = std::fs::remove_file(path);
+    }
 }

@@ -459,20 +459,36 @@ mod cloud_bench_tests {
         }
     }
 
+    /// Format a SystemTime as `YYYYmmDD-HHMMSS` (UTC, local-friendly).
     fn now_ts() -> String {
         let dur = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap_or_default();
         let secs = dur.as_secs();
-        let days = secs / 86400;
-        let rem = secs % 86400;
-        let year = 1970 + days / 365;
-        let doy = days % 365;
-        let month = doy / 30 + 1;
-        let day = (doy % 30) + 1;
+        // ------------------------------------------------------------------
+        // Convert seconds since epoch to (year, month, day, hour, min, sec)
+        // using an algorithm that correctly handles leap years.
+        // Based on Howard Hinnant's public-domain civil_from_days.
+        // ------------------------------------------------------------------
+        let z = secs / 86400;
+        let rem = (secs % 86400) as u32;
         let hour = (rem / 3600) % 24;
         let min = (rem % 3600) / 60;
         let sec = rem % 60;
+
+        // Shift epoch from 1970-01-01 to 0000-03-01 so leap day is at the
+        // very end of a notional 400-year cycle — this makes the math uniform.
+        let z = (z + 719468) as i64;
+        let era = if z >= 0 { z } else { z - 146096 } / 146097;
+        let doe = (z - era * 146097) as u32; // day of era [0, 146096]
+        let yoe = (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365; // year of era
+        let year = yoe + era as u32 * 400;
+        let doy = doe - (365 * yoe + yoe / 4 - yoe / 100); // day of year [0, 365]
+        let mp = (5 * doy + 2) / 153; // month index [0, 11] starting from March
+        let month = if mp < 10 { mp + 3 } else { mp - 9 };
+        let year = if month <= 2 { year + 1 } else { year };
+        let day = doy - (153 * mp + 2) / 5 + 1;
+
         format!("{year:04}{month:02}{day:02}-{hour:02}{min:02}{sec:02}")
     }
 

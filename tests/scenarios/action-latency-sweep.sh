@@ -64,7 +64,7 @@ measure_action() {
 import sys, json, re
 try:
     text = sys.stdin.read()
-    m = re.search(r"device=({.*})", text)
+    m = re.search(r"device=({.*?})", text)
     if not m:
         print("NA")
         sys.exit(0)
@@ -76,7 +76,7 @@ except Exception:
 ' 2>/dev/null || echo NA)"
 
   if [ "$device_us" = "NA" ]; then
-    ((na_count++)) || true
+    na_count=$((na_count + 1))
   fi
   printf '%s\t%s\t%s\n' "$atype" "$target" "$device_us"
 }

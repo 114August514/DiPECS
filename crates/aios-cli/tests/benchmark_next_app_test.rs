@@ -50,6 +50,10 @@ fn report_schema_and_counts_are_correct() {
         "global_majority",
         "per_current_app_majority",
         "markov",
+        "recent_notification",
+        "last_foreground",
+        "notification_priority",
+        "last_app_prewarm",
     ];
     for name in expected_backends {
         assert!(

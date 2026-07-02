@@ -1,13 +1,14 @@
 //! Simple baseline predictors for the next-app benchmark.
 
 use std::cell::RefCell;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::time::Instant;
 
 use rand::seq::SliceRandom;
 use rand::{rngs::StdRng, SeedableRng};
 
 use super::types::{NextAppLabel, NextAppPredictor, PredictionResult, ScoredPrediction};
+use aios_spec::{AppTransition, SanitizedEventType, SemanticHint};
 
 /// Always predict nothing (empty ranked list) — the simplest NoOp baseline.
 pub struct AlwaysNoOpBackend;
@@ -280,4 +281,253 @@ fn rank_by_counts(candidates: &[String], counts: &HashMap<String, u32>) -> Vec<S
             .then_with(|| a.package.cmp(&b.package))
     });
     scored
+}
+
+/// Find the most recent non-current foreground `AppTransition` target.
+fn last_non_current_foreground(
+    ctx: &aios_spec::StructuredContext,
+    current_app: &str,
+) -> Option<(i64, String)> {
+    ctx.events
+        .iter()
+        .filter_map(|e| match &e.event_type {
+            SanitizedEventType::AppTransition {
+                package_name,
+                transition: AppTransition::Foreground,
+                ..
+            } => Some((e.timestamp_ms, package_name.clone())),
+            _ => None,
+        })
+        .filter(|(_, package)| package != current_app)
+        .max_by(|a, b| a.0.cmp(&b.0).then_with(|| a.1.cmp(&b.1)))
+}
+
+/// Predict the app that most recently posted a notification.
+pub struct RecentNotificationBackend;
+
+impl NextAppPredictor for RecentNotificationBackend {
+    fn name(&self) -> &'static str {
+        "recent_notification"
+    }
+
+    fn predict(
+        &self,
+        ctx: &aios_spec::StructuredContext,
+        _current_app: &str,
+        candidates: &[String],
+    ) -> PredictionResult {
+        let start = Instant::now();
+        let ranked = ctx
+            .events
+            .iter()
+            .filter_map(|e| match &e.event_type {
+                SanitizedEventType::Notification { source_package, .. } => {
+                    Some((e.timestamp_ms, source_package.clone()))
+                },
+                _ => None,
+            })
+            .max_by(|a, b| a.0.cmp(&b.0).then_with(|| a.1.cmp(&b.1)))
+            .and_then(|(_, package)| {
+                if candidates.contains(&package) {
+                    Some(vec![ScoredPrediction {
+                        package,
+                        score: 1.0,
+                    }])
+                } else {
+                    None
+                }
+            })
+            .unwrap_or_default();
+        PredictionResult {
+            ranked,
+            latency_us: start.elapsed().as_micros() as u64,
+            rationale_present: false,
+        }
+    }
+}
+
+/// Predict the most recent non-current foreground app (user switching back).
+pub struct LastForegroundBackend;
+
+fn last_foreground_ranked(
+    ctx: &aios_spec::StructuredContext,
+    current_app: &str,
+    candidates: &[String],
+) -> Vec<ScoredPrediction> {
+    last_non_current_foreground(ctx, current_app)
+        .and_then(|(_, package)| {
+            if candidates.contains(&package) {
+                Some(vec![ScoredPrediction {
+                    package,
+                    score: 1.0,
+                }])
+            } else {
+                None
+            }
+        })
+        .unwrap_or_default()
+}
+
+impl NextAppPredictor for LastForegroundBackend {
+    fn name(&self) -> &'static str {
+        "last_foreground"
+    }
+
+    fn predict(
+        &self,
+        ctx: &aios_spec::StructuredContext,
+        current_app: &str,
+        candidates: &[String],
+    ) -> PredictionResult {
+        let start = Instant::now();
+        PredictionResult {
+            ranked: last_foreground_ranked(ctx, current_app, candidates),
+            latency_us: start.elapsed().as_micros() as u64,
+            rationale_present: false,
+        }
+    }
+}
+
+/// Rank candidates by notification priority heuristics.
+pub struct NotificationPriorityBackend;
+
+impl NextAppPredictor for NotificationPriorityBackend {
+    fn name(&self) -> &'static str {
+        "notification_priority"
+    }
+
+    fn predict(
+        &self,
+        ctx: &aios_spec::StructuredContext,
+        _current_app: &str,
+        candidates: &[String],
+    ) -> PredictionResult {
+        let start = Instant::now();
+
+        let notifications: Vec<&aios_spec::SanitizedEvent> = ctx
+            .events
+            .iter()
+            .filter(|e| matches!(e.event_type, SanitizedEventType::Notification { .. }))
+            .collect();
+
+        if notifications.is_empty() {
+            return PredictionResult {
+                ranked: Vec::new(),
+                latency_us: start.elapsed().as_micros() as u64,
+                rationale_present: false,
+            };
+        }
+
+        let candidate_set: HashSet<String> = candidates.iter().cloned().collect();
+        let max_ts = notifications
+            .iter()
+            .map(|e| e.timestamp_ms)
+            .max()
+            .unwrap_or(i64::MIN);
+
+        let mut scores: HashMap<String, f32> = HashMap::new();
+        let mut latest_ts: HashMap<String, i64> = HashMap::new();
+
+        for event in &notifications {
+            let (source_package, category, is_ongoing, semantic_hints) = match &event.event_type {
+                SanitizedEventType::Notification {
+                    source_package,
+                    category,
+                    is_ongoing,
+                    semantic_hints,
+                    ..
+                } => (source_package, category, is_ongoing, semantic_hints),
+                _ => unreachable!(),
+            };
+
+            if !candidate_set.contains(source_package) {
+                continue;
+            }
+
+            latest_ts
+                .entry(source_package.clone())
+                .and_modify(|v| *v = (*v).max(event.timestamp_ms))
+                .or_insert(event.timestamp_ms);
+
+            let score = scores.entry(source_package.clone()).or_insert(0.0);
+
+            if *is_ongoing {
+                *score += 3.0;
+            }
+
+            for hint in semantic_hints {
+                match hint {
+                    SemanticHint::FileMention
+                    | SemanticHint::ImageMention
+                    | SemanticHint::LinkAttachment => *score += 2.0,
+                    SemanticHint::UserMentioned | SemanticHint::CalendarInvitation => *score += 1.0,
+                    _ => {},
+                }
+            }
+
+            if let Some(cat) = category {
+                let cat_lower = cat.to_lowercase();
+                if matches!(cat_lower.as_str(), "alarm" | "call" | "event") {
+                    *score += 1.0;
+                }
+            }
+
+            if event.timestamp_ms == max_ts {
+                *score += 1.0;
+            }
+        }
+
+        if scores.is_empty() {
+            return PredictionResult {
+                ranked: Vec::new(),
+                latency_us: start.elapsed().as_micros() as u64,
+                rationale_present: false,
+            };
+        }
+
+        let mut ranked: Vec<ScoredPrediction> = scores
+            .into_iter()
+            .map(|(package, score)| ScoredPrediction { package, score })
+            .collect();
+        ranked.sort_by(|a, b| {
+            b.score
+                .partial_cmp(&a.score)
+                .unwrap_or(std::cmp::Ordering::Equal)
+                .then_with(|| {
+                    let ta = latest_ts.get(&a.package).copied().unwrap_or(i64::MIN);
+                    let tb = latest_ts.get(&b.package).copied().unwrap_or(i64::MIN);
+                    tb.cmp(&ta)
+                })
+                .then_with(|| a.package.cmp(&b.package))
+        });
+
+        PredictionResult {
+            ranked,
+            latency_us: start.elapsed().as_micros() as u64,
+            rationale_present: false,
+        }
+    }
+}
+
+/// Prewarm the app most recently switched to (proxied by last foreground target).
+pub struct LastAppPrewarmBackend;
+
+impl NextAppPredictor for LastAppPrewarmBackend {
+    fn name(&self) -> &'static str {
+        "last_app_prewarm"
+    }
+
+    fn predict(
+        &self,
+        ctx: &aios_spec::StructuredContext,
+        current_app: &str,
+        candidates: &[String],
+    ) -> PredictionResult {
+        let start = Instant::now();
+        PredictionResult {
+            ranked: last_foreground_ranked(ctx, current_app, candidates),
+            latency_us: start.elapsed().as_micros() as u64,
+            rationale_present: false,
+        }
+    }
 }

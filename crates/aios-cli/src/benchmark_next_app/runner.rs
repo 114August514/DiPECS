@@ -7,8 +7,9 @@ use anyhow::{bail, Context, Result};
 use tracing::info;
 
 use super::baselines::{
-    AlwaysNoOpBackend, FirstCandidateBackend, GlobalMajorityBackend, MarkovBackend,
-    PerCurrentAppMajorityBackend, RandomCandidateBackend,
+    AlwaysNoOpBackend, FirstCandidateBackend, GlobalMajorityBackend, LastAppPrewarmBackend,
+    LastForegroundBackend, MarkovBackend, NotificationPriorityBackend,
+    PerCurrentAppMajorityBackend, RandomCandidateBackend, RecentNotificationBackend,
 };
 use super::context_loader::{extract_observable_candidates, load_contexts_by_label, load_labels};
 use super::metrics::{compute_backend_metrics, round3, PredictionRecord};
@@ -105,6 +106,10 @@ pub fn run_benchmark(config: &BenchmarkRunConfig) -> Result<BenchmarkReport> {
             Box::new(GlobalMajorityBackend::default()),
             Box::new(PerCurrentAppMajorityBackend::default()),
             Box::new(MarkovBackend::default()),
+            Box::new(RecentNotificationBackend),
+            Box::new(LastForegroundBackend),
+            Box::new(NotificationPriorityBackend),
+            Box::new(LastAppPrewarmBackend),
         ];
 
         for predictor in &mut predictors {

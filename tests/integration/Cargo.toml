@@ -15,3 +15,5 @@ path = "main.rs"
 
 [dependencies]
 serde_json = { workspace = true }
+aios-spec = { workspace = true }
+aios-core = { workspace = true }

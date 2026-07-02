@@ -15,6 +15,7 @@
 //!     first (`user_transition_key(user, current)`), only falling back to the
 //!     global transition table when that user/context is unseen.
 //!   * `ensemble` — weights `markov` at 0.40 alongside naive-bayes / xgboost.
+//!
 //! The non-personalized control is `global_popularity`, which ignores the user
 //! entirely and ranks by global label frequency.
 //!
@@ -75,6 +76,7 @@ const NON_PERSONALIZED: &str = "global_popularity";
 /// reports):
 ///   * markov:   +21.09 pp macro, +25.67 pp micro-hit@1
 ///   * ensemble: +19.83 pp macro, +27.73 pp micro-hit@1
+///
 /// Smallest is 19.83 pp (ensemble macro); half is ~9.9 pp, so 8.0 pp sits below
 /// half with ~2.5x headroom to the real delta.
 const PERSONALIZATION_MARGIN_PP: f64 = 8.0;
@@ -86,6 +88,7 @@ const PERSONALIZATION_MARGIN_PP: f64 = 8.0;
 /// Measured deltas (standard − coldstart, personalized; committed reports):
 ///   * markov:   +14.58 pp micro, +14.26 pp macro
 ///   * ensemble: +17.47 pp micro, +16.07 pp macro
+///
 /// Smallest is 14.26 pp (markov macro); half is ~7.1 pp, so 6.0 pp sits below
 /// half with ~2.4x headroom.
 const AVAILABILITY_MARGIN_PP: f64 = 6.0;
@@ -334,7 +337,9 @@ fn personalization_contribution_on_lsapp() {
         ctrl_gap_macro,
     );
     let (m2_lo, m2_hi) = min_max(&m2_micro_deltas);
-    eprintln!("     -> personalization availability contributes +{m2_lo:.3}..+{m2_hi:.3} pp micro-hit@1");
+    eprintln!(
+        "     -> personalization availability contributes +{m2_lo:.3}..+{m2_hi:.3} pp micro-hit@1"
+    );
     eprintln!(
         "        (control {NON_PERSONALIZED} gap {ctrl_gap_micro:+.3} pp micro / {ctrl_gap_macro:+.3} pp \
          macro: non-personalized does NOT benefit -> effect is personalization-specific)"

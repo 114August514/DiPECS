@@ -265,11 +265,11 @@ fn load_examples(
     Ok(examples)
 }
 
-fn next_label_record<'a>(
-    records: &'a [LsAppRecord],
+fn next_label_record(
+    records: &[LsAppRecord],
     idx: usize,
     horizon_secs: u64,
-) -> Option<&'a LsAppRecord> {
+) -> Option<&LsAppRecord> {
     let current = &records[idx];
     records[idx + 1..]
         .iter()

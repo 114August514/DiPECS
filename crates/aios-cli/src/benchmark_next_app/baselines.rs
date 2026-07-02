@@ -210,12 +210,7 @@ impl MarkovBackend {
                 score: counts.get(package).copied().unwrap_or(0) as f32 / total_f,
             })
             .collect();
-        scored.sort_by(|a, b| {
-            b.score
-                .partial_cmp(&a.score)
-                .unwrap_or(std::cmp::Ordering::Equal)
-                .then_with(|| a.package.cmp(&b.package))
-        });
+        scored.sort_by(|a, b| cmp_score_desc(a, b).then_with(|| a.package.cmp(&b.package)));
         scored
     }
 }
@@ -772,11 +767,31 @@ mod tests {
 
         // Same score and timestamp: alphabetical tie-break.
         let ctx_tied = ctx_with_events(vec![
-            notification_event(100, "B", None, true, vec![SemanticHint::UserMentioned]), // 3+1 = 4
-            notification_event(100, "A", None, true, vec![SemanticHint::ImageMention]), // 3+2+1(most recent) = 6
+            notification_event(100, "B", None, true, vec![SemanticHint::UserMentioned]), // 3+1+1(most recent) = 5
+            notification_event(100, "A", None, true, vec![SemanticHint::UserMentioned]), // 3+1+1(most recent) = 5
         ]);
         let result_tied = backend.predict(&ctx_tied, "Z", &["A".into(), "B".into()]);
         assert_eq!(result_tied.ranked[0].package, "A");
         assert_eq!(result_tied.ranked[1].package, "B");
+    }
+
+    #[test]
+    fn last_non_current_foreground_tie_breaks_alphabetically() {
+        let ctx = ctx_with_events(vec![
+            foreground_event(100, "B"),
+            foreground_event(100, "A"),
+            foreground_event(200, "C"),
+        ]);
+        let result = last_non_current_foreground(&ctx, "C");
+        assert_eq!(result, Some((100, "A".into())));
+    }
+
+    #[test]
+    fn is_priority_category_is_case_insensitive() {
+        assert!(is_priority_category(&Some("Alarm".into())));
+        assert!(is_priority_category(&Some("CALL".into())));
+        assert!(is_priority_category(&Some("event".into())));
+        assert!(!is_priority_category(&Some("msg".into())));
+        assert!(!is_priority_category(&None));
     }
 }

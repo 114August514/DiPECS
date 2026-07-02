@@ -6,6 +6,8 @@
 mod backends;
 mod router;
 
+pub use backends::cloud_llm::client::CloudLlmBackend;
+pub use backends::cloud_llm::config::{CloudLlmConfig, CloudProvider, DEFAULT_SYSTEM_PROMPT};
 pub use backends::cloud_llm::ProfileSummarizer;
 pub use backends::fallback::FallbackNoOpBackend;
 pub use backends::local_evaluator::LocalEvaluatorBackend;

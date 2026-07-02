@@ -9,13 +9,13 @@ use super::translate::{idle_batch, parse_model_output, translate_intents};
 use crate::DecisionBackend;
 
 #[derive(Debug, Clone)]
-pub(crate) struct CloudLlmBackend {
+pub struct CloudLlmBackend {
     config: CloudLlmConfig,
     client: Client,
 }
 
 impl CloudLlmBackend {
-    pub(super) fn try_new(config: CloudLlmConfig) -> Result<Self, String> {
+    pub fn try_new(config: CloudLlmConfig) -> Result<Self, String> {
         let client = Client::builder()
             .timeout(Duration::from_secs(config.timeout_secs))
             .build()

@@ -5,6 +5,7 @@ use std::io::{self, BufReader, BufWriter, Write};
 use std::path::PathBuf;
 
 use aios_cli::android_bridge;
+use aios_cli::benchmark_next_app::{self, BenchmarkRunConfig};
 use aios_cli::replay::{self, Stage};
 use anyhow::{bail, Context, Result};
 use clap::{Parser, Subcommand};
@@ -89,6 +90,28 @@ enum Command {
         /// Action urgency: Immediate, IdleTime, Deferred.
         #[arg(long, default_value = "Immediate")]
         urgency: String,
+    },
+    /// Benchmark next-app prediction backends against ground-truth labels.
+    BenchmarkNextApp {
+        /// Input trace JSONL files (one per scenario).
+        #[arg(long, required = true)]
+        input: Vec<PathBuf>,
+
+        /// Path to the labels JSONL file.
+        #[arg(long, required = true)]
+        labels: PathBuf,
+
+        /// Output report JSON path.
+        #[arg(long, required = true)]
+        output: PathBuf,
+
+        /// Fraction of eligible windows (per scenario, time-ordered) to use for training.
+        #[arg(long, default_value_t = 0.7)]
+        train_split: f64,
+
+        /// Window length in seconds; must match the labels.
+        #[arg(long, default_value_t = 10)]
+        window_secs: u64,
     },
 }
 
@@ -210,6 +233,35 @@ fn main() -> Result<()> {
         } => {
             android_bridge::send_ping(&host, port, auth_token.as_deref().unwrap_or(""))?;
             tracing::info!(host = %host, port, "ping sent to Android action bridge");
+            Ok(())
+        },
+        Command::BenchmarkNextApp {
+            input,
+            labels,
+            output,
+            train_split,
+            window_secs,
+        } => {
+            if let Some(parent) = output.parent() {
+                if !parent.as_os_str().is_empty() {
+                    std::fs::create_dir_all(parent)
+                        .with_context(|| format!("creating output dir {}", parent.display()))?;
+                }
+            }
+            let report = benchmark_next_app::run_benchmark(&BenchmarkRunConfig {
+                inputs: input,
+                labels,
+                train_split,
+                window_secs,
+            })?;
+            benchmark_next_app::report::write_report(&report, &output)
+                .with_context(|| format!("writing report {}", output.display()))?;
+            info!(
+                output = %output.display(),
+                scenarios = report.scenarios.len(),
+                test_windows = report.test_windows,
+                "next-app benchmark complete"
+            );
             Ok(())
         },
     }

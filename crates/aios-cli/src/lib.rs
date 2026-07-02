@@ -4,4 +4,5 @@
 //! them without spawning the binary.
 
 pub mod android_bridge;
+pub mod benchmark_next_app;
 pub mod replay;

@@ -1,0 +1,25 @@
+[package]
+name = "integration"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "DiPECS baseline integration test crate"
+autobins = false
+autotests = false
+
+[[test]]
+name = "integration"
+path = "main.rs"
+
+[dependencies]
+serde_json = { workspace = true }
+aios-cli = { workspace = true }
+aios-spec = { workspace = true }
+aios-core = { workspace = true }
+aios-action = { workspace = true }
+aios-agent = { workspace = true }
+rustls = { workspace = true }
+hmac = { workspace = true }
+sha2 = { workspace = true }

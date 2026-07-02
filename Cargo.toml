@@ -9,6 +9,7 @@ members = [
     "crates/aios-agent",     # 决策路由与模型后端
     "crates/aios-daemon",    # dipecsd 长驻进程入口
     "crates/aios-cli",       # 团队内部工具 (Replayer, Evaluator)
+    "tests/integration",     # baseline 集成测试 crate
 ]
 
 # 2. 现代 Rust 必需：使用新版特性解析器
@@ -37,6 +38,9 @@ rustls = { version = "0.23", default-features = false, features = ["ring"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 prost = "0.12"  # 高性能 Protobuf 实现
+
+# --- 随机数 (benchmark baselines) ---
+rand = "0.8"
 
 # --- 错误处理与日志 (系统可观测性) ---
 anyhow = "1.0"      # 方便的顶级错误处理

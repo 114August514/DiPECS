@@ -3,14 +3,14 @@
 //! - `client`: HTTP request/response handling
 //! - `translate`: model JSON -> DiPECS intent translation
 
-mod client;
-mod config;
+pub mod client;
+pub mod config;
 mod summarizer;
 mod translate;
 
-pub(crate) use client::CloudLlmBackend;
 pub use summarizer::ProfileSummarizer;
 
+use client::CloudLlmBackend;
 use config::{cloud_llm_enabled, CloudLlmConfig};
 
 #[derive(Debug, Clone)]

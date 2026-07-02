@@ -708,6 +708,7 @@ dependencies = [
  "aios-cli",
  "aios-core",
  "aios-spec",
+ "rustls",
  "serde_json",
 ]
 

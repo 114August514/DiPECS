@@ -18,7 +18,7 @@ const DEFAULT_TEMPERATURE: f32 = 0.1;
 const DEFAULT_DEEPSEEK_ENDPOINT: &str = "https://api.deepseek.com/chat/completions";
 const DEFAULT_QWEN_ENDPOINT: &str =
     "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions";
-pub(super) const DEFAULT_SYSTEM_PROMPT: &str = r#"You are the decision backend for DiPECS.
+pub const DEFAULT_SYSTEM_PROMPT: &str = r#"You are the decision backend for DiPECS.
 Return only valid JSON with this shape:
 {
   "intents": [
@@ -68,20 +68,20 @@ pub(super) fn cloud_llm_enabled() -> bool {
 }
 
 #[derive(Debug, Clone)]
-pub(super) struct CloudLlmConfig {
-    pub(super) provider: CloudProvider,
-    pub(super) endpoint: String,
-    pub(super) model: String,
-    pub(super) api_key: Option<String>,
-    pub(super) timeout_secs: u64,
-    pub(super) temperature: f32,
-    pub(super) system_prompt: String,
-    pub(super) reasoning_effort: Option<String>,
-    pub(super) enable_thinking: Option<bool>,
+pub struct CloudLlmConfig {
+    pub provider: CloudProvider,
+    pub endpoint: String,
+    pub model: String,
+    pub api_key: Option<String>,
+    pub timeout_secs: u64,
+    pub temperature: f32,
+    pub system_prompt: String,
+    pub reasoning_effort: Option<String>,
+    pub enable_thinking: Option<bool>,
 }
 
 impl CloudLlmConfig {
-    pub(super) fn from_env() -> Result<Self, String> {
+    pub fn from_env() -> Result<Self, String> {
         Self::from_env_inner()
     }
 
@@ -122,7 +122,7 @@ impl CloudLlmConfig {
         })
     }
 
-    /// Test-only constructor for latency/benchmark tests against a real provider.
+    /// Test/baseline-only constructor for latency/benchmark tests against a real provider.
     #[cfg(test)]
     pub(crate) fn new_for_test(
         provider: CloudProvider,
@@ -145,7 +145,7 @@ impl CloudLlmConfig {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) enum CloudProvider {
+pub enum CloudProvider {
     GenericOpenAiCompatible,
     DeepSeek,
     Qwen,

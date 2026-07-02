@@ -66,7 +66,7 @@
       "macro_top3_accuracy_pct": 77.982,
       "rationale_coverage_pct": 0.0,
       "latency_us": {
-        "mean": 0.0,
+        "mean": 0.018,
         "p50": 0.0,
         "p95": 0.0
       }
@@ -89,9 +89,55 @@
       "macro_top3_accuracy_pct": 97.917,
       "rationale_coverage_pct": 0.0,
       "latency_us": {
-        "mean": 0.073,
+        "mean": 0.091,
         "p50": 0.0,
         "p95": 1.0
+      }
+    },
+    "last_app_prewarm": {
+      "eligible_windows": 55,
+      "predicted_windows": 13,
+      "top1_hits": 13,
+      "top3_hits": 13,
+      "top1_accuracy_pct": 23.636,
+      "top3_accuracy_pct": 23.636,
+      "prediction_coverage_pct": 23.636,
+      "conditional_top1_accuracy_pct": 100.0,
+      "wrong_prediction_rate_pct": 0.0,
+      "no_prediction_rate_pct": 76.364,
+      "noop_windows": 36,
+      "noop_rate_pct": 65.455,
+      "mean_reciprocal_rank": 0.236,
+      "macro_top1_accuracy_pct": 24.342,
+      "macro_top3_accuracy_pct": 24.342,
+      "rationale_coverage_pct": 0.0,
+      "latency_us": {
+        "mean": 0.0,
+        "p50": 0.0,
+        "p95": 0.0
+      }
+    },
+    "last_foreground": {
+      "eligible_windows": 55,
+      "predicted_windows": 13,
+      "top1_hits": 13,
+      "top3_hits": 13,
+      "top1_accuracy_pct": 23.636,
+      "top3_accuracy_pct": 23.636,
+      "prediction_coverage_pct": 23.636,
+      "conditional_top1_accuracy_pct": 100.0,
+      "wrong_prediction_rate_pct": 0.0,
+      "no_prediction_rate_pct": 76.364,
+      "noop_windows": 36,
+      "noop_rate_pct": 65.455,
+      "mean_reciprocal_rank": 0.236,
+      "macro_top1_accuracy_pct": 24.342,
+      "macro_top3_accuracy_pct": 24.342,
+      "rationale_coverage_pct": 0.0,
+      "latency_us": {
+        "mean": 0.018,
+        "p50": 0.0,
+        "p95": 0.0
       }
     },
     "local_evaluator": {
@@ -112,8 +158,8 @@
       "macro_top3_accuracy_pct": 58.531,
       "rationale_coverage_pct": 100.0,
       "latency_us": {
-        "mean": 10.273,
-        "p50": 7.0,
+        "mean": 10.309,
+        "p50": 8.0,
         "p95": 20.0
       }
     },
@@ -138,6 +184,29 @@
         "mean": 0.164,
         "p50": 0.0,
         "p95": 1.0
+      }
+    },
+    "notification_priority": {
+      "eligible_windows": 55,
+      "predicted_windows": 41,
+      "top1_hits": 34,
+      "top3_hits": 41,
+      "top1_accuracy_pct": 61.818,
+      "top3_accuracy_pct": 74.545,
+      "prediction_coverage_pct": 74.545,
+      "conditional_top1_accuracy_pct": 82.927,
+      "wrong_prediction_rate_pct": 17.073,
+      "no_prediction_rate_pct": 25.455,
+      "noop_windows": 11,
+      "noop_rate_pct": 20.0,
+      "mean_reciprocal_rank": 0.676,
+      "macro_top1_accuracy_pct": 60.395,
+      "macro_top3_accuracy_pct": 72.325,
+      "rationale_coverage_pct": 0.0,
+      "latency_us": {
+        "mean": 1.4,
+        "p50": 1.0,
+        "p95": 4.0
       }
     },
     "per_current_app_majority": {
@@ -181,7 +250,30 @@
       "macro_top3_accuracy_pct": 97.917,
       "rationale_coverage_pct": 0.0,
       "latency_us": {
-        "mean": 0.655,
+        "mean": 0.636,
+        "p50": 0.0,
+        "p95": 0.0
+      }
+    },
+    "recent_notification": {
+      "eligible_windows": 55,
+      "predicted_windows": 36,
+      "top1_hits": 36,
+      "top3_hits": 36,
+      "top1_accuracy_pct": 65.455,
+      "top3_accuracy_pct": 65.455,
+      "prediction_coverage_pct": 65.455,
+      "conditional_top1_accuracy_pct": 100.0,
+      "wrong_prediction_rate_pct": 0.0,
+      "no_prediction_rate_pct": 34.545,
+      "noop_windows": 11,
+      "noop_rate_pct": 20.0,
+      "mean_reciprocal_rank": 0.655,
+      "macro_top1_accuracy_pct": 63.816,
+      "macro_top3_accuracy_pct": 63.816,
+      "rationale_coverage_pct": 0.0,
+      "latency_us": {
+        "mean": 0.018,
         "p50": 0.0,
         "p95": 0.0
       }
@@ -204,7 +296,7 @@
       "macro_top3_accuracy_pct": 61.294,
       "rationale_coverage_pct": 100.0,
       "latency_us": {
-        "mean": 1.218,
+        "mean": 1.091,
         "p50": 1.0,
         "p95": 2.0
       }
@@ -265,7 +357,7 @@
           "macro_top3_accuracy_pct": null,
           "rationale_coverage_pct": 0.0,
           "latency_us": {
-            "mean": 0.0,
+            "mean": 0.05,
             "p50": 0.0,
             "p95": 0.0
           }
@@ -284,6 +376,52 @@
           "noop_windows": 0,
           "noop_rate_pct": 0.0,
           "mean_reciprocal_rank": 0.925,
+          "macro_top1_accuracy_pct": null,
+          "macro_top3_accuracy_pct": null,
+          "rationale_coverage_pct": 0.0,
+          "latency_us": {
+            "mean": 0.1,
+            "p50": 0.0,
+            "p95": 0.0
+          }
+        },
+        "last_app_prewarm": {
+          "eligible_windows": 20,
+          "predicted_windows": 5,
+          "top1_hits": 5,
+          "top3_hits": 5,
+          "top1_accuracy_pct": 25.0,
+          "top3_accuracy_pct": 25.0,
+          "prediction_coverage_pct": 25.0,
+          "conditional_top1_accuracy_pct": 100.0,
+          "wrong_prediction_rate_pct": 0.0,
+          "no_prediction_rate_pct": 75.0,
+          "noop_windows": 14,
+          "noop_rate_pct": 70.0,
+          "mean_reciprocal_rank": 0.25,
+          "macro_top1_accuracy_pct": null,
+          "macro_top3_accuracy_pct": null,
+          "rationale_coverage_pct": 0.0,
+          "latency_us": {
+            "mean": 0.0,
+            "p50": 0.0,
+            "p95": 0.0
+          }
+        },
+        "last_foreground": {
+          "eligible_windows": 20,
+          "predicted_windows": 5,
+          "top1_hits": 5,
+          "top3_hits": 5,
+          "top1_accuracy_pct": 25.0,
+          "top3_accuracy_pct": 25.0,
+          "prediction_coverage_pct": 25.0,
+          "conditional_top1_accuracy_pct": 100.0,
+          "wrong_prediction_rate_pct": 0.0,
+          "no_prediction_rate_pct": 75.0,
+          "noop_windows": 14,
+          "noop_rate_pct": 70.0,
+          "mean_reciprocal_rank": 0.25,
           "macro_top1_accuracy_pct": null,
           "macro_top3_accuracy_pct": null,
           "rationale_coverage_pct": 0.0,
@@ -311,7 +449,7 @@
           "macro_top3_accuracy_pct": null,
           "rationale_coverage_pct": 100.0,
           "latency_us": {
-            "mean": 11.95,
+            "mean": 11.9,
             "p50": 10.0,
             "p95": 18.0
           }
@@ -337,6 +475,29 @@
             "mean": 0.15,
             "p50": 0.0,
             "p95": 1.0
+          }
+        },
+        "notification_priority": {
+          "eligible_windows": 20,
+          "predicted_windows": 18,
+          "top1_hits": 14,
+          "top3_hits": 18,
+          "top1_accuracy_pct": 70.0,
+          "top3_accuracy_pct": 90.0,
+          "prediction_coverage_pct": 90.0,
+          "conditional_top1_accuracy_pct": 77.778,
+          "wrong_prediction_rate_pct": 22.222,
+          "no_prediction_rate_pct": 10.0,
+          "noop_windows": 2,
+          "noop_rate_pct": 10.0,
+          "mean_reciprocal_rank": 0.792,
+          "macro_top1_accuracy_pct": null,
+          "macro_top3_accuracy_pct": null,
+          "rationale_coverage_pct": 0.0,
+          "latency_us": {
+            "mean": 1.6,
+            "p50": 1.0,
+            "p95": 4.0
           }
         },
         "per_current_app_majority": {
@@ -380,7 +541,30 @@
           "macro_top3_accuracy_pct": null,
           "rationale_coverage_pct": 0.0,
           "latency_us": {
-            "mean": 0.85,
+            "mean": 0.8,
+            "p50": 0.0,
+            "p95": 0.0
+          }
+        },
+        "recent_notification": {
+          "eligible_windows": 20,
+          "predicted_windows": 15,
+          "top1_hits": 15,
+          "top3_hits": 15,
+          "top1_accuracy_pct": 75.0,
+          "top3_accuracy_pct": 75.0,
+          "prediction_coverage_pct": 75.0,
+          "conditional_top1_accuracy_pct": 100.0,
+          "wrong_prediction_rate_pct": 0.0,
+          "no_prediction_rate_pct": 25.0,
+          "noop_windows": 2,
+          "noop_rate_pct": 10.0,
+          "mean_reciprocal_rank": 0.75,
+          "macro_top1_accuracy_pct": null,
+          "macro_top3_accuracy_pct": null,
+          "rationale_coverage_pct": 0.0,
+          "latency_us": {
+            "mean": 0.05,
             "p50": 0.0,
             "p95": 0.0
           }
@@ -403,9 +587,9 @@
           "macro_top3_accuracy_pct": null,
           "rationale_coverage_pct": 100.0,
           "latency_us": {
-            "mean": 1.9,
+            "mean": 1.55,
             "p50": 1.0,
-            "p95": 2.0
+            "p95": 1.0
           }
         }
       }
@@ -492,6 +676,52 @@
             "p95": 1.0
           }
         },
+        "last_app_prewarm": {
+          "eligible_windows": 16,
+          "predicted_windows": 6,
+          "top1_hits": 6,
+          "top3_hits": 6,
+          "top1_accuracy_pct": 37.5,
+          "top3_accuracy_pct": 37.5,
+          "prediction_coverage_pct": 37.5,
+          "conditional_top1_accuracy_pct": 100.0,
+          "wrong_prediction_rate_pct": 0.0,
+          "no_prediction_rate_pct": 62.5,
+          "noop_windows": 5,
+          "noop_rate_pct": 31.25,
+          "mean_reciprocal_rank": 0.375,
+          "macro_top1_accuracy_pct": null,
+          "macro_top3_accuracy_pct": null,
+          "rationale_coverage_pct": 0.0,
+          "latency_us": {
+            "mean": 0.0,
+            "p50": 0.0,
+            "p95": 0.0
+          }
+        },
+        "last_foreground": {
+          "eligible_windows": 16,
+          "predicted_windows": 6,
+          "top1_hits": 6,
+          "top3_hits": 6,
+          "top1_accuracy_pct": 37.5,
+          "top3_accuracy_pct": 37.5,
+          "prediction_coverage_pct": 37.5,
+          "conditional_top1_accuracy_pct": 100.0,
+          "wrong_prediction_rate_pct": 0.0,
+          "no_prediction_rate_pct": 62.5,
+          "noop_windows": 5,
+          "noop_rate_pct": 31.25,
+          "mean_reciprocal_rank": 0.375,
+          "macro_top1_accuracy_pct": null,
+          "macro_top3_accuracy_pct": null,
+          "rationale_coverage_pct": 0.0,
+          "latency_us": {
+            "mean": 0.0,
+            "p50": 0.0,
+            "p95": 0.0
+          }
+        },
         "local_evaluator": {
           "eligible_windows": 16,
           "predicted_windows": 15,
@@ -536,6 +766,29 @@
             "mean": 0.188,
             "p50": 0.0,
             "p95": 1.0
+          }
+        },
+        "notification_priority": {
+          "eligible_windows": 16,
+          "predicted_windows": 6,
+          "top1_hits": 6,
+          "top3_hits": 6,
+          "top1_accuracy_pct": 37.5,
+          "top3_accuracy_pct": 37.5,
+          "prediction_coverage_pct": 37.5,
+          "conditional_top1_accuracy_pct": 100.0,
+          "wrong_prediction_rate_pct": 0.0,
+          "no_prediction_rate_pct": 62.5,
+          "noop_windows": 8,
+          "noop_rate_pct": 50.0,
+          "mean_reciprocal_rank": 0.375,
+          "macro_top1_accuracy_pct": null,
+          "macro_top3_accuracy_pct": null,
+          "rationale_coverage_pct": 0.0,
+          "latency_us": {
+            "mean": 0.75,
+            "p50": 1.0,
+            "p95": 2.0
           }
         },
         "per_current_app_majority": {
@@ -584,6 +837,29 @@
             "p95": 0.0
           }
         },
+        "recent_notification": {
+          "eligible_windows": 16,
+          "predicted_windows": 6,
+          "top1_hits": 6,
+          "top3_hits": 6,
+          "top1_accuracy_pct": 37.5,
+          "top3_accuracy_pct": 37.5,
+          "prediction_coverage_pct": 37.5,
+          "conditional_top1_accuracy_pct": 100.0,
+          "wrong_prediction_rate_pct": 0.0,
+          "no_prediction_rate_pct": 62.5,
+          "noop_windows": 8,
+          "noop_rate_pct": 50.0,
+          "mean_reciprocal_rank": 0.375,
+          "macro_top1_accuracy_pct": null,
+          "macro_top3_accuracy_pct": null,
+          "rationale_coverage_pct": 0.0,
+          "latency_us": {
+            "mean": 0.0,
+            "p50": 0.0,
+            "p95": 0.0
+          }
+        },
         "rule_based": {
           "eligible_windows": 16,
           "predicted_windows": 9,
@@ -602,7 +878,7 @@
           "macro_top3_accuracy_pct": null,
           "rationale_coverage_pct": 100.0,
           "latency_us": {
-            "mean": 0.813,
+            "mean": 0.875,
             "p50": 1.0,
             "p95": 2.0
           }
@@ -691,6 +967,52 @@
             "p95": 0.0
           }
         },
+        "last_app_prewarm": {
+          "eligible_windows": 19,
+          "predicted_windows": 2,
+          "top1_hits": 2,
+          "top3_hits": 2,
+          "top1_accuracy_pct": 10.526,
+          "top3_accuracy_pct": 10.526,
+          "prediction_coverage_pct": 10.526,
+          "conditional_top1_accuracy_pct": 100.0,
+          "wrong_prediction_rate_pct": 0.0,
+          "no_prediction_rate_pct": 89.474,
+          "noop_windows": 17,
+          "noop_rate_pct": 89.474,
+          "mean_reciprocal_rank": 0.105,
+          "macro_top1_accuracy_pct": null,
+          "macro_top3_accuracy_pct": null,
+          "rationale_coverage_pct": 0.0,
+          "latency_us": {
+            "mean": 0.0,
+            "p50": 0.0,
+            "p95": 0.0
+          }
+        },
+        "last_foreground": {
+          "eligible_windows": 19,
+          "predicted_windows": 2,
+          "top1_hits": 2,
+          "top3_hits": 2,
+          "top1_accuracy_pct": 10.526,
+          "top3_accuracy_pct": 10.526,
+          "prediction_coverage_pct": 10.526,
+          "conditional_top1_accuracy_pct": 100.0,
+          "wrong_prediction_rate_pct": 0.0,
+          "no_prediction_rate_pct": 89.474,
+          "noop_windows": 17,
+          "noop_rate_pct": 89.474,
+          "mean_reciprocal_rank": 0.105,
+          "macro_top1_accuracy_pct": null,
+          "macro_top3_accuracy_pct": null,
+          "rationale_coverage_pct": 0.0,
+          "latency_us": {
+            "mean": 0.0,
+            "p50": 0.0,
+            "p95": 0.0
+          }
+        },
         "local_evaluator": {
           "eligible_windows": 19,
           "predicted_windows": 7,
@@ -709,9 +1031,9 @@
           "macro_top3_accuracy_pct": null,
           "rationale_coverage_pct": 100.0,
           "latency_us": {
-            "mean": 6.579,
+            "mean": 6.737,
             "p50": 5.0,
-            "p95": 12.0
+            "p95": 13.0
           }
         },
         "markov": {
@@ -735,6 +1057,29 @@
             "mean": 0.158,
             "p50": 0.0,
             "p95": 1.0
+          }
+        },
+        "notification_priority": {
+          "eligible_windows": 19,
+          "predicted_windows": 17,
+          "top1_hits": 14,
+          "top3_hits": 17,
+          "top1_accuracy_pct": 73.684,
+          "top3_accuracy_pct": 89.474,
+          "prediction_coverage_pct": 89.474,
+          "conditional_top1_accuracy_pct": 82.353,
+          "wrong_prediction_rate_pct": 17.647,
+          "no_prediction_rate_pct": 10.526,
+          "noop_windows": 1,
+          "noop_rate_pct": 5.263,
+          "mean_reciprocal_rank": 0.807,
+          "macro_top1_accuracy_pct": null,
+          "macro_top3_accuracy_pct": null,
+          "rationale_coverage_pct": 0.0,
+          "latency_us": {
+            "mean": 1.737,
+            "p50": 1.0,
+            "p95": 4.0
           }
         },
         "per_current_app_majority": {
@@ -783,6 +1128,29 @@
             "p95": 0.0
           }
         },
+        "recent_notification": {
+          "eligible_windows": 19,
+          "predicted_windows": 15,
+          "top1_hits": 15,
+          "top3_hits": 15,
+          "top1_accuracy_pct": 78.947,
+          "top3_accuracy_pct": 78.947,
+          "prediction_coverage_pct": 78.947,
+          "conditional_top1_accuracy_pct": 100.0,
+          "wrong_prediction_rate_pct": 0.0,
+          "no_prediction_rate_pct": 21.053,
+          "noop_windows": 1,
+          "noop_rate_pct": 5.263,
+          "mean_reciprocal_rank": 0.789,
+          "macro_top1_accuracy_pct": null,
+          "macro_top3_accuracy_pct": null,
+          "rationale_coverage_pct": 0.0,
+          "latency_us": {
+            "mean": 0.0,
+            "p50": 0.0,
+            "p95": 0.0
+          }
+        },
         "rule_based": {
           "eligible_windows": 19,
           "predicted_windows": 10,
@@ -801,7 +1169,7 @@
           "macro_top3_accuracy_pct": null,
           "rationale_coverage_pct": 100.0,
           "latency_us": {
-            "mean": 0.842,
+            "mean": 0.789,
             "p50": 1.0,
             "p95": 1.0
           }

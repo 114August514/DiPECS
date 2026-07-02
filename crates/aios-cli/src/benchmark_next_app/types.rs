@@ -32,6 +32,10 @@ pub struct ScoredPrediction {
 pub struct PredictionResult {
     pub ranked: Vec<ScoredPrediction>,
     pub latency_us: u64,
+    /// True when at least one intent produced by this predictor carried a non-empty
+    /// `rationale_tags` vec. Always `false` for statistical baselines that do not
+    /// produce DiPECS intents.
+    pub rationale_present: bool,
 }
 
 /// Trait implemented by every backend/baseline in the benchmark.
@@ -92,6 +96,10 @@ pub struct BackendMetrics {
     pub mean_reciprocal_rank: f64,
     pub macro_top1_accuracy_pct: Option<f64>,
     pub macro_top3_accuracy_pct: Option<f64>,
+    /// Percentage of windows where at least one produced intent had non-empty
+    /// `rationale_tags`. Meaningful only for DiPECS backends (`rule_based`,
+    /// `local_evaluator`, `cloud_llm`); statistical baselines always report 0.0.
+    pub rationale_coverage_pct: f64,
     pub latency_us: LatencySummary,
 }
 

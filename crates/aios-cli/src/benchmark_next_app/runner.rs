@@ -258,6 +258,7 @@ fn evaluate_predictor(
             rank,
             latency_us: result.latency_us,
             noop: result.ranked.is_empty(),
+            rationale_present: result.rationale_present,
         });
         latencies.push(result.latency_us);
     }

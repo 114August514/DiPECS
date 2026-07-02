@@ -41,6 +41,7 @@
       "mean_reciprocal_rank": 0.0,
       "macro_top1_accuracy_pct": 0.0,
       "macro_top3_accuracy_pct": 0.0,
+      "rationale_coverage_pct": 0.0,
       "latency_us": {
         "mean": 0.0,
         "p50": 0.0,
@@ -63,8 +64,9 @@
       "mean_reciprocal_rank": 0.782,
       "macro_top1_accuracy_pct": 77.982,
       "macro_top3_accuracy_pct": 77.982,
+      "rationale_coverage_pct": 0.0,
       "latency_us": {
-        "mean": 0.018,
+        "mean": 0.0,
         "p50": 0.0,
         "p95": 0.0
       }
@@ -85,6 +87,7 @@
       "mean_reciprocal_rank": 0.919,
       "macro_top1_accuracy_pct": 84.912,
       "macro_top3_accuracy_pct": 97.917,
+      "rationale_coverage_pct": 0.0,
       "latency_us": {
         "mean": 0.073,
         "p50": 0.0,
@@ -107,10 +110,11 @@
       "mean_reciprocal_rank": 0.527,
       "macro_top1_accuracy_pct": 50.197,
       "macro_top3_accuracy_pct": 58.531,
+      "rationale_coverage_pct": 100.0,
       "latency_us": {
-        "mean": 10.4,
-        "p50": 8.0,
-        "p95": 22.0
+        "mean": 10.273,
+        "p50": 7.0,
+        "p95": 20.0
       }
     },
     "markov": {
@@ -129,6 +133,7 @@
       "mean_reciprocal_rank": 0.918,
       "macro_top1_accuracy_pct": 83.158,
       "macro_top3_accuracy_pct": 100.0,
+      "rationale_coverage_pct": 0.0,
       "latency_us": {
         "mean": 0.164,
         "p50": 0.0,
@@ -151,8 +156,9 @@
       "mean_reciprocal_rank": 0.918,
       "macro_top1_accuracy_pct": 83.158,
       "macro_top3_accuracy_pct": 100.0,
+      "rationale_coverage_pct": 0.0,
       "latency_us": {
-        "mean": 0.091,
+        "mean": 0.073,
         "p50": 0.0,
         "p95": 1.0
       }
@@ -173,8 +179,9 @@
       "mean_reciprocal_rank": 0.911,
       "macro_top1_accuracy_pct": 83.158,
       "macro_top3_accuracy_pct": 97.917,
+      "rationale_coverage_pct": 0.0,
       "latency_us": {
-        "mean": 0.618,
+        "mean": 0.655,
         "p50": 0.0,
         "p95": 0.0
       }
@@ -195,8 +202,9 @@
       "mean_reciprocal_rank": 0.618,
       "macro_top1_accuracy_pct": 61.294,
       "macro_top3_accuracy_pct": 61.294,
+      "rationale_coverage_pct": 100.0,
       "latency_us": {
-        "mean": 1.164,
+        "mean": 1.218,
         "p50": 1.0,
         "p95": 2.0
       }
@@ -232,6 +240,7 @@
           "mean_reciprocal_rank": 0.0,
           "macro_top1_accuracy_pct": null,
           "macro_top3_accuracy_pct": null,
+          "rationale_coverage_pct": 0.0,
           "latency_us": {
             "mean": 0.0,
             "p50": 0.0,
@@ -254,8 +263,9 @@
           "mean_reciprocal_rank": 0.8,
           "macro_top1_accuracy_pct": null,
           "macro_top3_accuracy_pct": null,
+          "rationale_coverage_pct": 0.0,
           "latency_us": {
-            "mean": 0.05,
+            "mean": 0.0,
             "p50": 0.0,
             "p95": 0.0
           }
@@ -276,6 +286,7 @@
           "mean_reciprocal_rank": 0.925,
           "macro_top1_accuracy_pct": null,
           "macro_top3_accuracy_pct": null,
+          "rationale_coverage_pct": 0.0,
           "latency_us": {
             "mean": 0.05,
             "p50": 0.0,
@@ -298,10 +309,11 @@
           "mean_reciprocal_rank": 0.45,
           "macro_top1_accuracy_pct": null,
           "macro_top3_accuracy_pct": null,
+          "rationale_coverage_pct": 100.0,
           "latency_us": {
             "mean": 11.95,
             "p50": 10.0,
-            "p95": 22.0
+            "p95": 18.0
           }
         },
         "markov": {
@@ -320,6 +332,7 @@
           "mean_reciprocal_rank": 0.925,
           "macro_top1_accuracy_pct": null,
           "macro_top3_accuracy_pct": null,
+          "rationale_coverage_pct": 0.0,
           "latency_us": {
             "mean": 0.15,
             "p50": 0.0,
@@ -342,10 +355,11 @@
           "mean_reciprocal_rank": 0.925,
           "macro_top1_accuracy_pct": null,
           "macro_top3_accuracy_pct": null,
+          "rationale_coverage_pct": 0.0,
           "latency_us": {
-            "mean": 0.1,
+            "mean": 0.05,
             "p50": 0.0,
-            "p95": 1.0
+            "p95": 0.0
           }
         },
         "random_candidate": {
@@ -364,8 +378,9 @@
           "mean_reciprocal_rank": 0.925,
           "macro_top1_accuracy_pct": null,
           "macro_top3_accuracy_pct": null,
+          "rationale_coverage_pct": 0.0,
           "latency_us": {
-            "mean": 0.8,
+            "mean": 0.85,
             "p50": 0.0,
             "p95": 0.0
           }
@@ -386,8 +401,9 @@
           "mean_reciprocal_rank": 0.75,
           "macro_top1_accuracy_pct": null,
           "macro_top3_accuracy_pct": null,
+          "rationale_coverage_pct": 100.0,
           "latency_us": {
-            "mean": 1.8,
+            "mean": 1.9,
             "p50": 1.0,
             "p95": 2.0
           }
@@ -423,6 +439,7 @@
           "mean_reciprocal_rank": 0.0,
           "macro_top1_accuracy_pct": null,
           "macro_top3_accuracy_pct": null,
+          "rationale_coverage_pct": 0.0,
           "latency_us": {
             "mean": 0.0,
             "p50": 0.0,
@@ -445,6 +462,7 @@
           "mean_reciprocal_rank": 0.75,
           "macro_top1_accuracy_pct": null,
           "macro_top3_accuracy_pct": null,
+          "rationale_coverage_pct": 0.0,
           "latency_us": {
             "mean": 0.0,
             "p50": 0.0,
@@ -467,6 +485,7 @@
           "mean_reciprocal_rank": 0.846,
           "macro_top1_accuracy_pct": null,
           "macro_top3_accuracy_pct": null,
+          "rationale_coverage_pct": 0.0,
           "latency_us": {
             "mean": 0.125,
             "p50": 0.0,
@@ -489,10 +508,11 @@
           "mean_reciprocal_rank": 0.813,
           "macro_top1_accuracy_pct": null,
           "macro_top3_accuracy_pct": null,
+          "rationale_coverage_pct": 100.0,
           "latency_us": {
-            "mean": 12.75,
+            "mean": 12.563,
             "p50": 8.0,
-            "p95": 31.0
+            "p95": 29.0
           }
         },
         "markov": {
@@ -511,6 +531,7 @@
           "mean_reciprocal_rank": 0.875,
           "macro_top1_accuracy_pct": null,
           "macro_top3_accuracy_pct": null,
+          "rationale_coverage_pct": 0.0,
           "latency_us": {
             "mean": 0.188,
             "p50": 0.0,
@@ -533,6 +554,7 @@
           "mean_reciprocal_rank": 0.875,
           "macro_top1_accuracy_pct": null,
           "macro_top3_accuracy_pct": null,
+          "rationale_coverage_pct": 0.0,
           "latency_us": {
             "mean": 0.125,
             "p50": 0.0,
@@ -555,8 +577,9 @@
           "mean_reciprocal_rank": 0.849,
           "macro_top1_accuracy_pct": null,
           "macro_top3_accuracy_pct": null,
+          "rationale_coverage_pct": 0.0,
           "latency_us": {
-            "mean": 0.563,
+            "mean": 0.625,
             "p50": 0.0,
             "p95": 0.0
           }
@@ -577,6 +600,7 @@
           "mean_reciprocal_rank": 0.563,
           "macro_top1_accuracy_pct": null,
           "macro_top3_accuracy_pct": null,
+          "rationale_coverage_pct": 100.0,
           "latency_us": {
             "mean": 0.813,
             "p50": 1.0,
@@ -614,6 +638,7 @@
           "mean_reciprocal_rank": 0.0,
           "macro_top1_accuracy_pct": null,
           "macro_top3_accuracy_pct": null,
+          "rationale_coverage_pct": 0.0,
           "latency_us": {
             "mean": 0.0,
             "p50": 0.0,
@@ -636,6 +661,7 @@
           "mean_reciprocal_rank": 0.789,
           "macro_top1_accuracy_pct": null,
           "macro_top3_accuracy_pct": null,
+          "rationale_coverage_pct": 0.0,
           "latency_us": {
             "mean": 0.0,
             "p50": 0.0,
@@ -658,6 +684,7 @@
           "mean_reciprocal_rank": 0.974,
           "macro_top1_accuracy_pct": null,
           "macro_top3_accuracy_pct": null,
+          "rationale_coverage_pct": 0.0,
           "latency_us": {
             "mean": 0.053,
             "p50": 0.0,
@@ -680,8 +707,9 @@
           "mean_reciprocal_rank": 0.368,
           "macro_top1_accuracy_pct": null,
           "macro_top3_accuracy_pct": null,
+          "rationale_coverage_pct": 100.0,
           "latency_us": {
-            "mean": 6.789,
+            "mean": 6.579,
             "p50": 5.0,
             "p95": 12.0
           }
@@ -702,6 +730,7 @@
           "mean_reciprocal_rank": 0.947,
           "macro_top1_accuracy_pct": null,
           "macro_top3_accuracy_pct": null,
+          "rationale_coverage_pct": 0.0,
           "latency_us": {
             "mean": 0.158,
             "p50": 0.0,
@@ -724,6 +753,7 @@
           "mean_reciprocal_rank": 0.947,
           "macro_top1_accuracy_pct": null,
           "macro_top3_accuracy_pct": null,
+          "rationale_coverage_pct": 0.0,
           "latency_us": {
             "mean": 0.053,
             "p50": 0.0,
@@ -746,6 +776,7 @@
           "mean_reciprocal_rank": 0.947,
           "macro_top1_accuracy_pct": null,
           "macro_top3_accuracy_pct": null,
+          "rationale_coverage_pct": 0.0,
           "latency_us": {
             "mean": 0.474,
             "p50": 0.0,
@@ -768,8 +799,9 @@
           "mean_reciprocal_rank": 0.526,
           "macro_top1_accuracy_pct": null,
           "macro_top3_accuracy_pct": null,
+          "rationale_coverage_pct": 100.0,
           "latency_us": {
-            "mean": 0.789,
+            "mean": 0.842,
             "p50": 1.0,
             "p95": 1.0
           }

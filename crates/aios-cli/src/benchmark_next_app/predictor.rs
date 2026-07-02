@@ -22,6 +22,11 @@ impl NextAppPredictor for RuleBasedNextAppBackend {
         PredictionResult {
             ranked: extract_ranked_apps(&decision.intent_batch.intents, candidates),
             latency_us: decision.latency_us,
+            rationale_present: decision
+                .intent_batch
+                .intents
+                .iter()
+                .any(|i| !i.rationale_tags.is_empty()),
         }
     }
 }
@@ -43,6 +48,11 @@ impl NextAppPredictor for LocalEvaluatorNextAppBackend {
         PredictionResult {
             ranked: extract_ranked_apps(&decision.intent_batch.intents, candidates),
             latency_us: decision.latency_us,
+            rationale_present: decision
+                .intent_batch
+                .intents
+                .iter()
+                .any(|i| !i.rationale_tags.is_empty()),
         }
     }
 }

@@ -7,6 +7,9 @@ pub struct PredictionRecord {
     pub rank: Option<usize>,
     pub latency_us: u64,
     pub noop: bool,
+    /// True when the underlying predictor produced at least one intent with
+    /// non-empty `rationale_tags`. False for statistical baselines.
+    pub rationale_present: bool,
 }
 
 pub fn compute_backend_metrics(records: &[PredictionRecord], eligible: usize) -> BackendMetrics {
@@ -21,6 +24,7 @@ pub fn compute_backend_metrics(records: &[PredictionRecord], eligible: usize) ->
         .map(|r| r.rank.map_or(0.0, |rank| 1.0 / rank as f64))
         .sum();
     let noop = records.iter().filter(|r| r.noop).count();
+    let rationale_windows = records.iter().filter(|r| r.rationale_present).count();
 
     let latencies: Vec<u64> = records.iter().map(|r| r.latency_us).collect();
 
@@ -40,6 +44,7 @@ pub fn compute_backend_metrics(records: &[PredictionRecord], eligible: usize) ->
         mean_reciprocal_rank: round3(rr_sum / eligible.max(1) as f64),
         macro_top1_accuracy_pct: None,
         macro_top3_accuracy_pct: None,
+        rationale_coverage_pct: pct(rationale_windows, records.len()),
         latency_us: latency_summary(&latencies),
     }
 }

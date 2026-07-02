@@ -26,6 +26,7 @@ impl NextAppPredictor for AlwaysNoOpBackend {
         PredictionResult {
             ranked: Vec::new(),
             latency_us: 0,
+            rationale_present: false,
         }
     }
 }
@@ -67,6 +68,7 @@ impl NextAppPredictor for RandomCandidateBackend {
                 })
                 .collect(),
             latency_us: start.elapsed().as_micros() as u64,
+            rationale_present: false,
         }
     }
 }
@@ -97,6 +99,7 @@ impl NextAppPredictor for FirstCandidateBackend {
                 })
                 .collect(),
             latency_us: start.elapsed().as_micros() as u64,
+            rationale_present: false,
         }
     }
 }
@@ -130,6 +133,7 @@ impl NextAppPredictor for GlobalMajorityBackend {
         PredictionResult {
             ranked: rank_by_counts(candidates, &self.counts),
             latency_us: start.elapsed().as_micros() as u64,
+            rationale_present: false,
         }
     }
 }
@@ -178,6 +182,7 @@ impl NextAppPredictor for PerCurrentAppMajorityBackend {
         PredictionResult {
             ranked,
             latency_us: start.elapsed().as_micros() as u64,
+            rationale_present: false,
         }
     }
 }
@@ -255,6 +260,7 @@ impl NextAppPredictor for MarkovBackend {
         PredictionResult {
             ranked,
             latency_us: start.elapsed().as_micros() as u64,
+            rationale_present: false,
         }
     }
 }

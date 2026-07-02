@@ -704,12 +704,15 @@ dependencies = [
 name = "integration"
 version = "0.1.0"
 dependencies = [
+ "aios-action",
  "aios-agent",
  "aios-cli",
  "aios-core",
  "aios-spec",
+ "hmac",
  "rustls",
  "serde_json",
+ "sha2",
 ]
 
 [[package]]

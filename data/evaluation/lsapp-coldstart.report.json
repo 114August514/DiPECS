@@ -1,0 +1,82 @@
+{
+  "schema_version": "dipecs.next_app_eval.v1",
+  "dataset": "Lsapp",
+  "split": "ColdStart",
+  "artifact_model_id": "predictive-local-v0.1",
+  "artifact_dataset_id": "lsapp",
+  "total_examples": 1361978,
+  "train_examples": 1117061,
+  "test_examples": 244917,
+  "metrics": {
+    "ensemble": {
+      "examples": 244917,
+      "predicted": 244917,
+      "hit_rate_at_1_pct": 23.92,
+      "hit_rate_at_3_pct": 39.507,
+      "hit_rate_at_5_pct": 51.591,
+      "mean_reciprocal_rank_at_5": 0.332,
+      "prediction_coverage_pct": 100.0,
+      "macro_hit_rate_at_1_pct": 21.859
+    },
+    "global_popularity": {
+      "examples": 244917,
+      "predicted": 244917,
+      "hit_rate_at_1_pct": 16.833,
+      "hit_rate_at_3_pct": 35.581,
+      "hit_rate_at_5_pct": 48.547,
+      "mean_reciprocal_rank_at_5": 0.273,
+      "prediction_coverage_pct": 100.0,
+      "macro_hit_rate_at_1_pct": 18.486
+    },
+    "markov": {
+      "examples": 244917,
+      "predicted": 244917,
+      "hit_rate_at_1_pct": 24.756,
+      "hit_rate_at_3_pct": 42.324,
+      "hit_rate_at_5_pct": 49.589,
+      "mean_reciprocal_rank_at_5": 0.336,
+      "prediction_coverage_pct": 100.0,
+      "macro_hit_rate_at_1_pct": 24.929
+    },
+    "mfu": {
+      "examples": 244917,
+      "predicted": 244917,
+      "hit_rate_at_1_pct": 16.833,
+      "hit_rate_at_3_pct": 35.581,
+      "hit_rate_at_5_pct": 48.547,
+      "mean_reciprocal_rank_at_5": 0.273,
+      "prediction_coverage_pct": 100.0,
+      "macro_hit_rate_at_1_pct": 18.486
+    },
+    "mru": {
+      "examples": 244917,
+      "predicted": 244897,
+      "hit_rate_at_1_pct": 19.302,
+      "hit_rate_at_3_pct": 19.302,
+      "hit_rate_at_5_pct": 19.302,
+      "mean_reciprocal_rank_at_5": 0.193,
+      "prediction_coverage_pct": 99.992,
+      "macro_hit_rate_at_1_pct": 17.234
+    },
+    "naive_bayes": {
+      "examples": 244917,
+      "predicted": 244917,
+      "hit_rate_at_1_pct": 9.688,
+      "hit_rate_at_3_pct": 24.173,
+      "hit_rate_at_5_pct": 29.183,
+      "mean_reciprocal_rank_at_5": 0.172,
+      "prediction_coverage_pct": 100.0,
+      "macro_hit_rate_at_1_pct": 6.726
+    },
+    "xgboost": {
+      "examples": 244917,
+      "predicted": 244917,
+      "hit_rate_at_1_pct": 28.87,
+      "hit_rate_at_3_pct": 38.409,
+      "hit_rate_at_5_pct": 45.261,
+      "mean_reciprocal_rank_at_5": 0.346,
+      "prediction_coverage_pct": 100.0,
+      "macro_hit_rate_at_1_pct": 29.041
+    }
+  }
+}

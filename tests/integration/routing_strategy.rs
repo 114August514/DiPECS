@@ -17,6 +17,91 @@ use aios_spec::{
     SanitizedEventType, ScriptHint, SemanticHint, SourceTier, StructuredContext, TextHint,
 };
 
+// ── HardcodedRouter：早期简单系统的固定路由对照组 ──────────────────────────────
+//
+// 复现 DiPECS 之前一个更简单系统的路由策略：
+//   - `privacy_score > 3` => `RuleBased`
+//   - 否则 => `LocalEvaluator`
+//   - 无熔断器、无基于复杂度的云端路由。
+//
+// 关键：`privacy_score` 必须与生产 `DecisionRouter` 使用**完全相同**的输入，否则
+// 对照组失去意义。生产实现见 `crates/aios-agent/src/router.rs`
+// `DecisionRouter::compute_privacy_score`（crate-private，无法直接复用），此处**忠实
+// 复刻**其逻辑：
+//   - Notification 事件中每个 `VerificationCode` / `FinancialContext` 语义提示 +1
+//   - 每个 `AppTransition` 事件 +1
+//   - 其它事件 +0
+struct HardcodedRouter;
+
+impl HardcodedRouter {
+    /// 与生产 `DecisionRouter::compute_privacy_score` 逐字段一致的隐私分。
+    fn compute_privacy_score(context: &StructuredContext) -> usize {
+        context
+            .events
+            .iter()
+            .map(|event| match &event.event_type {
+                SanitizedEventType::Notification { semantic_hints, .. } => semantic_hints
+                    .iter()
+                    .filter(|h| {
+                        matches!(
+                            h,
+                            SemanticHint::VerificationCode | SemanticHint::FinancialContext
+                        )
+                    })
+                    .count(),
+                SanitizedEventType::AppTransition { .. } => 1,
+                _ => 0,
+            })
+            .sum()
+    }
+
+    /// 固定路由：隐私分 > 3 => RuleBased，否则 LocalEvaluator。阈值与
+    /// `RouterConfig::default().privacy_score_threshold`（3）保持一致。
+    fn determine_route(context: &StructuredContext) -> DecisionRoute {
+        if Self::compute_privacy_score(context) > 3 {
+            DecisionRoute::RuleBased
+        } else {
+            DecisionRoute::LocalEvaluator
+        }
+    }
+}
+
+/// 将脱敏事件按 `window_secs` 时间窗切分为多个 `StructuredContext`。
+///
+/// 忠实复现 daemon `run_processing_loop` 的行为（`crates/aios-daemon/src/pipeline.rs`）：
+/// 事件按时间戳排序后逐个 push，当事件时间戳越过当前窗口边界时先 `close` 当前窗口，
+/// 再把该事件放入新窗口；最后 flush 尾窗口。空窗口不产生 context（与 daemon 一致）。
+fn build_windows(events: &[SanitizedEvent], window_secs: u64) -> Vec<StructuredContext> {
+    if events.is_empty() {
+        return vec![];
+    }
+    let mut sorted = events.to_vec();
+    sorted.sort_by_key(|e| e.timestamp_ms);
+
+    let window_ms = (window_secs * 1000) as i64;
+    let start = sorted.first().unwrap().timestamp_ms;
+
+    let mut contexts = vec![];
+    let mut aggregator = WindowAggregator::new(window_secs, start);
+    let mut window_end = start + window_ms;
+
+    for event in sorted {
+        // 事件越过当前窗口边界：先关窗（可能跨越多个空窗口）。
+        while event.timestamp_ms >= window_end {
+            if let Some(ctx) = aggregator.close(window_end) {
+                contexts.push(ctx);
+            }
+            window_end += window_ms;
+        }
+        aggregator.push(event);
+    }
+    // flush 最后一个非空窗口。
+    if let Some(ctx) = aggregator.close(window_end) {
+        contexts.push(ctx);
+    }
+    contexts
+}
+
 use crate::helpers;
 
 fn load_scenario_trace(name: &str) -> Vec<serde_json::Value> {
@@ -203,5 +288,122 @@ fn dynamic_router_escalates_for_rich_semantic_hints_when_privacy_gate_allows() {
     assert_eq!(
         dynamic_result.route, fixed_local.route,
         "dynamic router should match the richer fixed backend it selected"
+    );
+}
+
+/// 固定路由对照组：`HardcodedRouter` 用与生产完全相同的隐私分做二元路由。
+///
+/// 两个场景合起来证明：生产 `DecisionRouter` **至少不劣于**简单固定策略——
+/// - 高隐私（rich-workflow）：两者都选 RuleBased（安全一致）；
+/// - 低隐私富语义：两者都选 LocalEvaluator。
+///
+/// 同时严格优于任何**单一固定后端**：没有哪个固定后端能在两个场景都做对
+///（固定 RuleBased 在低隐私场景不会升级，固定 LocalEvaluator 在高隐私场景不安全）。
+#[test]
+fn hardcoded_routing_matches_dynamic_router_on_both_scenarios() {
+    // 场景 1：高隐私 rich-workflow trace —— 隐私分远超阈值 3，固定路由选 RuleBased。
+    let events = load_scenario_trace("rich-workflow");
+    let sanitized = sanitize_trace(&events);
+    let ctx = build_context(&sanitized, 10);
+
+    let privacy_score = HardcodedRouter::compute_privacy_score(&ctx);
+    assert!(
+        privacy_score > 3,
+        "rich-workflow context should have a high privacy score (>3), got {privacy_score}"
+    );
+
+    let dynamic = DecisionRouter::default().evaluate(&ctx);
+    let hardcoded = HardcodedRouter::determine_route(&ctx);
+    assert_eq!(
+        hardcoded,
+        DecisionRoute::RuleBased,
+        "hardcoded router should pick RuleBased on high-privacy trace"
+    );
+    assert_eq!(
+        dynamic.route, hardcoded,
+        "production router should match hardcoded RuleBased choice on high-privacy trace"
+    );
+
+    // 场景 2：低隐私富语义合成上下文 —— 隐私分 = 1（单个 AppTransition），
+    // 固定路由与生产路由都应选 LocalEvaluator。
+    let rich = make_rich_semantic_context();
+    let rich_score = HardcodedRouter::compute_privacy_score(&rich);
+    assert!(
+        rich_score <= 3,
+        "rich-semantic low-privacy context should stay under threshold, got {rich_score}"
+    );
+
+    let dynamic_rich = DecisionRouter::default().evaluate(&rich);
+    let hardcoded_rich = HardcodedRouter::determine_route(&rich);
+    assert_eq!(
+        hardcoded_rich,
+        DecisionRoute::LocalEvaluator,
+        "hardcoded router should pick LocalEvaluator on low-privacy context"
+    );
+    assert_eq!(
+        dynamic_rich.route, hardcoded_rich,
+        "production router should match hardcoded LocalEvaluator choice on low-privacy context"
+    );
+}
+
+/// 云端规避率 baseline（性能价值链路）。
+///
+/// 把三条场景 trace（morning-routine / multi-app-switching / rich-workflow）按 10s
+/// 窗口切分，逐窗口过 `DecisionRouter::default()`（未配置云端 key），统计路由到本地
+/// 后端（RuleBased / LocalEvaluator）与云端/降级（CloudLlm / FallbackNoOp）的比例。
+///
+/// 断言云端规避率 >= 80%。依据：云端 p50 约 7-11s，本地后端亚毫秒；规避云端是最直接
+/// 的用户可见延迟收益。逐窗口路由（而非每场景单上下文）使规避率反映真实窗口分布。
+#[test]
+fn cloud_avoidance_rate_is_high() {
+    let scenarios = ["morning-routine", "multi-app-switching", "rich-workflow"];
+    let router = DecisionRouter::default();
+
+    let mut total_windows = 0usize;
+    let mut avoided = 0usize; // RuleBased | LocalEvaluator
+    let mut cloud_or_fallback = 0usize; // CloudLlm | FallbackNoOp
+
+    println!("\n=== routing_strategy: cloud-avoidance per-scenario window routing ===");
+    for name in scenarios {
+        let events = load_scenario_trace(name);
+        let sanitized = sanitize_trace(&events);
+        let windows = build_windows(&sanitized, 10);
+        assert!(
+            !windows.is_empty(),
+            "{name}: expected at least one non-empty window"
+        );
+
+        let mut scenario_avoided = 0usize;
+        for ctx in &windows {
+            let route = router.evaluate(ctx).route;
+            match route {
+                DecisionRoute::RuleBased | DecisionRoute::LocalEvaluator => {
+                    avoided += 1;
+                    scenario_avoided += 1;
+                },
+                DecisionRoute::CloudLlm | DecisionRoute::FallbackNoOp => {
+                    cloud_or_fallback += 1;
+                },
+                DecisionRoute::Mock => {},
+            }
+            total_windows += 1;
+        }
+        println!(
+            "  {name:<22} windows={:<4} avoided={scenario_avoided}",
+            windows.len()
+        );
+    }
+
+    assert!(total_windows > 0, "expected windows across scenarios");
+    let avoidance_rate = avoided as f64 / total_windows as f64 * 100.0;
+    println!(
+        "  TOTAL windows={total_windows} avoided={avoided} cloud_or_fallback={cloud_or_fallback}"
+    );
+    println!("  cloud_avoidance_rate: {avoidance_rate:.2}%");
+
+    assert!(
+        avoidance_rate >= 80.0,
+        "cloud avoidance rate should be >= 80%, got {avoidance_rate:.2}% \
+         (avoided={avoided}, total={total_windows})"
     );
 }

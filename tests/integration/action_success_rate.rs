@@ -276,7 +276,78 @@ fn local_stub_action_types_succeed_without_bridge() {
     }
 }
 
-// ── 综合分布快照 ─────────────────────────────────────────────────────────────
+// ── 直接转发 baseline（"DiPECS 之前"）─────────────────────────────────────────
+
+/// "DiPECS 之前"的直接转发 baseline：四类转发动作在设备回 ok 时全部成功。
+///
+/// 目标：建立"引入 DiPECS 治理之前，直接把动作转发到设备就能成功"的对照，并证明
+/// DiPECS 治理对**被允许的**动作保持同样的成功率（治理是加法约束，不牺牲 happy path）。
+///
+/// ## 构造约束（必须说明）
+///
+/// `AuthorizedAction` 字段私有且**只能**由同 crate 的 `ActionLifecycle` 在
+/// `PolicyEngine` 通过后调用 `AuthorizedAction::seal` 封存（见
+/// `crates/aios-core/src/governance/mod.rs`）。外部集成测试**无法**绕过生命周期直接
+/// 构造 `AuthorizedAction`，因此本 baseline 走**最小许可生命周期**：
+///   - `PolicyEngine::default()` + `permissive_capability()`（放行全部动作类型），
+///     等价于"无策略否决"；
+///   - mock bridge 只回 `{"status":"ok"}`，**不校验 HMAC 签名**——`AndroidAdapter`
+///     客户端始终会计算并附带签名，但设备侧此处不验证，等价于"无签名校验的直接转发"。
+///
+/// 与完整生命周期测试 `forwarded_action_types_all_succeed_on_device_ok` /
+/// `all_action_types_distribution_snapshot`（本文件上方）交叉印证：那些测试覆盖策略
+/// 否决与本地 stub 分支，本测试专注"最小治理下的直接转发成功率"这一 baseline 语义。
+#[test]
+fn direct_forward_without_policy_or_signature_succeeds() {
+    let cases: &[(ActionType, &str)] = &[
+        (ActionType::PreWarmProcess, "own:warmup"),
+        (ActionType::KeepAlive, "work:collector_heartbeat"),
+        (ActionType::ReleaseMemory, "cache:prefetch"),
+        (ActionType::PrefetchFile, "url:https://example.test/a.json"),
+    ];
+
+    println!("\n=== action_success_rate: direct-forward (pre-DiPECS) baseline ===");
+    let mut succeeded = 0usize;
+    for (action_type, target) in cases {
+        // mock bridge：无签名校验，直接回 ok。
+        let (port, rx) = spawn_mock_bridge(br#"{"status":"ok"}"#);
+        let policy = PolicyEngine::default();
+        let adapter = android_adapter_for(port);
+        let lifecycle = ActionLifecycle::new(&policy, &adapter);
+        let records = lifecycle.run(
+            0,
+            &single_action_batch(action_type.clone(), target),
+            DecisionRoute::RuleBased,
+            None,
+            &permissive_capability(),
+            &context_with_app("com.example.app"),
+        );
+
+        rx.recv_timeout(Duration::from_secs(5)).unwrap_or_else(|_| {
+            panic!("mock bridge should receive forwarded request for {action_type:?}")
+        });
+
+        assert_eq!(
+            records.len(),
+            1,
+            "{action_type:?}: expected exactly one audit record"
+        );
+        let terminal = records[0].terminal;
+        println!("  {action_type:?} → {terminal:?}");
+        assert_eq!(
+            terminal,
+            ActionState::Succeeded,
+            "{action_type:?}: direct forward should succeed, got {terminal:?}"
+        );
+        succeeded += 1;
+    }
+
+    assert_eq!(
+        succeeded,
+        cases.len(),
+        "all four forwarded action types should succeed on direct forward"
+    );
+}
 
 /// 全部五种动作类型的完整分布快照（happy path）。
 ///

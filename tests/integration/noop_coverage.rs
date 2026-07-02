@@ -23,16 +23,20 @@ const SCENARIO_LOCAL_NOOP_MAX: f64 = 55.0;
 const SCENARIO_RULE_COV_MIN: f64 = 50.0;
 const SCENARIO_LOCAL_COV_MIN: f64 = 35.0;
 
-// Realistic-prior comparison: DiPECS must stay well below trivial NoOp and
-// within a reasonable gap of the strongest realistic prior coverage.
+// High-coverage-prior comparison: DiPECS must stay well below trivial NoOp and
+// within a reasonable gap of the strongest 100%-coverage prior. NOTE: these
+// priors (markov / per_current_app_majority) are the *statistical* priors in the
+// §7 taxonomy — they are named "high-coverage" here (not "realistic") because the
+// four §7 realistic-prior heuristics only reach 23-65% coverage, so they are not
+// the right upper bound for a coverage-gap guard.
 // Task originally targeted 30pp; measured on synthetic-next-app-v1 shows a
 // 38.2pp gap for rule_based and a 43.6pp gap for local_evaluator, so the
 // guard is calibrated to 45pp to pass with margin while still tightening
 // against the trivial always_noop baseline.
-const REALISTIC_PRIOR_GAP_MAX: f64 = 45.0;
-const REALISTIC_PRIOR_NOOP_MAX: f64 = 50.0;
+const HIGH_COVERAGE_PRIOR_GAP_MAX: f64 = 45.0;
+const HIGH_COVERAGE_PRIOR_NOOP_MAX: f64 = 50.0;
 
-const REALISTIC_PRIOR_BACKENDS: &[&str] = &["markov", "per_current_app_majority"];
+const HIGH_COVERAGE_PRIOR_BACKENDS: &[&str] = &["markov", "per_current_app_majority"];
 const DIPECS_BACKENDS: &[&str] = &["rule_based", "local_evaluator"];
 
 // The always-noop control group emits an empty prediction on every window.
@@ -126,18 +130,18 @@ fn rule_based_and_local_evaluator_noop_rate_and_coverage_within_thresholds() {
         );
     }
 
-    // Realistic-prior comparison (aggregate).
-    let strongest_coverage = REALISTIC_PRIOR_BACKENDS
+    // High-coverage-prior comparison (aggregate).
+    let strongest_coverage = HIGH_COVERAGE_PRIOR_BACKENDS
         .iter()
         .map(|name| {
             report
                 .aggregate
                 .get(*name)
-                .unwrap_or_else(|| panic!("missing aggregate realistic prior {name}"))
+                .unwrap_or_else(|| panic!("missing aggregate high-coverage prior {name}"))
                 .prediction_coverage_pct
         })
         .max_by(|a, b| a.partial_cmp(b).unwrap())
-        .expect("at least one realistic prior must be present");
+        .expect("at least one high-coverage prior must be present");
 
     for name in DIPECS_BACKENDS {
         let metrics = report
@@ -147,13 +151,13 @@ fn rule_based_and_local_evaluator_noop_rate_and_coverage_within_thresholds() {
 
         let gap = strongest_coverage - metrics.prediction_coverage_pct;
         assert!(
-            gap <= REALISTIC_PRIOR_GAP_MAX,
-            "aggregate {name} coverage={:.3}% is {gap:.3}pp below strongest realistic prior ({strongest_coverage:.3}%), exceeding {REALISTIC_PRIOR_GAP_MAX}pp",
+            gap <= HIGH_COVERAGE_PRIOR_GAP_MAX,
+            "aggregate {name} coverage={:.3}% is {gap:.3}pp below strongest high-coverage prior ({strongest_coverage:.3}%), exceeding {HIGH_COVERAGE_PRIOR_GAP_MAX}pp",
             metrics.prediction_coverage_pct
         );
         assert!(
-            metrics.noop_rate_pct < REALISTIC_PRIOR_NOOP_MAX,
-            "aggregate {name} noop_rate={:.3}% must be below {REALISTIC_PRIOR_NOOP_MAX}% (far from always_noop)",
+            metrics.noop_rate_pct < HIGH_COVERAGE_PRIOR_NOOP_MAX,
+            "aggregate {name} noop_rate={:.3}% must be below {HIGH_COVERAGE_PRIOR_NOOP_MAX}% (far from always_noop)",
             metrics.noop_rate_pct
         );
     }

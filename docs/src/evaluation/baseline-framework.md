@@ -271,7 +271,7 @@ cargo test --test integration routing_strategy
 **对照组**：
 
 - `always_noop`（100% NoOp、0% 预测覆盖）——trivial 下界。
-- realistic prior（`markov` / `per_current_app_majority`，覆盖率 100%）——真实上界参照。
+- 高覆盖统计 prior（`markov` / `per_current_app_majority`，覆盖率 100%）——覆盖率上界参照。
 
 **实验组**：`RuleBasedBackend`、`LocalEvaluatorBackend`。
 

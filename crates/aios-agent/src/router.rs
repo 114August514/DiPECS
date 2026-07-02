@@ -17,6 +17,7 @@ use aios_spec::{
 use crate::backends::cloud_llm::CloudBackendState;
 use crate::backends::fallback::FallbackNoOpBackend;
 use crate::backends::local_evaluator::LocalEvaluatorBackend;
+use crate::backends::predictive::PredictiveLocalBackend;
 use crate::backends::rule_based::RuleBasedBackend;
 use crate::DecisionBackend;
 
@@ -146,10 +147,23 @@ impl DecisionRouter {
             CloudBackendState::Misconfigured(error) => (None, false, Some(error)),
         };
 
+        let local_evaluator: Box<dyn DecisionBackend + Send + Sync> = match std::env::var(
+            "DIPECS_NEXT_APP_MODEL_PATH",
+        ) {
+            Ok(path) if !path.trim().is_empty() => match PredictiveLocalBackend::from_path(&path) {
+                Ok(backend) => Box::new(backend),
+                Err(error) => {
+                    tracing::warn!(error = %error, "next-app model ignored; falling back to heuristic local evaluator");
+                    Box::new(LocalEvaluatorBackend)
+                },
+            },
+            _ => Box::new(LocalEvaluatorBackend),
+        };
+
         Self {
             config,
             rule_based: Box::new(RuleBasedBackend),
-            local_evaluator: Box::new(LocalEvaluatorBackend),
+            local_evaluator,
             fallback: Box::new(FallbackNoOpBackend),
             cloud_llm,
             cloud_disabled,

@@ -9,6 +9,11 @@ mod router;
 pub use backends::cloud_llm::ProfileSummarizer;
 pub use backends::fallback::FallbackNoOpBackend;
 pub use backends::local_evaluator::LocalEvaluatorBackend;
+pub use backends::predictive::{
+    prediction_features_for_example, train_next_app_artifact, NextAppAlgorithm,
+    NextAppModelArtifact, NextAppModelConfig, NextAppPredictor, NextAppTrainingExample,
+    PredictionFeatures, PredictiveLocalBackend,
+};
 pub use backends::rule_based::RuleBasedBackend;
 pub use router::{DecisionRouter, RouterConfig};
 

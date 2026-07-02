@@ -5,6 +5,7 @@ use std::io::{self, BufReader, BufWriter, Write};
 use std::path::PathBuf;
 
 use aios_cli::android_bridge;
+use aios_cli::next_app::{self, NextAppDataset, NextAppSplit};
 use aios_cli::replay::{self, Stage};
 use anyhow::{bail, Context, Result};
 use clap::{Parser, Subcommand};
@@ -45,6 +46,63 @@ enum Command {
         /// tests. Parent directories are created automatically.
         #[arg(long)]
         audit: Option<PathBuf>,
+    },
+
+    /// Train a deterministic next-app prediction artifact from an LSApp-shaped dataset.
+    TrainNextApp {
+        /// Dataset format. Currently supports LSApp CSV/TSV/JSONL.
+        #[arg(long, value_enum, default_value_t = NextAppDataset::Lsapp)]
+        dataset: NextAppDataset,
+
+        /// External dataset file or directory. The dataset is not committed.
+        #[arg(long)]
+        input: PathBuf,
+
+        /// Output JSON artifact path.
+        #[arg(long)]
+        output: PathBuf,
+
+        /// Next-app label horizon in seconds.
+        #[arg(long, default_value_t = 30)]
+        horizon_secs: u64,
+
+        /// Number of previous app events to expose as model features.
+        #[arg(long, default_value_t = 5)]
+        history_len: usize,
+
+        /// Train/test split policy used to select training examples.
+        #[arg(long, value_enum, default_value_t = NextAppSplit::Standard)]
+        split: NextAppSplit,
+    },
+    /// Evaluate a next-app prediction artifact on an LSApp-shaped dataset.
+    EvalNextApp {
+        /// Dataset format. Currently supports LSApp CSV/TSV/JSONL.
+        #[arg(long, value_enum, default_value_t = NextAppDataset::Lsapp)]
+        dataset: NextAppDataset,
+
+        /// External dataset file or directory. The dataset is not committed.
+        #[arg(long)]
+        input: PathBuf,
+
+        /// Next-app model artifact path.
+        #[arg(long)]
+        artifact: PathBuf,
+
+        /// Output JSON report path.
+        #[arg(long)]
+        output: PathBuf,
+
+        /// Next-app label horizon in seconds.
+        #[arg(long, default_value_t = 30)]
+        horizon_secs: u64,
+
+        /// Number of previous app events to expose as model features.
+        #[arg(long, default_value_t = 5)]
+        history_len: usize,
+
+        /// Evaluation split policy.
+        #[arg(long, value_enum, default_value_t = NextAppSplit::Standard)]
+        split: NextAppSplit,
     },
     /// Send a ping/health-check message to the Android localhost socket bridge.
     /// This command does not dispatch any action; it only verifies that the
@@ -169,6 +227,38 @@ fn main() -> Result<()> {
             );
             Ok(())
         },
+        Command::TrainNextApp {
+            dataset,
+            input,
+            output,
+            horizon_secs,
+            history_len,
+            split,
+        } => next_app::train(next_app::TrainOptions {
+            dataset,
+            input,
+            output,
+            horizon_secs,
+            history_len,
+            split,
+        }),
+        Command::EvalNextApp {
+            dataset,
+            input,
+            artifact,
+            output,
+            horizon_secs,
+            history_len,
+            split,
+        } => next_app::evaluate(next_app::EvalOptions {
+            dataset,
+            input,
+            artifact,
+            output,
+            horizon_secs,
+            history_len,
+            split,
+        }),
         Command::SendAction {
             host,
             port,

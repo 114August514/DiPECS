@@ -37,6 +37,14 @@ use aios_spec::{SourceTier, StructuredContext};
 
 const TOKEN: &str = "test-token";
 
+/// 四类"转发到设备"的动作及其目标。多个转发类测试共享，避免各处 case 表漂移。
+const FORWARDED_CASES: &[(ActionType, &str)] = &[
+    (ActionType::PreWarmProcess, "own:warmup"),
+    (ActionType::KeepAlive, "work:collector_heartbeat"),
+    (ActionType::ReleaseMemory, "cache:prefetch"),
+    (ActionType::PrefetchFile, "url:https://example.test/a.json"),
+];
+
 /// 结果分类：每种动作类型的预期执行路径。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 enum OutcomeClass {
@@ -129,13 +137,7 @@ fn android_adapter_for(port: u16) -> AndroidAdapter {
 /// 四种转发类动作在设备回 ok 时全部 → `Succeeded`。
 #[test]
 fn forwarded_action_types_all_succeed_on_device_ok() {
-    // (action_type, target, expected_outcome_summary_contains)
-    let cases: &[(ActionType, &str)] = &[
-        (ActionType::PreWarmProcess, "own:warmup"),
-        (ActionType::KeepAlive, "work:collector_heartbeat"),
-        (ActionType::ReleaseMemory, "cache:prefetch"),
-        (ActionType::PrefetchFile, "url:https://example.test/a.json"),
-    ];
+    let cases = FORWARDED_CASES;
 
     // Vec<(action_type, terminal)> — ActionType lacks Hash so we avoid HashMap.
     let mut results: Vec<(ActionType, ActionState)> = Vec::new();
@@ -187,12 +189,7 @@ fn forwarded_action_types_all_succeed_on_device_ok() {
 /// 四种转发类动作在设备回 rejected 时全部 → `Failed`。
 #[test]
 fn forwarded_action_types_all_fail_on_device_rejected() {
-    let cases: &[(ActionType, &str)] = &[
-        (ActionType::PreWarmProcess, "own:warmup"),
-        (ActionType::KeepAlive, "work:collector_heartbeat"),
-        (ActionType::ReleaseMemory, "cache:prefetch"),
-        (ActionType::PrefetchFile, "url:https://example.test/a.json"),
-    ];
+    let cases = FORWARDED_CASES;
 
     let mut results: Vec<(ActionType, ActionState)> = Vec::new();
 
@@ -299,12 +296,7 @@ fn local_stub_action_types_succeed_without_bridge() {
 /// 否决与本地 stub 分支，本测试专注"最小治理下的直接转发成功率"这一 baseline 语义。
 #[test]
 fn direct_forward_without_policy_or_signature_succeeds() {
-    let cases: &[(ActionType, &str)] = &[
-        (ActionType::PreWarmProcess, "own:warmup"),
-        (ActionType::KeepAlive, "work:collector_heartbeat"),
-        (ActionType::ReleaseMemory, "cache:prefetch"),
-        (ActionType::PrefetchFile, "url:https://example.test/a.json"),
-    ];
+    let cases = FORWARDED_CASES;
 
     println!("\n=== action_success_rate: direct-forward (pre-DiPECS) baseline ===");
     let mut succeeded = 0usize;

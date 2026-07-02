@@ -53,6 +53,8 @@ fn run_stability(
         let res = backend.evaluate_model_input(input);
         match &res.error {
             Some(err) => {
+                // 子串启发式分类：把错误消息里含 "json" 的归为 JSON 解析/结构失败，
+                // 其余归入 other_failures。这只是粗分类，不解析结构化错误码。
                 if err.to_lowercase().contains("json") {
                     json_failures += 1;
                 }

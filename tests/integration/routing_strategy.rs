@@ -66,6 +66,20 @@ impl HardcodedRouter {
     }
 }
 
+/// 从 rationale 标签中解析生产 router emit 的隐私分。
+///
+/// 生产 `RoutingReason::PrivacySensitive` 的标签形如
+/// `routing:privacy_sensitive(score=7)`（见 router.rs `RoutingReason::tag`）。
+/// 用于把生产实际计算的分数与本地复刻做数值比对。
+fn parse_privacy_score_tag(tags: &[String]) -> Option<usize> {
+    const PREFIX: &str = "routing:privacy_sensitive(score=";
+    tags.iter().find_map(|tag| {
+        tag.strip_prefix(PREFIX)
+            .and_then(|rest| rest.strip_suffix(')'))
+            .and_then(|num| num.parse::<usize>().ok())
+    })
+}
+
 /// 将脱敏事件按 `window_secs` 时间窗切分为多个 `StructuredContext`。
 ///
 /// 忠实复现 daemon `run_processing_loop` 的行为（`crates/aios-daemon/src/pipeline.rs`）：
@@ -324,6 +338,19 @@ fn hardcoded_routing_matches_dynamic_router_on_both_scenarios() {
         "production router should match hardcoded RuleBased choice on high-privacy trace"
     );
 
+    // 数值分歧守卫：生产 router 在隐私敏感路径会 emit `routing:privacy_sensitive(score=N)`
+    // 标签（见 router.rs RoutingReason::PrivacySensitive）。解析该 N 并与本地复刻的
+    // compute_privacy_score 逐数值比对——即便未来生产分数漂移但仍未翻转路由，这里也会
+    // 立即失败，避免复刻悄悄偏离 crate-private 的原实现。
+    let production_score = parse_privacy_score_tag(&dynamic.rationale_tags).expect(
+        "high-privacy route should emit a routing:privacy_sensitive(score=N) rationale tag",
+    );
+    assert_eq!(
+        production_score, privacy_score,
+        "replicated HardcodedRouter privacy score must equal production score \
+         (production emitted {production_score}, replica computed {privacy_score})"
+    );
+
     // 场景 2：低隐私富语义合成上下文 —— 隐私分 = 1（单个 AppTransition），
     // 固定路由与生产路由都应选 LocalEvaluator。
     let rich = make_rich_semantic_context();
@@ -352,8 +379,18 @@ fn hardcoded_routing_matches_dynamic_router_on_both_scenarios() {
 /// 窗口切分，逐窗口过 `DecisionRouter::default()`（未配置云端 key），统计路由到本地
 /// 后端（RuleBased / LocalEvaluator）与云端/降级（CloudLlm / FallbackNoOp）的比例。
 ///
-/// 断言云端规避率 >= 80%。依据：云端 p50 约 7-11s，本地后端亚毫秒；规避云端是最直接
-/// 的用户可见延迟收益。逐窗口路由（而非每场景单上下文）使规避率反映真实窗口分布。
+/// ## 诚实声明：本配置下规避率结构性地为 100%
+///
+/// 未配置云端 key 时 `cloud_route_or_fallback` 永远不会返回 `CloudLlm`（云端后端为
+/// `None`），且这些真实 trace 不会连续触发 5 次后端错误，熔断器不会跳闸到
+/// `FallbackNoOp`。因此在**当前配置下**规避率恒为 100%，`>= 80%` 断言在此配置**不可
+/// 证伪**——它只在配置了云端 key（`DIPECS_CLOUD_LLM_ENABLED=1` + api key）后，高复杂度
+/// 窗口开始路由到 `CloudLlm` 时才变得可能失败。
+///
+/// 那么本测试的价值在于：(1) 确认默认（无云端）router 在真实逐窗口分布上始终保持本地；
+/// (2) 覆盖 `build_windows` 的多窗口切分逻辑。依据：云端 p50 约 7-11s，本地后端亚毫秒，
+/// 规避云端是最直接的用户可见延迟收益——但**不要**把这里的 100% 当作动态路由的功劳，
+/// 它是"未配置云端"的结构性结果。
 #[test]
 fn cloud_avoidance_rate_is_high() {
     let scenarios = ["morning-routine", "multi-app-switching", "rich-workflow"];
@@ -384,7 +421,11 @@ fn cloud_avoidance_rate_is_high() {
                 DecisionRoute::CloudLlm | DecisionRoute::FallbackNoOp => {
                     cloud_or_fallback += 1;
                 },
-                DecisionRoute::Mock => {},
+                // `Mock` 只由测试专用后端产生（见 router.rs with_backends），生产
+                // DecisionRouter::default() 的真实后端永不 emit 它；若出现即为回归。
+                DecisionRoute::Mock => {
+                    panic!("default DecisionRouter should never route to Mock, got a Mock window");
+                },
             }
             total_windows += 1;
         }

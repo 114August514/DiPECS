@@ -263,6 +263,7 @@ mod tests {
                 },
             },
             behavior_profile: UserBehaviorProfile {
+                user_id: None,
                 summary: "usually opens docs after chat notifications".into(),
                 observation_windows: 3,
                 frequent_foreground_apps: vec![],

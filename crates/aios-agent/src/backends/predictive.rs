@@ -1,8 +1,8 @@
 //! PredictiveLocalBackend - deterministic next-app prediction from exported artifacts.
 //!
 //! Training can happen offline, but runtime inference stays local and pure: the
-//! backend reads a JSON artifact containing Naive Bayes, Markov, and exported
-//! tree-ensemble scores, then emits low-risk app intent candidates.
+//! backend reads a JSON artifact containing Naive Bayes, Markov, and a log-lift
+//! feature ensemble, then emits low-risk app intent candidates.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs::File;
@@ -35,7 +35,12 @@ pub struct NextAppModelArtifact {
     pub global_popularity: Vec<AppScore>,
     pub naive_bayes: NaiveBayesModel,
     pub markov: MarkovModel,
-    pub xgboost: XgboostModel,
+    /// Log-lift feature ensemble. The JSON field name remains `xgboost` for
+    /// backward compatibility with existing artifacts, but the implementation
+    /// is a lightweight deterministic feature-lift model, not an XGBoost
+    /// gradient-boosted tree ensemble.
+    #[serde(rename = "xgboost")]
+    pub feature_lift: FeatureLiftModel,
     pub training_summary: TrainingSummary,
 }
 
@@ -80,14 +85,21 @@ pub struct MarkovModel {
     pub user_transitions: BTreeMap<String, Vec<AppScore>>,
 }
 
+/// Lightweight deterministic feature-lift ensemble.
+///
+/// This is **not** an XGBoost gradient-boosted tree. It selects the top-k most
+/// frequent categorical features from the training data and stores per-feature
+/// log-lift scores for each app. At inference time the active features' lifts
+/// are added to the base (log-prior) scores. The artifact JSON field is still
+/// labeled `xgboost` for backward compatibility with existing artifacts.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct XgboostModel {
+pub struct FeatureLiftModel {
     pub base_scores: Vec<f32>,
-    pub trees: Vec<XgboostTree>,
+    pub trees: Vec<FeatureLiftTree>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct XgboostTree {
+pub struct FeatureLiftTree {
     pub feature_key: String,
     pub yes_scores: Vec<AppScore>,
 }
@@ -96,7 +108,9 @@ pub struct XgboostTree {
 pub enum NextAppAlgorithm {
     NaiveBayes,
     Markov,
-    Xgboost,
+    /// Log-lift feature ensemble (the artifact field is still serialized as
+    /// `xgboost` for compatibility, but the model is not XGBoost).
+    FeatureLift,
     Ensemble,
 }
 
@@ -162,7 +176,7 @@ impl NextAppPredictor {
         let mut scores = match algorithm {
             NextAppAlgorithm::NaiveBayes => self.rank_naive_bayes(features),
             NextAppAlgorithm::Markov => self.rank_markov(features),
-            NextAppAlgorithm::Xgboost => self.rank_xgboost(features),
+            NextAppAlgorithm::FeatureLift => self.rank_feature_lift(features),
             NextAppAlgorithm::Ensemble => self.rank_ensemble(features),
         };
         if let Some(current) = features.current_app.as_deref() {
@@ -215,10 +229,10 @@ impl NextAppPredictor {
         self.artifact.global_popularity.clone()
     }
 
-    fn rank_xgboost(&self, features: &PredictionFeatures) -> Vec<AppScore> {
+    fn rank_feature_lift(&self, features: &PredictionFeatures) -> Vec<AppScore> {
         let active: BTreeSet<String> = feature_keys(features).into_iter().collect();
-        let mut scores = self.artifact.xgboost.base_scores.clone();
-        for tree in &self.artifact.xgboost.trees {
+        let mut scores = self.artifact.feature_lift.base_scores.clone();
+        for tree in &self.artifact.feature_lift.trees {
             if active.contains(&tree.feature_key) {
                 for app_score in &tree.yes_scores {
                     if let Some(index) = self.app_index.get(&app_score.app) {
@@ -235,7 +249,7 @@ impl NextAppPredictor {
         for (weight, scores) in [
             (0.30, self.rank_naive_bayes(features)),
             (0.40, self.rank_markov(features)),
-            (0.30, self.rank_xgboost(features)),
+            (0.30, self.rank_feature_lift(features)),
         ] {
             for score in scores.into_iter().take(10) {
                 *combined.entry(score.app).or_default() += weight * score.score;
@@ -284,40 +298,7 @@ impl DecisionBackend for PredictiveLocalBackend {
 
         let mut intents: Vec<Intent> = predictions
             .into_iter()
-            .map(|prediction| {
-                let in_context = known.contains(&prediction.app);
-                Intent {
-                    intent_id: new_id(),
-                    intent_type: if features.current_app.is_some() {
-                        IntentType::SwitchToApp(prediction.app.clone())
-                    } else {
-                        IntentType::OpenApp(prediction.app.clone())
-                    },
-                    confidence: prediction.score.clamp(0.05, 0.99),
-                    risk_level: RiskLevel::Low,
-                    suggested_actions: vec![SuggestedAction {
-                        action_type: if in_context {
-                            ActionType::PreWarmProcess
-                        } else {
-                            ActionType::KeepAlive
-                        },
-                        target: Some(if in_context {
-                            format!("pkg:{}", prediction.app)
-                        } else {
-                            "work:collector_heartbeat".to_string()
-                        }),
-                        urgency: ActionUrgency::Immediate,
-                    }],
-                    rationale_tags: vec![
-                        "predictive:next_app".into(),
-                        if in_context {
-                            "predictive:target_in_context".into()
-                        } else {
-                            "predictive:target_not_in_context_safe_keepalive".into()
-                        },
-                    ],
-                }
-            })
+            .map(|prediction| prediction_to_intent(&prediction, &known))
             .collect();
 
         if intents.is_empty() {
@@ -442,7 +423,7 @@ pub fn train_next_app_artifact(
         .into_iter()
         .take(MAX_TRAINED_FEATURES)
         .filter_map(|(feature, _)| {
-            feature_counts.get(&feature).map(|counts| XgboostTree {
+            feature_counts.get(&feature).map(|counts| FeatureLiftTree {
                 feature_key: feature,
                 yes_scores: counts_to_log_lift_scores(counts, &class_counts, &app_vocab),
             })
@@ -466,7 +447,7 @@ pub fn train_next_app_artifact(
             global_transitions: transition_scores(global_transitions),
             user_transitions: transition_scores(user_transitions),
         },
-        xgboost: XgboostModel {
+        feature_lift: FeatureLiftModel {
             base_scores: class_log_priors,
             trees,
         },
@@ -502,9 +483,24 @@ fn validate_artifact(artifact: &NextAppModelArtifact) -> Result<(), String> {
     }
     if artifact.naive_bayes.class_log_priors.len() != classes
         || artifact.naive_bayes.unknown_feature_log_probs.len() != classes
-        || artifact.xgboost.base_scores.len() != classes
+        || artifact.feature_lift.base_scores.len() != classes
+        || artifact
+            .feature_lift
+            .trees
+            .iter()
+            .any(|tree| tree.yes_scores.len() != classes)
     {
         return Err("artifact vector sizes do not match app_vocab".into());
+    }
+    if artifact
+        .naive_bayes
+        .feature_log_probs
+        .values()
+        .any(|probs| probs.len() != classes)
+    {
+        return Err(
+            "artifact naive_bayes feature_log_probs vector sizes do not match app_vocab".into(),
+        );
     }
     Ok(())
 }
@@ -534,7 +530,7 @@ fn features_from_model_input(input: &ModelInput) -> PredictionFeatures {
         .to_string()
     });
     PredictionFeatures {
-        user_id: None,
+        user_id: input.behavior_profile.user_id.clone(),
         current_app,
         history,
         hour_bucket: Some(hour_bucket(context.window_end_ms)),
@@ -583,6 +579,53 @@ fn known_packages(context: &StructuredContext) -> BTreeSet<String> {
         }
     }
     packages
+}
+
+/// Map a scored prediction to a policy-safe intent.
+///
+/// - If the target app is currently in context (foreground/notified/process),
+///   we emit `SwitchToApp` with a `PreWarmProcess` action and `Low` risk.
+/// - If the target is not currently observed, we emit `OpenApp` with a
+///   conservative `KeepAlive` heartbeat action and `Medium` risk. The
+///   `OpenApp` intent type honestly reflects "we may want to open this app"
+///   while the `KeepAlive` action prevents the executor from launching
+///   something that is not on the device.
+fn prediction_to_intent(prediction: &AppScore, known: &BTreeSet<String>) -> Intent {
+    let in_context = known.contains(&prediction.app);
+    let (intent_type, action_type, target, risk_level) = if in_context {
+        (
+            IntentType::SwitchToApp(prediction.app.clone()),
+            ActionType::PreWarmProcess,
+            Some(format!("pkg:{}", prediction.app)),
+            RiskLevel::Low,
+        )
+    } else {
+        (
+            IntentType::OpenApp(prediction.app.clone()),
+            ActionType::KeepAlive,
+            Some("work:collector_heartbeat".to_string()),
+            RiskLevel::Medium,
+        )
+    };
+    Intent {
+        intent_id: new_id(),
+        intent_type,
+        confidence: prediction.score.clamp(0.05, 0.99),
+        risk_level,
+        suggested_actions: vec![SuggestedAction {
+            action_type,
+            target,
+            urgency: ActionUrgency::Immediate,
+        }],
+        rationale_tags: vec![
+            "predictive:next_app".into(),
+            if in_context {
+                "predictive:target_in_context".into()
+            } else {
+                "predictive:target_not_in_context_safe_keepalive".into()
+            },
+        ],
+    }
 }
 
 fn training_features(example: &NextAppTrainingExample) -> Vec<String> {
@@ -728,7 +771,8 @@ fn weekday(timestamp_ms: i64) -> u8 {
 mod tests {
     use super::*;
     use aios_spec::{
-        ContextSummary, SanitizedEvent, SourceTier, StructuredContext, SystemStatusSnapshot,
+        ContextSummary, ModelInput, SanitizedEvent, SourceTier, StructuredContext,
+        SystemStatusSnapshot,
     };
 
     fn examples() -> Vec<NextAppTrainingExample> {
@@ -795,8 +839,8 @@ mod tests {
         let first = &result.intent_batch.intents[0];
 
         assert_eq!(result.route, DecisionRoute::LocalEvaluator);
-        assert!(matches!(first.intent_type, IntentType::SwitchToApp(_)));
-        assert_eq!(first.risk_level, RiskLevel::Low);
+        assert!(matches!(first.intent_type, IntentType::OpenApp(_)));
+        assert_eq!(first.risk_level, RiskLevel::Medium);
         assert_eq!(
             first.suggested_actions[0].action_type,
             ActionType::KeepAlive
@@ -804,6 +848,67 @@ mod tests {
         assert_eq!(
             first.suggested_actions[0].target.as_deref(),
             Some("work:collector_heartbeat")
+        );
+    }
+
+    #[test]
+    fn backend_uses_behavior_profile_user_id_for_personalized_markov() {
+        // u1: chat -> mail every time; u2: chat -> browser every time.
+        let train = vec![
+            example("u1", "com.chat", &[], "com.mail"),
+            example("u1", "com.chat", &[], "com.mail"),
+            example("u1", "com.chat", &[], "com.mail"),
+            example("u2", "com.chat", &[], "com.browser"),
+            example("u2", "com.chat", &[], "com.browser"),
+            example("u2", "com.chat", &[], "com.browser"),
+        ];
+        let artifact = train_next_app_artifact("unit", NextAppModelConfig::default(), &train)
+            .expect("training should succeed");
+        let predictor = NextAppPredictor::new(artifact).expect("artifact should validate");
+        let ctx = context_with_foreground("com.chat");
+
+        let mut input = ModelInput::current_only(ctx.clone());
+        input.behavior_profile.user_id = Some("u1".into());
+        let features = features_from_model_input(&input);
+        let ranked = predictor.rank(&features, NextAppAlgorithm::Markov, 3);
+        assert_eq!(
+            ranked[0].app, "com.mail",
+            "with user_id=u1 Markov should rank com.mail first"
+        );
+
+        let mut input = ModelInput::current_only(ctx);
+        input.behavior_profile.user_id = Some("u2".into());
+        let features = features_from_model_input(&input);
+        let ranked = predictor.rank(&features, NextAppAlgorithm::Markov, 3);
+        assert_eq!(
+            ranked[0].app, "com.browser",
+            "with user_id=u2 Markov should rank com.browser first"
+        );
+    }
+
+    #[test]
+    fn backend_emits_prewarm_for_in_context_prediction() {
+        let artifact = train_next_app_artifact("unit", NextAppModelConfig::default(), &examples())
+            .expect("training should succeed");
+        let backend = PredictiveLocalBackend::new(artifact).expect("backend should construct");
+        let mut ctx = context_with_foreground("com.chat");
+        // Make com.mail observable in the current context so the prediction is
+        // considered in-context and safe to prewarm.
+        ctx.summary.notified_apps.push("com.mail".into());
+
+        let result = backend.evaluate(&ctx);
+        let first = &result.intent_batch.intents[0];
+
+        assert!(matches!(&first.intent_type,
+            IntentType::SwitchToApp(app) if app == "com.mail"));
+        assert_eq!(first.risk_level, RiskLevel::Low);
+        assert_eq!(
+            first.suggested_actions[0].action_type,
+            ActionType::PreWarmProcess
+        );
+        assert_eq!(
+            first.suggested_actions[0].target.as_deref(),
+            Some("pkg:com.mail")
         );
     }
 

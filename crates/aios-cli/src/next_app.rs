@@ -167,7 +167,10 @@ pub fn evaluate(opts: EvalOptions) -> Result<()> {
     for (name, algorithm) in [
         ("naive_bayes", NextAppAlgorithm::NaiveBayes),
         ("markov", NextAppAlgorithm::Markov),
-        ("xgboost", NextAppAlgorithm::Xgboost),
+        // The report key remains "xgboost" for backward compatibility with
+        // committed baseline reports; the underlying model is a log-lift
+        // feature ensemble, not XGBoost.
+        ("xgboost", NextAppAlgorithm::FeatureLift),
         ("ensemble", NextAppAlgorithm::Ensemble),
     ] {
         metrics.insert(
@@ -274,9 +277,10 @@ fn next_label_record(
     records[idx + 1..]
         .iter()
         .take_while(|candidate| candidate.session_id == current.session_id)
+        // Records are sorted by timestamp within a session, so the delta is
+        // non-negative; the previous `<= current` disjunct was redundant.
         .take_while(|candidate| {
-            candidate.timestamp_ms <= current.timestamp_ms
-                || candidate.timestamp_ms - current.timestamp_ms <= horizon_secs as i64 * 1000
+            candidate.timestamp_ms - current.timestamp_ms <= horizon_secs as i64 * 1000
         })
         .find(|candidate| candidate.app_name != current.app_name)
 }
@@ -498,14 +502,22 @@ fn required(row: &dyn RecordMap, candidates: &[&str]) -> Result<String> {
 
 fn parse_timestamp_ms(raw: &str) -> Option<i64> {
     let trimmed = raw.trim();
-    if let Ok(value) = trimmed.parse::<i64>() {
-        return Some(if value < 10_000_000_000 {
-            value * 1000
-        } else {
-            value
-        });
-    }
-    None
+    let value = trimmed.parse::<i64>().ok()?;
+    // Heuristic for the ambiguous "timestamp" column (as opposed to the
+    // unambiguous "timestamp_ms" column, which is parsed directly as ms).
+    //
+    // - Values >= 1_000_000_000_000 (~2001-09-09 in ms) are treated as ms.
+    // - Smaller values are treated as seconds and multiplied by 1000.
+    //
+    // This is not perfect: an early-ms timestamp between 1970 and 2001 would
+    // be misclassified as seconds. Datasets that need exact semantics should
+    // use a column named `timestamp_ms`.
+    const MS_THRESHOLD: i64 = 1_000_000_000_000;
+    Some(if value >= MS_THRESHOLD {
+        value
+    } else {
+        value * 1000
+    })
 }
 
 fn split_delimited(line: &str, delimiter: char) -> Vec<String> {

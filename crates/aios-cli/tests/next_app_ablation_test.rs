@@ -355,8 +355,13 @@ fn personalization_contribution_on_lsapp() {
     );
 }
 
-/// Smallest and largest of a non-empty slice of deltas.
+/// Smallest and largest of a slice of deltas. Returns (0.0, 0.0) for an empty
+/// slice so a future caller cannot panic; all current call sites pass non-empty
+/// slices.
 fn min_max(values: &[f64]) -> (f64, f64) {
+    if values.is_empty() {
+        return (0.0, 0.0);
+    }
     let mut lo = values[0];
     let mut hi = values[0];
     for &v in &values[1..] {

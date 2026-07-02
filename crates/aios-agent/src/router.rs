@@ -2,9 +2,13 @@
 //!
 //! Routing priority:
 //! 1. Circuit breaker: too many consecutive backend errors -> FallbackNoOp.
-//! 2. Privacy sensitivity: too many sensitive signals -> RuleBased.
-//! 3. Semantic complexity: low complexity -> RuleBased, medium/high ->
-//!    CloudLlm when configured, otherwise LocalEvaluator.
+//! 2. Local actionable signal: foreground transitions, file activity, actionable
+//!    notifications -> LocalEvaluator (so next-app prediction and other local
+//!    proactive actions are not blocked by the privacy gate).
+//! 3. Privacy sensitivity: notifications with verification/financial hints ->
+//!    RuleBased (blocks cloud routing while keeping sensitive data local).
+//! 4. Semantic complexity: low complexity -> RuleBased, medium/high -> CloudLlm
+//!    when configured, otherwise LocalEvaluator.
 use std::cell::RefCell;
 use std::collections::HashSet;
 use std::time::{Duration, Instant};
@@ -126,6 +130,12 @@ pub struct DecisionRouter {
     cloud_disabled: bool,
     cloud_misconfigured: Option<String>,
     circuit_state: RefCell<CircuitState>,
+    /// Optional runtime user id supplied by the environment. This is a stop-gap
+    /// until the daemon/collector plumbs a real `UserBehaviorProfile` through
+    /// `ModelInput`. When present it is attached to the default behavior profile
+    /// so personalized models (e.g. `PredictiveLocalBackend`) can key per-user
+    /// transition tables.
+    runtime_user_id: Option<String>,
 }
 
 impl DecisionRouter {
@@ -160,6 +170,10 @@ impl DecisionRouter {
             _ => Box::new(LocalEvaluatorBackend),
         };
 
+        let runtime_user_id = std::env::var("DIPECS_NEXT_APP_USER_ID")
+            .ok()
+            .filter(|s| !s.trim().is_empty());
+
         Self {
             config,
             rule_based: Box::new(RuleBasedBackend),
@@ -169,6 +183,7 @@ impl DecisionRouter {
             cloud_disabled,
             cloud_misconfigured,
             circuit_state: RefCell::new(CircuitState::default()),
+            runtime_user_id,
         }
     }
 
@@ -190,6 +205,7 @@ impl DecisionRouter {
             cloud_disabled,
             cloud_misconfigured: None,
             circuit_state: RefCell::new(CircuitState::default()),
+            runtime_user_id: None,
         }
     }
 
@@ -198,7 +214,23 @@ impl DecisionRouter {
     /// Uses interior mutability (`RefCell`) to track circuit breaker state
     /// across calls without requiring `&mut self`.
     pub fn evaluate(&self, context: &StructuredContext) -> DecisionBackendResult {
-        let input = ModelInput::current_only(context.clone());
+        let mut input = ModelInput::current_only(context.clone());
+        if let Some(user_id) = &self.runtime_user_id {
+            input.behavior_profile.user_id = Some(user_id.clone());
+        }
+        self.evaluate_model_input(&input)
+    }
+
+    /// Evaluate with an explicit behavior profile. Callers that already have a
+    /// `UserBehaviorProfile` (e.g. the daemon after aggregating recent feedback)
+    /// should use this so personalized backends receive `user_id` and history.
+    pub fn evaluate_with_profile(
+        &self,
+        context: &StructuredContext,
+        profile: aios_spec::UserBehaviorProfile,
+    ) -> DecisionBackendResult {
+        let mut input = ModelInput::current_only(context.clone());
+        input.behavior_profile = profile;
         self.evaluate_model_input(&input)
     }
 
@@ -286,7 +318,28 @@ impl DecisionRouter {
             );
         }
 
-        // Priority 2: Privacy sensitivity
+        // Priority 2: Low-risk proactive local signals.
+        //
+        // LocalEvaluator owns prefetch, process prewarm, and work-scoped
+        // keepalive. These are exactly the signals the next-app predictor
+        // needs (foreground transitions, file activity, actionable
+        // notifications). Route them to LocalEvaluator *before* the privacy
+        // score gate so that app-transition-heavy windows are not trapped in
+        // RuleBased. LocalEvaluator is still a local backend, so privacy is
+        // preserved; the privacy gate below continues to block cloud routing
+        // for sensitive contexts.
+        if Self::has_local_actionable_signal(context) {
+            return (
+                DecisionRoute::LocalEvaluator,
+                RoutingReason::LocalActionableSignal,
+            );
+        }
+
+        // Priority 3: Privacy sensitivity.
+        //
+        // App transitions are deliberately *not* counted as privacy-sensitive
+        // (they carry no raw text), so this gate only fires for notifications
+        // with VerificationCode / FinancialContext hints.
         let privacy_score = Self::compute_privacy_score(context);
         if privacy_score > self.config.privacy_score_threshold {
             return (
@@ -297,18 +350,7 @@ impl DecisionRouter {
             );
         }
 
-        // LocalEvaluator owns low-risk proactive actions such as prefetch,
-        // process prewarm, and work-scoped keepalive. Route these signals to it
-        // before the generic semantic-complexity split so single-hint or
-        // FileActivity-only windows are not trapped in RuleBased.
-        if Self::has_local_actionable_signal(context) {
-            return (
-                DecisionRoute::LocalEvaluator,
-                RoutingReason::LocalActionableSignal,
-            );
-        }
-
-        // Priority 3: Semantic complexity
+        // Priority 4: Semantic complexity
         let unique_types = Self::count_unique_semantic_hint_types(context);
         match unique_types {
             0 | 1 => (DecisionRoute::RuleBased, RoutingReason::LowComplexity),
@@ -337,9 +379,10 @@ impl DecisionRouter {
         )
     }
 
-    /// Count privacy-sensitive signals:
-    /// - Notification events with VerificationCode or FinancialContext hints
-    /// - AppTransition events
+    /// Count privacy-sensitive signals. Only notification events carrying
+    /// `VerificationCode` or `FinancialContext` hints are counted; app
+    /// transitions carry no raw text and are routed to LocalEvaluator via
+    /// `has_local_actionable_signal` before this gate is evaluated.
     fn compute_privacy_score(context: &StructuredContext) -> usize {
         context
             .events
@@ -354,7 +397,6 @@ impl DecisionRouter {
                         )
                     })
                     .count(),
-                SanitizedEventType::AppTransition { .. } => 1,
                 _ => 0,
             })
             .sum()
@@ -405,9 +447,9 @@ impl Default for DecisionRouter {
 mod tests {
     use super::*;
     use aios_spec::{
-        ActionType, ActionUrgency, ContextSummary, DecisionBackendResult, DecisionRoute, Intent,
-        IntentBatch, IntentType, RiskLevel, SanitizedEvent, SanitizedEventType, SemanticHint,
-        SourceTier, StructuredContext, SuggestedAction,
+        ActionType, ActionUrgency, AppTransition, ContextSummary, DecisionBackendResult,
+        DecisionRoute, Intent, IntentBatch, IntentType, RiskLevel, SanitizedEvent,
+        SanitizedEventType, SemanticHint, SourceTier, StructuredContext, SuggestedAction,
     };
 
     use crate::DecisionBackend;
@@ -756,5 +798,71 @@ mod tests {
             .rationale_tags
             .iter()
             .any(|tag| tag == "routing:medium_complexity(local_evaluator)"));
+    }
+
+    #[test]
+    fn app_transitions_route_to_local_evaluator_before_privacy_gate() {
+        // Four foreground transitions would previously have scored 4 on the old
+        // privacy metric and been trapped in RuleBased. They are now treated as
+        // a local actionable signal and routed to LocalEvaluator so the
+        // next-app predictor can see them.
+        let ctx = StructuredContext {
+            window_id: "transition-heavy-window".into(),
+            window_start_ms: 0,
+            window_end_ms: 1000,
+            duration_secs: 1,
+            events: vec![
+                foreground_transition(100, "com.chat"),
+                foreground_transition(200, "com.mail"),
+                foreground_transition(300, "com.browser"),
+                foreground_transition(400, "com.music"),
+            ],
+            summary: ContextSummary {
+                foreground_apps: vec!["com.music".into()],
+                notified_apps: vec![],
+                all_semantic_hints: vec![],
+                file_activity: vec![],
+                latest_system_status: None,
+                source_tier: SourceTier::PublicApi,
+            },
+        };
+
+        let router = DecisionRouter::with_backends(
+            RouterConfig::default(),
+            Box::new(OkBackend {
+                route: DecisionRoute::RuleBased,
+            }),
+            Box::new(OkBackend {
+                route: DecisionRoute::LocalEvaluator,
+            }),
+            None,
+            Box::new(FallbackNoOpBackend),
+        );
+
+        let result = router.evaluate(&ctx);
+        assert!(
+            matches!(result.route, DecisionRoute::LocalEvaluator),
+            "transition-heavy windows must reach LocalEvaluator, got {:?}",
+            result.route
+        );
+        assert!(result
+            .rationale_tags
+            .iter()
+            .any(|tag| tag == "routing:local_actionable_signal"));
+    }
+
+    fn foreground_transition(timestamp_ms: i64, package_name: &str) -> SanitizedEvent {
+        SanitizedEvent {
+            event_id: format!("fg{timestamp_ms}"),
+            timestamp_ms,
+            event_type: SanitizedEventType::AppTransition {
+                package_name: package_name.into(),
+                activity_class: None,
+                transition: AppTransition::Foreground,
+            },
+            source_tier: SourceTier::PublicApi,
+            app_package: Some(package_name.into()),
+            uid: None,
+        }
     }
 }

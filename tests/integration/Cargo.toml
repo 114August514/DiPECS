@@ -18,5 +18,6 @@ serde_json = { workspace = true }
 aios-cli = { workspace = true }
 aios-spec = { workspace = true }
 aios-core = { workspace = true }
+aios-action = { workspace = true }
 aios-agent = { workspace = true }
 rustls = { workspace = true }

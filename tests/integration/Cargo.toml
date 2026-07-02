@@ -1,0 +1,17 @@
+[package]
+name = "integration"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "DiPECS baseline integration test crate"
+autobins = false
+autotests = false
+
+[[test]]
+name = "integration"
+path = "main.rs"
+
+[dependencies]
+serde_json = { workspace = true }

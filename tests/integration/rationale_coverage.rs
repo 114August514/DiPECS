@@ -1,0 +1,1 @@
+//! Rationale tags coverage baseline.

@@ -1,0 +1,1 @@
+//! NoOp coverage baseline.

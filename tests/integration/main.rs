@@ -4,6 +4,7 @@
 //! Run a single baseline: `cargo test --test integration policy_denial`
 
 mod action_success_rate;
+mod benchmark_cache;
 mod cloud_llm_stability;
 mod helpers;
 mod noop_coverage;

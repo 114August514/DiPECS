@@ -3,22 +3,7 @@
 //! 统计 RuleBased / LocalEvaluator 产出的 intent 中，带有 rationale_tags 的窗口比例。
 //! 统计基线（random / markov 等）不产出 DiPECS intents，rationale_coverage_pct 应为 0.0。
 
-use aios_cli::benchmark_next_app::runner::{run_benchmark, BenchmarkRunConfig};
-
-use crate::helpers::repo_root;
-
-fn default_config() -> BenchmarkRunConfig {
-    BenchmarkRunConfig {
-        inputs: vec![
-            repo_root().join("data/traces/scenarios/morning-routine.jsonl"),
-            repo_root().join("data/traces/scenarios/multi-app-switching.jsonl"),
-            repo_root().join("data/traces/scenarios/rich-workflow.jsonl"),
-        ],
-        labels: repo_root().join("data/traces/synthetic-next-app-v1.labels.jsonl"),
-        train_split: 0.7,
-        window_secs: 10,
-    }
-}
+use crate::benchmark_cache::cached_report;
 
 /// RuleBased 在每个窗口产出的 intent 中 rationale_tags 非空的比例 > 50%。
 ///
@@ -26,7 +11,7 @@ fn default_config() -> BenchmarkRunConfig {
 /// 都会附带 rationale_tags，因此覆盖率应接近 100%；保守断言 > 50%。
 #[test]
 fn rule_based_intents_have_rationale_tags() {
-    let report = run_benchmark(&default_config()).expect("benchmark should run");
+    let report = cached_report();
 
     let metrics = report
         .aggregate
@@ -48,7 +33,7 @@ fn rule_based_intents_have_rationale_tags() {
 /// LocalEvaluator 同样应当 > 50%。
 #[test]
 fn local_evaluator_intents_have_rationale_tags() {
-    let report = run_benchmark(&default_config()).expect("benchmark should run");
+    let report = cached_report();
 
     let metrics = report
         .aggregate
@@ -71,7 +56,7 @@ fn local_evaluator_intents_have_rationale_tags() {
 /// 不产出 DiPECS intents，rationale_coverage_pct 应为 0.0。
 #[test]
 fn statistical_baselines_have_zero_rationale_coverage() {
-    let report = run_benchmark(&default_config()).expect("benchmark should run");
+    let report = cached_report();
 
     let statistical_backends = [
         "always_noop",

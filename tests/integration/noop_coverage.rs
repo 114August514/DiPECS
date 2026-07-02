@@ -4,31 +4,16 @@
 //! 在每个场景下产出空预测（即 NoOp）的比例，并与 always_noop 的 100%
 //! 做对比，量化真实动作覆盖率。
 
-use aios_cli::benchmark_next_app::runner::{run_benchmark, BenchmarkRunConfig};
-
-use crate::helpers::repo_root;
+use crate::benchmark_cache::cached_report;
 
 /// NoOp 率上限：真实后端必须显著低于 always-noop 的 100%。
 const MAX_NOOP_RATE_PCT: f64 = 70.0;
 /// 预测覆盖率下限：真实后端必须在相当比例的窗口上做出非 NoOp 预测。
 const MIN_PREDICTION_COVERAGE_PCT: f64 = 30.0;
 
-fn default_config() -> BenchmarkRunConfig {
-    BenchmarkRunConfig {
-        inputs: vec![
-            repo_root().join("data/traces/scenarios/morning-routine.jsonl"),
-            repo_root().join("data/traces/scenarios/multi-app-switching.jsonl"),
-            repo_root().join("data/traces/scenarios/rich-workflow.jsonl"),
-        ],
-        labels: repo_root().join("data/traces/synthetic-next-app-v1.labels.jsonl"),
-        train_split: 0.7,
-        window_secs: 10,
-    }
-}
-
 #[test]
 fn rule_based_and_local_evaluator_noop_rate_is_better_than_always_noop() {
-    let report = run_benchmark(&default_config()).expect("benchmark should run");
+    let report = cached_report();
 
     let mut mismatches: Vec<String> = Vec::new();
 

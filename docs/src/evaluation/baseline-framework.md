@@ -237,7 +237,10 @@ cargo test --test integration noop_coverage
 **解读**：
 
 - `RuleBased` 与 `LocalEvaluator` 的 NoOp 率必须显著低于 100%，且预测覆盖率明显高于 0%。
-- 当前阈值：NoOp 率 ≤ 70%，预测覆盖率 ≥ 30%。
+- 当前阈值（按 synthetic-next-app-v1 实测校准）：
+  - aggregate：`rule_based` NoOp ≤ 25%、覆盖率 ≥ 55%；`local_evaluator` NoOp ≤ 45%、覆盖率 ≥ 50%。
+  - per scenario：`rule_based` NoOp ≤ 35%、覆盖率 ≥ 50%；`local_evaluator` NoOp ≤ 55%、覆盖率 ≥ 35%。
+- realistic prior 对比：`markov` / `per_current_app_majority` 覆盖率为 100%，DiPECS 覆盖率不得低于其 45pp 以上；DiPECS NoOp 率必须 < 50%，远离 trivial `always_noop`。
 - 若真实后端接近 `always_noop`，说明其未产生有效动作建议。
 
 ## 11. 窗口大小资源/吞吐
@@ -254,8 +257,9 @@ cargo test --test integration window_size -- --nocapture
 
 **解读**：
 
-- 更大窗口的吞吐（events/ms）不应灾难性下降（10s ≥ 80% of 1s，60s ≥ 50% of 1s）。
-- 更大窗口的峰值 RSS 与 CPU 时间不应超过 1s 窗口的 2 倍。
+- 更大窗口的吞吐（events/ms）不应灾难性下降（10s ≥ 1s 的 85%，60s ≥ 1s 的 65%）。
+- 更大窗口的峰值 RSS 与 CPU 时间不应超过 1s 窗口的 1.5 倍。
+- 本机实测值（debug 模式）：1s 约 9.8–11.7 ev/ms、peak RSS ≈ 14.4 MiB、cpu_total ≈ 120–240 ms；10s 与 60s 均满足上述收紧后的阈值，无需进一步校准。
 - 帮助权衡实时性（小窗口）与批处理效率（大窗口）。
 
 ## 12. CloudLLM 稳定性
@@ -325,7 +329,7 @@ cargo test --test integration rationale_coverage
 
 **解读**：
 
-- DiPECS 后端产出的 intent 中，至少有一个 intent 带有非空 `rationale_tags` 的窗口比例应 > 50%。
+- DiPECS 后端产出的 intent 中，至少有一个 intent 带有非空 `rationale_tags` 的窗口比例：aggregate ≥ 95%，per scenario ≥ 90%。
 - 统计基线的 rationale 覆盖率必须为 0.0%。
 - 保证可解释性标签是 DiPECS 后端的固有属性，而非 benchmark artifact。
 

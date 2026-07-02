@@ -85,43 +85,50 @@ fn larger_windows_preserve_throughput_and_resources() {
         r60.events, r60.wall_ms, throughput_60, r60.peak_rss_kb, r60.cpu_total_ms
     );
 
-    // Loose regression guards: larger windows are allowed to be somewhat slower,
-    // but must not catastrophically degrade. These are not strict performance targets.
+    // Tightened regression guards for larger windows.
+    const THROUGHPUT_10_MIN_RATIO: f64 = 0.85;
+    const THROUGHPUT_60_MIN_RATIO: f64 = 0.65;
+    const RSS_MAX_RATIO: f64 = 1.5;
+    const CPU_MAX_RATIO: f64 = 1.5;
+
     assert!(
-        throughput_10 >= throughput_1 * 0.8,
+        throughput_10 >= throughput_1 * THROUGHPUT_10_MIN_RATIO,
         "10s window throughput should not be much worse than 1s: {:.2} vs {:.2}",
         throughput_10,
         throughput_1
     );
     assert!(
-        throughput_60 >= throughput_1 * 0.5,
+        throughput_60 >= throughput_1 * THROUGHPUT_60_MIN_RATIO,
         "60s window throughput should remain reasonable: {:.2} vs {:.2}",
         throughput_60,
         throughput_1
     );
 
-    // Resource guards: peak RSS and CPU time must not blow up with larger windows.
     assert!(
-        r10.peak_rss_kb <= r1.peak_rss_kb * 2,
-        "10s window peak RSS should be within 2x of 1s: {} KiB vs {} KiB",
+        r10.peak_rss_kb <= (r1.peak_rss_kb as f64 * RSS_MAX_RATIO) as u64,
+        "10s window peak RSS should be within {:.1}x of 1s: {} KiB vs {} KiB",
+        RSS_MAX_RATIO,
         r10.peak_rss_kb,
         r1.peak_rss_kb
     );
     assert!(
-        r60.peak_rss_kb <= r1.peak_rss_kb * 2,
-        "60s window peak RSS should be within 2x of 1s: {} KiB vs {} KiB",
+        r60.peak_rss_kb <= (r1.peak_rss_kb as f64 * RSS_MAX_RATIO) as u64,
+        "60s window peak RSS should be within {:.1}x of 1s: {} KiB vs {} KiB",
+        RSS_MAX_RATIO,
         r60.peak_rss_kb,
         r1.peak_rss_kb
     );
     assert!(
-        r10.cpu_total_ms <= r1.cpu_total_ms * 2.0,
-        "10s window CPU time should be within 2x of 1s: {:.1} ms vs {:.1} ms",
+        r10.cpu_total_ms <= r1.cpu_total_ms * CPU_MAX_RATIO,
+        "10s window CPU time should be within {:.1}x of 1s: {:.1} ms vs {:.1} ms",
+        CPU_MAX_RATIO,
         r10.cpu_total_ms,
         r1.cpu_total_ms
     );
     assert!(
-        r60.cpu_total_ms <= r1.cpu_total_ms * 2.0,
-        "60s window CPU time should be within 2x of 1s: {:.1} ms vs {:.1} ms",
+        r60.cpu_total_ms <= r1.cpu_total_ms * CPU_MAX_RATIO,
+        "60s window CPU time should be within {:.1}x of 1s: {:.1} ms vs {:.1} ms",
+        CPU_MAX_RATIO,
         r60.cpu_total_ms,
         r1.cpu_total_ms
     );

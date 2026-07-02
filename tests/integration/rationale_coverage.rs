@@ -5,10 +5,18 @@
 
 use crate::benchmark_cache::cached_report;
 
-/// RuleBased 在每个窗口产出的 intent 中 rationale_tags 非空的比例 > 50%。
-///
-/// RuleBasedBackend 对所有已识别的事件类型（notification、foreground、screen_on 等）
-/// 都会附带 rationale_tags，因此覆盖率应接近 100%；保守断言 > 50%。
+const AGG_RATIONALE_COV_MIN: f64 = 95.0;
+const SCENARIO_RATIONALE_COV_MIN: f64 = 90.0;
+
+const STATISTICAL_BACKENDS: &[&str] = &[
+    "always_noop",
+    "random_candidate",
+    "first_candidate",
+    "global_majority",
+    "per_current_app_majority",
+    "markov",
+];
+
 #[test]
 fn rule_based_intents_have_rationale_tags() {
     let report = cached_report();
@@ -24,13 +32,33 @@ fn rule_based_intents_have_rationale_tags() {
     );
 
     assert!(
-        metrics.rationale_coverage_pct > 50.0,
-        "rule_based rationale_coverage_pct should be > 50%, got {:.1}%",
+        metrics.rationale_coverage_pct >= AGG_RATIONALE_COV_MIN,
+        "rule_based rationale_coverage_pct should be >= {AGG_RATIONALE_COV_MIN}%, got {:.1}%",
         metrics.rationale_coverage_pct
+    );
+
+    let mut mismatches: Vec<String> = Vec::new();
+    for scenario in &report.scenarios {
+        let m = scenario.backends.get("rule_based").unwrap_or_else(|| {
+            panic!(
+                "rule_based must be present in scenario {}",
+                scenario.scenario
+            )
+        });
+        if m.rationale_coverage_pct < SCENARIO_RATIONALE_COV_MIN {
+            mismatches.push(format!(
+                "rule_based in {}: rationale_coverage={:.1}% below threshold {SCENARIO_RATIONALE_COV_MIN}%",
+                scenario.scenario, m.rationale_coverage_pct
+            ));
+        }
+    }
+    assert!(
+        mismatches.is_empty(),
+        "rule_based scenario-level rationale coverage drifted:\n{}",
+        mismatches.join("\n")
     );
 }
 
-/// LocalEvaluator 同样应当 > 50%。
 #[test]
 fn local_evaluator_intents_have_rationale_tags() {
     let report = cached_report();
@@ -46,32 +74,43 @@ fn local_evaluator_intents_have_rationale_tags() {
     );
 
     assert!(
-        metrics.rationale_coverage_pct > 50.0,
-        "local_evaluator rationale_coverage_pct should be > 50%, got {:.1}%",
+        metrics.rationale_coverage_pct >= AGG_RATIONALE_COV_MIN,
+        "local_evaluator rationale_coverage_pct should be >= {AGG_RATIONALE_COV_MIN}%, got {:.1}%",
         metrics.rationale_coverage_pct
+    );
+
+    let mut mismatches: Vec<String> = Vec::new();
+    for scenario in &report.scenarios {
+        let m = scenario.backends.get("local_evaluator").unwrap_or_else(|| {
+            panic!(
+                "local_evaluator must be present in scenario {}",
+                scenario.scenario
+            )
+        });
+        if m.rationale_coverage_pct < SCENARIO_RATIONALE_COV_MIN {
+            mismatches.push(format!(
+                "local_evaluator in {}: rationale_coverage={:.1}% below threshold {SCENARIO_RATIONALE_COV_MIN}%",
+                scenario.scenario, m.rationale_coverage_pct
+            ));
+        }
+    }
+    assert!(
+        mismatches.is_empty(),
+        "local_evaluator scenario-level rationale coverage drifted:\n{}",
+        mismatches.join("\n")
     );
 }
 
-/// 统计基线（random / first / global_majority / per_current_app_majority / markov / always_noop）
-/// 不产出 DiPECS intents，rationale_coverage_pct 应为 0.0。
+/// 统计基线不产出 DiPECS intents，rationale_coverage_pct 应为 0.0。
 #[test]
 fn statistical_baselines_have_zero_rationale_coverage() {
     let report = cached_report();
 
-    let statistical_backends = [
-        "always_noop",
-        "random_candidate",
-        "first_candidate",
-        "global_majority",
-        "per_current_app_majority",
-        "markov",
-    ];
-
     println!("\n=== rationale_coverage: statistical baselines ===");
-    for name in statistical_backends {
+    for name in STATISTICAL_BACKENDS {
         let metrics = report
             .aggregate
-            .get(name)
+            .get(*name)
             .unwrap_or_else(|| panic!("{name} must be present in aggregate"));
 
         println!(

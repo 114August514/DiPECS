@@ -4,3 +4,6 @@
 [submodule "TracePilot"]
 	path = third_party/TracePilot
 	url = https://github.com/OSH-2026/TracePilot.git
+[submodule "third_party/LSApp"]
+	path = third_party/LSApp
+	url = https://github.com/aliannejadi/LSApp

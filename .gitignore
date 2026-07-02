@@ -51,6 +51,9 @@ data/traces/*.bin
 data/evaluation/*.log
 # replay 审计流明细:由 trace + aios-cli replay 可确定性重生成,审计哈希已记入 .md
 data/evaluation/*.audit
+# LSApp 派生数据:由 third_party/LSApp + tools/prepare-lsapp.sh 可重生成;
+# 上游未声明许可,179MB 派生 TSV 不入库。
+data/lsapp/
 logs/
 site/
 *.out

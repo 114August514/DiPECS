@@ -105,14 +105,14 @@ fn larger_windows_preserve_throughput_and_resources() {
     );
 
     assert!(
-        r10.peak_rss_kb <= (r1.peak_rss_kb as f64 * RSS_MAX_RATIO) as u64,
+        r10.peak_rss_kb as f64 <= r1.peak_rss_kb as f64 * RSS_MAX_RATIO,
         "10s window peak RSS should be within {:.1}x of 1s: {} KiB vs {} KiB",
         RSS_MAX_RATIO,
         r10.peak_rss_kb,
         r1.peak_rss_kb
     );
     assert!(
-        r60.peak_rss_kb <= (r1.peak_rss_kb as f64 * RSS_MAX_RATIO) as u64,
+        r60.peak_rss_kb as f64 <= r1.peak_rss_kb as f64 * RSS_MAX_RATIO,
         "60s window peak RSS should be within {:.1}x of 1s: {} KiB vs {} KiB",
         RSS_MAX_RATIO,
         r60.peak_rss_kb,

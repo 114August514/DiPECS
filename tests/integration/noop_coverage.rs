@@ -35,6 +35,9 @@ const REALISTIC_PRIOR_NOOP_MAX: f64 = 50.0;
 const REALISTIC_PRIOR_BACKENDS: &[&str] = &["markov", "per_current_app_majority"];
 const DIPECS_BACKENDS: &[&str] = &["rule_based", "local_evaluator"];
 
+// The always-noop control group emits an empty prediction on every window.
+const ALWAYS_NOOP_RATE_PCT: f64 = 100.0;
+
 #[test]
 fn rule_based_and_local_evaluator_noop_rate_and_coverage_within_thresholds() {
     let report = cached_report();
@@ -91,8 +94,8 @@ fn rule_based_and_local_evaluator_noop_rate_and_coverage_within_thresholds() {
             .get("always_noop")
             .expect("always_noop backend must be present");
         assert!(
-            (always.noop_rate_pct - 100.0).abs() < f64::EPSILON,
-            "always_noop must have 100% noop_rate, got {:.3}% in {}",
+            (always.noop_rate_pct - ALWAYS_NOOP_RATE_PCT).abs() < f64::EPSILON,
+            "always_noop must have {ALWAYS_NOOP_RATE_PCT}% noop_rate, got {:.3}% in {}",
             always.noop_rate_pct,
             scenario.scenario
         );

@@ -16,6 +16,29 @@ pub struct NetBenefitInputs {
     pub control_plane_ms: f64,
 }
 
+impl NetBenefitInputs {
+    /// Build inputs whose `prewarm_wasted_ms` and `control_plane_ms` are
+    /// **placeholders, not measurements**. Only `hit_rate_at_1_pct` and
+    /// `prewarm_saved_ms` come from real data (the LSApp report and the
+    /// `am start -W` UX fixture).
+    ///
+    /// TODO(#90): replace the placeholder wasted-prewarm and control-plane
+    /// costs with real on-device measurements. Until then, any `net_benefit_ms`
+    /// derived from these inputs is NOT a measured system benefit and must not
+    /// be asserted on or cited as one — only `gross_saved_ms`, which depends
+    /// solely on the two measured fields, is safe to gate on.
+    pub fn placeholder_pending_measurement(hit_rate_at_1_pct: f32, prewarm_saved_ms: f64) -> Self {
+        Self {
+            hit_rate_at_1_pct,
+            prewarm_saved_ms,
+            // Placeholder — see TODO(#90) above. Not measured.
+            prewarm_wasted_ms: 12.0,
+            // Placeholder — see TODO(#90) above. Not measured.
+            control_plane_ms: 0.0,
+        }
+    }
+}
+
 /// Result of a net-benefit computation.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct NetBenefitReport {

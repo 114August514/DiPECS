@@ -8,6 +8,11 @@ on:
       - '**.rs'
       - '**/Cargo.toml'
       - '.github/workflows/bench.yml'
+      # Evidence-only changes must still run the data-quality and baseline
+      # guards, otherwise committed reports/fixtures could regress silently.
+      - 'data/evaluation/**'
+      - 'scripts/ci/**'
+      - 'docs/**'
 
 env:
   CARGO_TERM_COLOR: always
@@ -32,8 +37,9 @@ jobs:
 
       - name: Block hard-coded action-value claims
         run: |
-          python3 scripts/ci/check_action_value_quality.py \
-            data/evaluation/synthetic-next-app-v1.report.json
+          # Scan every committed evaluation JSON, not just the synthetic report:
+          # any benefit field at any depth must carry a source annotation.
+          python3 scripts/ci/check_action_value_quality.py --dir data/evaluation
           echo "Action-value data quality check passed."
 
   # 1. Android 二进制膨胀审计 (Target-Specific Anti-Bloat)
@@ -165,6 +171,8 @@ jobs:
       - name: StrongPredictiveActionBaseline Report Guard
         run: |
           cargo test -p aios-cli --lib next_app::strong_baseline -- --nocapture
+          cargo test -p aios-cli --lib next_app::net_benefit -- --nocapture
           cargo test -p aios-cli --test next_app_net_benefit_test \
             -- lsapp_report_contains_strong_predictive_baseline \
+               ux_metrics_fixture_resolves_total_time_measurement_run \
             --nocapture

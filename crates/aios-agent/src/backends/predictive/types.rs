@@ -21,6 +21,31 @@ pub struct NextAppModelArtifact {
     /// gradient-boosted tree ensemble.
     #[serde(rename = "xgboost")]
     pub feature_lift: FeatureLiftModel,
+    /// Per-user app-usage frequency ranking (MFU), keyed by user id. Unlike the
+    /// per-user Markov table this is unconditional on the current app: it ranks
+    /// the apps a user opens most often overall. Defaults to empty for backward
+    /// compatibility with older artifacts.
+    #[serde(default)]
+    pub user_frequency: BTreeMap<String, Vec<AppScore>>,
+    /// Hard recency pointer: the single most recent next-app observed per
+    /// `"{user}\t{current}"` key in training order (last write wins). Unlike the
+    /// per-user Markov distribution this is a one-app "what did this user open
+    /// last time from here" signal, a strong top-1 predictor on repetitive
+    /// personal usage. Defaults to empty for backward compatibility.
+    #[serde(default)]
+    pub user_recency: BTreeMap<String, String>,
+    /// Learned reciprocal-rank-fusion combiner for the ensemble algorithm. The
+    /// weights are fit offline on a held-out validation slice (never on the
+    /// test split) and locked into the artifact, so runtime inference is pure
+    /// and deterministic with no extra dependencies. Defaults to empty, in
+    /// which case the ensemble falls back to the legacy fixed-weight fusion so
+    /// older committed artifacts keep working.
+    #[serde(default)]
+    pub ensemble_combiner: EnsembleCombiner,
+    /// Learned logistic candidate reranker over the same component features as
+    /// the ensemble. Empty means "use `ensemble_combiner` / legacy fusion".
+    #[serde(default)]
+    pub ensemble_logistic: LogisticRerankerModel,
     pub training_summary: TrainingSummary,
 }
 
@@ -63,6 +88,50 @@ pub struct NaiveBayesModel {
 pub struct MarkovModel {
     pub global_transitions: BTreeMap<String, Vec<AppScore>>,
     pub user_transitions: BTreeMap<String, Vec<AppScore>>,
+    /// Global order-2 transitions keyed `"{prev}\t{current}" -> next`. This is
+    /// the strongest single next-app signal on LSApp and is global, so it
+    /// survives cold-start (unseen users) where per-user tables are empty.
+    /// Defaults to empty for backward compatibility with older artifacts.
+    #[serde(default)]
+    pub global_transitions_order2: BTreeMap<String, Vec<AppScore>>,
+}
+
+/// Learned reciprocal-rank-fusion combiner over the ensemble's component
+/// rankers. `components` and `weights` are parallel vectors; unknown component
+/// names are ignored at inference so the schema can evolve. An empty combiner
+/// means "use the legacy fixed-weight fusion".
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct EnsembleCombiner {
+    pub components: Vec<String>,
+    pub weights: Vec<f32>,
+}
+
+impl EnsembleCombiner {
+    pub fn is_empty(&self) -> bool {
+        self.components.is_empty() || self.components.len() != self.weights.len()
+    }
+
+    pub fn weight_of(&self, component: &str) -> Option<f32> {
+        self.components
+            .iter()
+            .position(|c| c == component)
+            .map(|idx| self.weights[idx])
+    }
+}
+
+/// Pairwise-trained logistic reranker over candidate-level ensemble features.
+/// `feature_names` and `weights` are parallel vectors; an empty model means the
+/// artifact should use the RRF combiner or legacy fixed fusion instead.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct LogisticRerankerModel {
+    pub feature_names: Vec<String>,
+    pub weights: Vec<f32>,
+}
+
+impl LogisticRerankerModel {
+    pub fn is_empty(&self) -> bool {
+        self.feature_names.is_empty() || self.feature_names.len() != self.weights.len()
+    }
 }
 
 /// Lightweight deterministic feature-lift ensemble.

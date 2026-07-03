@@ -49,6 +49,15 @@ impl ContextBayes {
             let class_feature_total = *self.class_feature_totals.get(class).unwrap_or(&0) as f64;
             let feature_counts = self.feature_counts.get(class);
 
+            // Out-of-vocabulary features are dropped, matching a standard
+            // fixed-vocabulary multinomial Naive Bayes (e.g. scikit-learn's
+            // MultinomialNB, where the vectorizer discards unseen tokens before
+            // the classifier). In-vocabulary features unseen for this class
+            // still resolve to count 0 and receive the Laplace-smoothed penalty
+            // below. Penalizing OOV features instead would be asymmetric across
+            // classes (larger `class_feature_total` -> larger penalty) and, for
+            // an all-OOV query, would rank the less frequent class first,
+            // defeating the intended popularity fallback for unknown contexts.
             for feature in features {
                 if !self.vocabulary.contains(feature) {
                     continue;

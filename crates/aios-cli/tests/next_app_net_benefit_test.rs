@@ -112,13 +112,43 @@ mod tests {
             "{} must be the newer TotalTime-based UX fixture",
             ux_path.display()
         );
+        let runs = ux
+            .get("runs")
+            .and_then(|v| v.as_array())
+            .expect("runs must be present");
+        let mut startup_samples = 0usize;
+        for mode in ["cold_startup", "prewarm_startup"] {
+            let run = runs
+                .iter()
+                .find(|run| run.get("mode").and_then(|v| v.as_str()) == Some(mode))
+                .unwrap_or_else(|| panic!("{} mode missing from {}", mode, ux_path.display()));
+            let samples = run
+                .get("samples")
+                .and_then(|v| v.as_array())
+                .unwrap_or_else(|| panic!("{} samples missing from {}", mode, ux_path.display()));
+            assert!(
+                samples.len() >= 10,
+                "{} must have at least 10 {} samples",
+                ux_path.display(),
+                mode
+            );
+            startup_samples += samples.len();
+            for field in ["avg_startup_total_time_ms", "p95_startup_total_time_ms"] {
+                assert!(
+                    run.get("summary")
+                        .and_then(|v| v.get(field))
+                        .and_then(|v| v.as_f64())
+                        .is_some(),
+                    "{} summary.{} missing from {}",
+                    mode,
+                    field,
+                    ux_path.display()
+                );
+            }
+        }
         assert!(
-            ux.get("environment")
-                .and_then(|v| v.get("samples_per_mode"))
-                .and_then(|v| v.as_u64())
-                .unwrap_or_default()
-                >= 10,
-            "{} must have at least 10 samples per mode",
+            startup_samples >= 20,
+            "{} must have at least 20 startup samples across cold/prewarm modes",
             ux_path.display()
         );
     }
@@ -207,36 +237,27 @@ mod tests {
         );
 
         // The current UX fixtures measure the warm→prewarm saving, but do not yet
-        // expose a dedicated missed-prewarm cost or control-plane overhead. We keep
-        // the net-benefit arithmetic exercised end-to-end, but only log the result;
-        // net-benefit assertions are disabled until real `prewarm_wasted_ms` and
-        // `control_plane_ms` measurements exist.
-        let wasted_ms = 12.0;
-        let control_plane_ms = 0.0;
-
-        let ensemble_inputs = NetBenefitInputs {
-            hit_rate_at_1_pct: ensemble_hit as f32,
-            prewarm_saved_ms: saved_ms,
-            prewarm_wasted_ms: wasted_ms,
-            control_plane_ms,
-        };
-        let strong_inputs = NetBenefitInputs {
-            hit_rate_at_1_pct: strong_hit as f32,
-            prewarm_saved_ms: saved_ms,
-            prewarm_wasted_ms: wasted_ms,
-            control_plane_ms,
-        };
+        // expose a dedicated missed-prewarm cost or control-plane overhead. Build
+        // the inputs through the placeholder constructor so those two unmeasured
+        // fields are impossible to mistake for real data (see TODO(#90) on
+        // NetBenefitInputs::placeholder_pending_measurement). We keep the
+        // net-benefit arithmetic exercised end-to-end, but only log the result;
+        // net-benefit assertions stay disabled until those measurements exist.
+        let ensemble_inputs =
+            NetBenefitInputs::placeholder_pending_measurement(ensemble_hit as f32, saved_ms);
+        let strong_inputs =
+            NetBenefitInputs::placeholder_pending_measurement(strong_hit as f32, saved_ms);
 
         let ensemble_report = compute_net_benefit(&ensemble_inputs, examples);
         let strong_report = compute_net_benefit(&strong_inputs, examples);
 
         eprintln!(
-            "ensemble net_benefit_ms={} (placeholder wasted_ms={}, control_plane_ms={})",
-            ensemble_report.net_benefit_ms, wasted_ms, control_plane_ms
+            "ensemble net_benefit_ms={} (PLACEHOLDER wasted/control costs, not measured)",
+            ensemble_report.net_benefit_ms
         );
         eprintln!(
-            "strong baseline net_benefit_ms={} (placeholder wasted_ms={}, control_plane_ms={})",
-            strong_report.net_benefit_ms, wasted_ms, control_plane_ms
+            "strong baseline net_benefit_ms={} (PLACEHOLDER wasted/control costs, not measured)",
+            strong_report.net_benefit_ms
         );
     }
 }

@@ -48,10 +48,13 @@ impl NextAppPredictor {
             NextAppAlgorithm::Ensemble => self.rank_ensemble(features),
         };
         if let Some(current) = features.current_app.as_deref() {
-            scores.retain(|score| score.app != current);
+            filter_current_app(&mut scores, current);
         }
         if scores.is_empty() {
             scores = self.artifact.global_popularity.clone();
+            if let Some(current) = features.current_app.as_deref() {
+                filter_current_app(&mut scores, current);
+            }
         }
         scores.truncate(k);
         scores
@@ -143,6 +146,12 @@ fn validate_artifact(artifact: &NextAppModelArtifact) -> Result<(), String> {
     if classes == 0 {
         return Err("artifact app_vocab is empty".into());
     }
+    let mut app_vocab = BTreeSet::new();
+    for app in &artifact.app_vocab {
+        if !app_vocab.insert(app.as_str()) {
+            return Err(format!("artifact app_vocab contains duplicate app `{app}`"));
+        }
+    }
     if artifact.naive_bayes.class_log_priors.len() != classes
         || artifact.naive_bayes.unknown_feature_log_probs.len() != classes
         || artifact.feature_lift.base_scores.len() != classes
@@ -164,7 +173,85 @@ fn validate_artifact(artifact: &NextAppModelArtifact) -> Result<(), String> {
             "artifact naive_bayes feature_log_probs vector sizes do not match app_vocab".into(),
         );
     }
+    validate_score_list(
+        "global_popularity",
+        &artifact.global_popularity,
+        &app_vocab,
+        true,
+    )?;
+    for (current_app, scores) in &artifact.markov.global_transitions {
+        if !app_vocab.contains(current_app.as_str()) {
+            return Err(format!(
+                "artifact markov global transition key `{current_app}` is not in app_vocab"
+            ));
+        }
+        validate_score_list(
+            &format!("markov.global_transitions[{current_app}]"),
+            scores,
+            &app_vocab,
+            false,
+        )?;
+    }
+    for (key, scores) in &artifact.markov.user_transitions {
+        let Some((_, current_app)) = key.rsplit_once('\t') else {
+            return Err(format!(
+                "artifact markov user transition key `{key}` is not user_id<TAB>current_app"
+            ));
+        };
+        if !app_vocab.contains(current_app) {
+            return Err(format!(
+                "artifact markov user transition current app `{current_app}` is not in app_vocab"
+            ));
+        }
+        validate_score_list(
+            &format!("markov.user_transitions[{key}]"),
+            scores,
+            &app_vocab,
+            false,
+        )?;
+    }
+    for tree in &artifact.feature_lift.trees {
+        validate_score_list(
+            &format!("feature_lift.tree[{}].yes_scores", tree.feature_key),
+            &tree.yes_scores,
+            &app_vocab,
+            true,
+        )?;
+    }
     Ok(())
+}
+
+fn validate_score_list(
+    label: &str,
+    scores: &[AppScore],
+    app_vocab: &BTreeSet<&str>,
+    require_full_vocab: bool,
+) -> Result<(), String> {
+    if require_full_vocab && scores.len() != app_vocab.len() {
+        return Err(format!(
+            "artifact {label} must contain exactly one score per app_vocab entry"
+        ));
+    }
+    let mut seen = BTreeSet::new();
+    for score in scores {
+        if !app_vocab.contains(score.app.as_str()) {
+            return Err(format!(
+                "artifact {label} references app `{}` outside app_vocab",
+                score.app
+            ));
+        }
+        if !seen.insert(score.app.as_str()) {
+            return Err(format!(
+                "artifact {label} contains duplicate score for app `{}`",
+                score.app
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn filter_current_app(scores: &mut Vec<AppScore>, current: &str) {
+    scores.retain(|score| score.app != current);
 }
 
 pub(crate) fn feature_keys(features: &PredictionFeatures) -> Vec<String> {

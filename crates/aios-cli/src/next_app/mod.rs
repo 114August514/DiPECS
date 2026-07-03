@@ -252,6 +252,64 @@ mod tests {
     }
 
     #[test]
+    fn lsapp_loader_orders_sessions_chronologically_not_lexically() {
+        let dir = unique_tmp_dir();
+        fs::create_dir_all(&dir).expect("create tmp dir");
+        let input = dir.join("lsapp.csv");
+        let mut file = fs::File::create(&input).unwrap();
+        writeln!(file, "user_id,session_id,timestamp_ms,app_name,event_type").unwrap();
+        writeln!(file, "u1,10,3000,com.late,foreground").unwrap();
+        writeln!(file, "u1,10,4000,com.final,foreground").unwrap();
+        writeln!(file, "u1,2,1000,com.early,foreground").unwrap();
+        writeln!(file, "u1,2,2000,com.shared,foreground").unwrap();
+
+        let examples = super::loader::load_examples(&input, 30, 4).expect("fixture should load");
+
+        let late = examples
+            .iter()
+            .find(|example| example.current_app == "com.late")
+            .expect("late session should produce an example");
+        assert_eq!(
+            late.history,
+            vec!["com.early".to_string(), "com.shared".to_string()],
+            "numeric-looking session ids must not reorder later sessions before earlier history"
+        );
+    }
+
+    #[test]
+    fn explicit_timestamp_ms_parse_errors_are_rejected() {
+        let dir = unique_tmp_dir();
+        fs::create_dir_all(&dir).expect("create tmp dir");
+        let input = dir.join("bad-timestamp.csv");
+        let mut file = fs::File::create(&input).unwrap();
+        writeln!(file, "user_id,session_id,timestamp_ms,app_name,event_type").unwrap();
+        writeln!(file, "u1,s1,not-a-time,com.chat,foreground").unwrap();
+        writeln!(file, "u1,s1,2000,com.mail,foreground").unwrap();
+
+        let err = super::loader::load_examples(&input, 30, 3)
+            .expect_err("malformed explicit timestamp_ms must not fall back to ordinal time");
+        assert!(
+            err.to_string().contains("timestamp_ms"),
+            "error should name the malformed timestamp_ms column: {err:#}"
+        );
+    }
+
+    #[test]
+    fn directory_loader_ignores_plain_json_files() {
+        let dir = unique_tmp_dir();
+        fs::create_dir_all(&dir).expect("create tmp dir");
+        let csv = dir.join("lsapp.csv");
+        write_fixture(&csv);
+        let mut json = fs::File::create(dir.join("notes.json")).unwrap();
+        writeln!(json, r#"{{"not":"a supported LSApp record"}}"#).unwrap();
+        writeln!(json, r#"{{"still":"not delimited"}}"#).unwrap();
+
+        let examples = super::loader::load_examples(&dir, 30, 3)
+            .expect("unsupported .json sidecars should be ignored");
+        assert!(!examples.is_empty());
+    }
+
+    #[test]
     fn cold_start_split_uses_stable_hash_order_not_user_id_sort() {
         let examples: Vec<NextAppTrainingExample> = ["u0", "u1", "u2", "u3", "u4"]
             .into_iter()

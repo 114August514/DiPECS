@@ -18,8 +18,8 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use aios_spec::{
-    DecisionBackendResult, DecisionRoute, ModelInput, SanitizedEventType, SemanticHint,
-    StructuredContext,
+    ActionType, DecisionBackendResult, DecisionRoute, Intent, IntentBatch, IntentType, ModelInput,
+    SanitizedEventType, SemanticHint, StructuredContext,
 };
 
 use crate::backends::cloud_llm::CloudBackendState;
@@ -83,6 +83,101 @@ impl CircuitState {
             .checked_sub(Duration::from_secs(window_secs))
             .unwrap_or(Instant::now());
         self.errors.iter().filter(|e| e.timestamp >= cutoff).count() as u32
+    }
+}
+
+struct CompositeLocalEvaluatorBackend {
+    heuristic: LocalEvaluatorBackend,
+    predictive: PredictiveLocalBackend,
+}
+
+impl CompositeLocalEvaluatorBackend {
+    fn new(predictive: PredictiveLocalBackend) -> Self {
+        Self {
+            heuristic: LocalEvaluatorBackend,
+            predictive,
+        }
+    }
+
+    fn merge_results(
+        &self,
+        input: &ModelInput,
+        heuristic: DecisionBackendResult,
+        predictive: DecisionBackendResult,
+    ) -> DecisionBackendResult {
+        let mut heuristic_intents = heuristic.intent_batch.intents;
+        let mut predictive_intents = predictive.intent_batch.intents;
+        let heuristic_idle = take_idle_noop(&mut heuristic_intents);
+        let predictive_idle = take_idle_noop(&mut predictive_intents);
+
+        let mut intents = heuristic_intents;
+        intents.extend(predictive_intents);
+        if intents.is_empty() {
+            if let Some(intent) = heuristic_idle.or(predictive_idle) {
+                intents.push(intent);
+            }
+        }
+
+        let mut rationale_tags = heuristic.rationale_tags;
+        merge_tags(&mut rationale_tags, predictive.rationale_tags);
+        let error = merge_errors(heuristic.error, predictive.error);
+
+        DecisionBackendResult {
+            route: DecisionRoute::LocalEvaluator,
+            intent_batch: IntentBatch {
+                window_id: input.current_context.window_id.clone(),
+                intents,
+                generated_at_ms: input.current_context.window_end_ms,
+                model: "local-evaluator+predictive-local-v0.1".into(),
+            },
+            rationale_tags,
+            latency_us: heuristic.latency_us + predictive.latency_us,
+            error,
+        }
+    }
+}
+
+impl DecisionBackend for CompositeLocalEvaluatorBackend {
+    fn evaluate(&self, context: &StructuredContext) -> DecisionBackendResult {
+        let input = ModelInput::current_only(context.clone());
+        self.evaluate_model_input(&input)
+    }
+
+    fn evaluate_model_input(&self, input: &ModelInput) -> DecisionBackendResult {
+        let heuristic = self.heuristic.evaluate_model_input(input);
+        let predictive = self.predictive.evaluate_model_input(input);
+        self.merge_results(input, heuristic, predictive)
+    }
+}
+
+fn take_idle_noop(intents: &mut Vec<Intent>) -> Option<Intent> {
+    intents
+        .iter()
+        .position(is_idle_noop)
+        .map(|idx| intents.remove(idx))
+}
+
+fn is_idle_noop(intent: &Intent) -> bool {
+    matches!(intent.intent_type, IntentType::Idle)
+        && intent
+            .suggested_actions
+            .iter()
+            .all(|action| action.action_type == ActionType::NoOp)
+}
+
+fn merge_tags(target: &mut Vec<String>, source: Vec<String>) {
+    for tag in source {
+        if !target.contains(&tag) {
+            target.push(tag);
+        }
+    }
+}
+
+fn merge_errors(left: Option<String>, right: Option<String>) -> Option<String> {
+    match (left, right) {
+        (Some(left), Some(right)) => Some(format!("{left}; {right}")),
+        (Some(error), None) | (None, Some(error)) => Some(error),
+        (None, None) => None,
     }
 }
 
@@ -165,7 +260,7 @@ impl DecisionRouter {
             "DIPECS_NEXT_APP_MODEL_PATH",
         ) {
             Ok(path) if !path.trim().is_empty() => match PredictiveLocalBackend::from_path(&path) {
-                Ok(backend) => Box::new(backend),
+                Ok(backend) => Box::new(CompositeLocalEvaluatorBackend::new(backend)),
                 Err(error) => {
                     tracing::warn!(error = %error, "next-app model ignored; falling back to heuristic local evaluator");
                     Box::new(LocalEvaluatorBackend)

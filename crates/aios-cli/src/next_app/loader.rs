@@ -6,7 +6,7 @@ use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
 
 use aios_agent::NextAppTrainingExample;
-use anyhow::{bail, Context, Result};
+use anyhow::{anyhow, bail, Context, Result};
 
 #[derive(Debug, Clone)]
 pub(crate) struct LsAppRecord {
@@ -38,9 +38,11 @@ pub(crate) fn load_examples(
 
     let mut examples = Vec::new();
     for (user_id, mut records) in by_user {
+        let session_start_ms = session_start_times(&records);
         records.sort_by(|a, b| {
-            a.session_id
-                .cmp(&b.session_id)
+            session_start_ms[&a.session_id]
+                .cmp(&session_start_ms[&b.session_id])
+                .then(a.session_id.cmp(&b.session_id))
                 .then(a.timestamp_ms.cmp(&b.timestamp_ms))
                 .then(a.ordinal.cmp(&b.ordinal))
         });
@@ -95,6 +97,17 @@ fn push_history(history: &mut VecDeque<String>, app: &str, history_len: usize) {
     }
 }
 
+fn session_start_times(records: &[LsAppRecord]) -> BTreeMap<String, i64> {
+    let mut starts: BTreeMap<String, i64> = BTreeMap::new();
+    for record in records {
+        starts
+            .entry(record.session_id.clone())
+            .and_modify(|start| *start = (*start).min(record.timestamp_ms))
+            .or_insert(record.timestamp_ms);
+    }
+    starts
+}
+
 fn load_records(path: &Path) -> Result<Vec<LsAppRecord>> {
     let mut files = Vec::new();
     collect_input_files(path, &mut files)?;
@@ -117,7 +130,7 @@ fn collect_input_files(path: &Path, out: &mut Vec<PathBuf>) -> Result<()> {
             collect_input_files(&child, out)?;
         } else if matches!(
             child.extension().and_then(|ext| ext.to_str()),
-            Some("csv" | "tsv" | "jsonl" | "json")
+            Some("csv" | "tsv" | "jsonl")
         ) {
             out.push(child);
         }
@@ -128,6 +141,10 @@ fn collect_input_files(path: &Path, out: &mut Vec<PathBuf>) -> Result<()> {
 fn load_record_file(path: &Path) -> Result<Vec<LsAppRecord>> {
     match path.extension().and_then(|ext| ext.to_str()) {
         Some("jsonl") => load_jsonl(path),
+        Some("json") => bail!(
+            "plain JSON LSApp files are unsupported: {}; use JSONL, CSV, or TSV",
+            path.display()
+        ),
         _ => load_delimited(path),
     }
 }
@@ -226,14 +243,7 @@ fn record_from_map(row: &dyn RecordMap, ordinal: usize) -> Result<LsAppRecord> {
     let event_type = row
         .get(&["event_type", "event", "type"])
         .unwrap_or_else(|| "app_usage".into());
-    let timestamp_ms = row
-        .get(&["timestamp_ms"])
-        .and_then(|value| value.trim().parse::<i64>().ok())
-        .or_else(|| {
-            row.get(&["timestamp", "time", "ts"])
-                .and_then(|value| parse_timestamp_ms(&value))
-        })
-        .unwrap_or(ordinal as i64 * 1000);
+    let timestamp_ms = parse_record_timestamp(row, ordinal)?;
     Ok(LsAppRecord {
         user_id,
         session_id,
@@ -242,6 +252,28 @@ fn record_from_map(row: &dyn RecordMap, ordinal: usize) -> Result<LsAppRecord> {
         event_type,
         ordinal,
     })
+}
+
+fn parse_record_timestamp(row: &dyn RecordMap, ordinal: usize) -> Result<i64> {
+    if let Some(value) = row.get(&["timestamp_ms"]) {
+        return value.trim().parse::<i64>().with_context(|| {
+            format!(
+                "invalid timestamp_ms `{}` at data row {}",
+                value,
+                ordinal + 1
+            )
+        });
+    }
+    if let Some(value) = row.get(&["timestamp", "time", "ts"]) {
+        return parse_timestamp_ms(&value).ok_or_else(|| {
+            anyhow!(
+                "invalid timestamp/time `{}` at data row {}",
+                value,
+                ordinal + 1
+            )
+        });
+    }
+    Ok(ordinal as i64 * 1000)
 }
 
 fn required(row: &dyn RecordMap, candidates: &[&str]) -> Result<String> {

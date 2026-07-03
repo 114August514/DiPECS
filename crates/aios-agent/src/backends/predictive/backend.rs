@@ -19,6 +19,8 @@ pub struct PredictiveLocalBackend {
     predictor: NextAppPredictor,
 }
 
+const POLICY_CONFIDENCE_FLOOR: f32 = 0.30;
+
 impl PredictiveLocalBackend {
     pub fn new(artifact: NextAppModelArtifact) -> Result<Self, String> {
         Ok(Self {
@@ -170,7 +172,7 @@ fn known_packages(context: &StructuredContext) -> BTreeSet<String> {
 /// - If the target app is currently in context (foreground/notified/process),
 ///   we emit `SwitchToApp` with a `PreWarmProcess` action and `Low` risk.
 /// - If the target is not currently observed, we emit `OpenApp` with a
-///   conservative `KeepAlive` heartbeat action and `Medium` risk. The
+///   conservative `KeepAlive` heartbeat action and `Low` risk. The
 ///   `OpenApp` intent type honestly reflects "we may want to open this app"
 ///   while the `KeepAlive` action prevents the executor from launching
 ///   something that is not on the device.
@@ -188,13 +190,13 @@ fn prediction_to_intent(prediction: &super::AppScore, known: &BTreeSet<String>) 
             IntentType::OpenApp(prediction.app.clone()),
             ActionType::KeepAlive,
             Some("work:collector_heartbeat".to_string()),
-            RiskLevel::Medium,
+            RiskLevel::Low,
         )
     };
     Intent {
         intent_id: crate::new_id(),
         intent_type,
-        confidence: prediction.score.clamp(0.05, 0.99),
+        confidence: prediction.score.clamp(POLICY_CONFIDENCE_FLOOR, 0.99),
         risk_level,
         suggested_actions: vec![SuggestedAction {
             action_type,

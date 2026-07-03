@@ -7,6 +7,8 @@ use aios_spec::{
 
 use crate::DecisionBackend;
 
+static ENV_LOCK: Mutex<()> = Mutex::new(());
+
 fn empty_context() -> StructuredContext {
     StructuredContext {
         window_id: "test-window".into(),
@@ -22,6 +24,29 @@ fn empty_context() -> StructuredContext {
             latest_system_status: None,
             source_tier: SourceTier::PublicApi,
         },
+    }
+}
+
+struct EnvVarGuard {
+    key: &'static str,
+    old: Option<std::ffi::OsString>,
+}
+
+impl EnvVarGuard {
+    fn set(key: &'static str, value: impl AsRef<std::ffi::OsStr>) -> Self {
+        let old = std::env::var_os(key);
+        std::env::set_var(key, value);
+        Self { key, old }
+    }
+}
+
+impl Drop for EnvVarGuard {
+    fn drop(&mut self) {
+        if let Some(old) = &self.old {
+            std::env::set_var(self.key, old);
+        } else {
+            std::env::remove_var(self.key);
+        }
     }
 }
 
@@ -472,6 +497,100 @@ fn evaluate_model_input_injects_runtime_user_id_when_profile_lacks_one() {
         &[Some("runtime-user".into())],
         "daemon-style evaluate_model_input path must attach runtime user id"
     );
+}
+
+#[test]
+fn next_app_model_composes_with_heuristic_local_evaluator() {
+    let _env_guard = ENV_LOCK
+        .lock()
+        .expect("environment mutex should not be poisoned");
+    let artifact = crate::backends::predictive::train_next_app_artifact(
+        "unit",
+        crate::backends::predictive::NextAppModelConfig::default(),
+        &[
+            next_app_example("u1", "com.chat", "com.mail"),
+            next_app_example("u1", "com.chat", "com.mail"),
+            next_app_example("u2", "com.chat", "com.mail"),
+        ],
+    )
+    .expect("training should succeed");
+    let dir = std::env::temp_dir().join(format!(
+        "dipecs-router-compose-{}",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("clock should be after epoch")
+            .as_nanos()
+    ));
+    std::fs::create_dir_all(&dir).expect("create temp dir");
+    let artifact_path = dir.join("artifact.json");
+    serde_json::to_writer_pretty(
+        std::fs::File::create(&artifact_path).expect("create artifact"),
+        &artifact,
+    )
+    .expect("write artifact");
+    let _model_path = EnvVarGuard::set("DIPECS_NEXT_APP_MODEL_PATH", artifact_path.as_os_str());
+
+    let router = DecisionRouter::new(RouterConfig::default());
+    let ctx = StructuredContext {
+        window_id: "foreground-with-predictive-model".into(),
+        window_start_ms: 0,
+        window_end_ms: 1000,
+        duration_secs: 1,
+        events: vec![foreground_transition(100, "com.chat")],
+        summary: ContextSummary {
+            foreground_apps: vec!["com.chat".into()],
+            notified_apps: vec![],
+            all_semantic_hints: vec![],
+            file_activity: vec![],
+            latest_system_status: None,
+            source_tier: SourceTier::PublicApi,
+        },
+    };
+
+    let result = router.evaluate(&ctx);
+
+    assert!(
+        result.intent_batch.intents.iter().any(|intent| matches!(
+            &intent.intent_type,
+            IntentType::SwitchToApp(app) if app == "com.chat"
+        )),
+        "enabling the next-app model must preserve LocalEvaluator foreground intents"
+    );
+    assert!(
+        result.intent_batch.intents.iter().any(|intent| matches!(
+            &intent.intent_type,
+            IntentType::OpenApp(app) if app == "com.mail"
+        )),
+        "enabling the next-app model must add predictive intents"
+    );
+    assert!(
+        result
+            .intent_batch
+            .intents
+            .iter()
+            .flat_map(|intent| intent.suggested_actions.iter())
+            .any(|action| action.action_type == ActionType::PreWarmProcess
+                && action.target.as_deref() == Some("pkg:com.chat")),
+        "heuristic LocalEvaluator prewarm should not disappear behind the model env var"
+    );
+
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+fn next_app_example(
+    user_id: &str,
+    current_app: &str,
+    label_app: &str,
+) -> crate::backends::predictive::NextAppTrainingExample {
+    crate::backends::predictive::NextAppTrainingExample {
+        user_id: user_id.into(),
+        current_app: current_app.into(),
+        history: vec![],
+        hour_bucket: 9,
+        weekday: 1,
+        event_type: "foreground".into(),
+        label_app: label_app.into(),
+    }
 }
 
 fn foreground_transition(timestamp_ms: i64, package_name: &str) -> SanitizedEvent {

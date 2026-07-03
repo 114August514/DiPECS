@@ -1,7 +1,6 @@
 //! Offline training for the next-app predictive model.
 
 use std::collections::{BTreeMap, BTreeSet};
-use std::time::{SystemTime, UNIX_EPOCH};
 
 use super::predictor::feature_keys;
 use super::{
@@ -106,7 +105,7 @@ pub fn train_next_app_artifact(
         schema_version: SCHEMA_VERSION.into(),
         model_id: MODEL_NAME.into(),
         dataset_id: dataset_id.into(),
-        trained_at_ms: now_ms(),
+        trained_at_ms: 0,
         config,
         app_vocab,
         global_popularity,
@@ -198,11 +197,4 @@ fn transition_scores(
 
 pub(crate) fn user_transition_key(user_id: &str, current_app: &str) -> String {
     format!("{user_id}\t{current_app}")
-}
-
-fn now_ms() -> i64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|duration| duration.as_millis() as i64)
-        .unwrap_or_default()
 }

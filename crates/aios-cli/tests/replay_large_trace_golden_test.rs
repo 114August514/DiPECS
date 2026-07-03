@@ -13,7 +13,7 @@ use aios_cli::replay::{self, Stage};
 /// 钉死的 canonical audit hash。
 /// 若此处失败,先检查改动是否是语义变更;若是,用测试输出更新此常量。
 const LARGE_TRACE_GOLDEN_HASH: &str =
-    "sha256:2b3c5ac19314ac5128910fd26db3e02e76291cd495ee6fe87552a2b26ea7cde2";
+    "sha256:20ead9900295210d6d279fe685f53bdd02f084d374fcddb82e96a05244ac4f85";
 
 fn large_trace_path() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))

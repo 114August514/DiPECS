@@ -350,6 +350,7 @@ impl ModelMemoryStore {
         };
 
         UserBehaviorProfile {
+            user_id: None,
             summary,
             observation_windows: self.observation_windows,
             frequent_foreground_apps,

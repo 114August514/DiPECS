@@ -48,6 +48,12 @@ impl ModelInput {
 /// Rolling, privacy-preserving summary of observed user behavior.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct UserBehaviorProfile {
+    /// Optional pseudonymous user identifier. Used by personalized models such
+    /// as `PredictiveLocalBackend` to key per-user transition tables. This is
+    /// intentionally optional: older serialized inputs and contexts where the
+    /// collector has not yet supplied a user id deserialize to `None`, and the
+    /// backend falls back to global/non-personalized signals.
+    pub user_id: Option<String>,
     pub summary: String,
     pub observation_windows: u32,
     pub frequent_foreground_apps: Vec<(String, u32)>,

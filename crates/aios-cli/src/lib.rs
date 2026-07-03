@@ -5,4 +5,5 @@
 
 pub mod android_bridge;
 pub mod benchmark_next_app;
+pub mod next_app;
 pub mod replay;

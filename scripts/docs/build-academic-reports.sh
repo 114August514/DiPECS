@@ -4,8 +4,10 @@
 
 set -euo pipefail
 
-# Switch to the academic reports directory.
-cd "$(dirname "$0")/../docs/academic-src"
+# Switch to the academic reports directory relative to this script's location.
+# This script lives at scripts/docs/build-academic-reports.sh, so the report
+# source is two levels up then into docs/academic-src.
+cd "$(dirname "$0")/../../docs/academic-src"
 
 for tex in \
   01_Survey_Report/main.tex \

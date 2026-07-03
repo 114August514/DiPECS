@@ -1,5 +1,5 @@
 #!/bin/bash
-# scripts/commit-msg.sh
+# scripts/dev/commit-msg.sh
 
 # 颜色定义
 RED='\033[0;31m'

@@ -87,7 +87,7 @@ NDK 仅交叉编译 Android target 时需要；不碰 Android 的成员可以跳
 以上 L0–L2 也可以一键执行：
 
 ```bash
-source scripts/setup-env.sh
+source scripts/dev/setup-env.sh
 ```
 
 脚本会检查各层状态并报告缺失项。
@@ -114,7 +114,7 @@ cargo fmt --all -- --check
 cargo clippy --workspace --all-targets -- -D warnings
 
 # Android 交叉编译（需要 L2）
-source scripts/setup-env.sh
+source scripts/dev/setup-env.sh
 cargo build --target aarch64-linux-android --release
 ```
 

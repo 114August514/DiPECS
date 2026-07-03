@@ -1,9 +1,9 @@
 #!/bin/bash
-# scripts/setup-env.sh — DiPECS 环境自检与配置
+# scripts/dev/setup-env.sh — DiPECS 环境自检与配置
 #
 # 分层检查 L0（系统依赖）、L1（Rust 工具链）、L2（Android NDK），
 # 并注入 Git hooks 和输出环境概览。
-# 必须 source 执行：source scripts/setup-env.sh
+# 必须 source 执行：source scripts/dev/setup-env.sh
 
 # 颜色定义
 GREEN='\033[0;32m'
@@ -156,11 +156,11 @@ if [ -z "$GIT_DIR" ]; then
     echo -e "  ${YELLOW}跳过：当前不在 Git 仓库中${NC}"
 else
     mkdir -p "$GIT_DIR/hooks"
-    ln -sf ../../scripts/pre-commit.sh "$GIT_DIR/hooks/pre-commit"
-    ln -sf ../../scripts/commit-msg.sh "$GIT_DIR/hooks/commit-msg"
+    ln -sf ../../scripts/dev/pre-commit.sh "$GIT_DIR/hooks/pre-commit"
+    ln -sf ../../scripts/dev/commit-msg.sh "$GIT_DIR/hooks/commit-msg"
     echo "  ${GREEN}✓${NC} pre-commit + commit-msg 已注入"
 fi
-chmod +x scripts/pre-commit.sh scripts/commit-msg.sh
+chmod +x scripts/dev/pre-commit.sh scripts/dev/commit-msg.sh
 echo ""
 
 # ── 环境概览 ───────────────────────────────────────────────────
@@ -193,6 +193,6 @@ echo "------------------------------------------"
 
 if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
     echo ""
-    echo -e "${RED}请使用 source 运行此脚本：source scripts/setup-env.sh${NC}"
+    echo -e "${RED}请使用 source 运行此脚本：source scripts/dev/setup-env.sh${NC}"
     exit 1
 fi

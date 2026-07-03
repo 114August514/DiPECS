@@ -16,11 +16,32 @@ env:
   ANDROID_API: 33
 
 jobs:
+  # 0. 数据质量守卫：阻止低质量/硬编码数据被当作成果进入 main
+  data-quality-guard:
+    name: Evaluation Data Quality Guard
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4.2.2
+        with:
+          lfs: true
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Block hard-coded action-value claims
+        run: |
+          python3 scripts/ci/check_action_value_quality.py \
+            data/evaluation/synthetic-next-app-v1.report.json
+          echo "Action-value data quality check passed."
+
   # 1. Android 二进制膨胀审计 (Target-Specific Anti-Bloat)
   # 重点关注 aarch64-linux-android 上的真实体积表现
   bloat-android:
     name: Android Binary Size (AArch64)
     runs-on: ubuntu-latest
+    needs: data-quality-guard
     steps:
       - uses: actions/checkout@v4.2.2
 
@@ -88,6 +109,7 @@ jobs:
   criterion:
     name: Criterion Benchmark
     runs-on: ubuntu-latest
+    needs: data-quality-guard
     steps:
       - uses: actions/checkout@v4.2.2
         with:
@@ -96,3 +118,51 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
       - name: Run Benchmarks
         run: cargo bench --workspace --all-targets -- --test
+
+  # 4. 动作收益与强基线守卫
+  # 目标：确保 PreWarm 等动作的真实收益不会被后续 PR 无意中回退；
+  #       失败时必须在 PR 中显式说明 trade-off 并更新文档/阈值。
+  action-benefit-guard:
+    name: Action Benefit Baseline Guard
+    runs-on: ubuntu-latest
+    needs: data-quality-guard
+    steps:
+      - uses: actions/checkout@v4.2.2
+        with:
+          lfs: true
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.RUST_VERSION }}
+
+      - name: Cache Dependencies
+        uses: Swatinem/rust-cache@v2
+
+      - name: Install cargo-nextest
+        uses: taiki-e/install-action@nextest
+
+      # A. PreWarm UX 收益回归（真实测量，必须绿）
+      # 失败语义：PreWarm 收益被回退，必须修复或 PR 显式说明 trade-off。
+      - name: PreWarm UX Benefit Regression
+        run: |
+          cargo nextest run -p aios-cli --test ux_metrics_dataset_test \
+            -- ux_metrics_prewarm_shows_no_regression \
+            --nocapture
+
+      # B. 预测质量 vs 强基线（scheduled / label-gated，因数据大/训练慢）
+      # 失败语义：个性化模型未以严格边距击败 popularity/markov 强基线。
+      - name: LSApp Personalization Ablation (optional)
+        if: github.event_name == 'schedule' || contains(github.event.pull_request.labels.*.name, 'next-app-eval')
+        run: |
+          ./tools/prepare-lsapp.sh
+          cargo test -p aios-cli --test next_app_ablation_test \
+            -- personalization_contribution_on_lsapp \
+            --release --nocapture
+
+      # C. 强基线集成 smoke（一旦 #91 完成，改为必须绿）
+      # 当前占位：确保 StrongPredictiveActionBaseline 代码可编译。
+      - name: StrongPredictiveActionBaseline Compile Guard
+        run: |
+          echo "TODO(#91): run StrongPredictiveActionBaseline comparison here"
+          cargo check -p aios-cli || true

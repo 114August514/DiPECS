@@ -53,7 +53,7 @@ docs(readme): clarify authorized action boundary
 test(action): add android bridge envelope coverage
 ```
 
-仓库配置了 `scripts/commit-msg.sh` hook，提交时会校验格式。如需绕过可用 `git commit --no-verify`，但不推荐。
+仓库配置了 `scripts/dev/commit-msg.sh` hook，提交时会校验格式。如需绕过可用 `git commit --no-verify`，但不推荐。
 
 ## 本地检查清单
 
@@ -68,11 +68,11 @@ cargo test --workspace
 如果需要完整验证（含 Android 交叉编译）：
 
 ```bash
-source scripts/setup-env.sh
-./scripts/check-all.sh
+source scripts/dev/setup-env.sh
+./scripts/dev/check-all.sh
 ```
 
-`scripts/check-all.sh` 会跑：
+`scripts/dev/check-all.sh` 会跑：
 
 - `cargo fmt --all -- --check`
 - `cargo clippy --workspace --all-targets -- -D warnings`

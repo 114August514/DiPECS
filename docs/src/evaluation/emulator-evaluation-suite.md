@@ -10,13 +10,13 @@
 cd /mnt/e/DIPECS
 
 # 资源开销（10 采样，约 5 分钟）
-./tools/collect-resource-overhead.sh
+./tools/collect/collect-resource-overhead.sh
 
 # 用户体验（5 采样 × 4 模式，约 3 分钟）
-./tools/collect-ux-metrics.sh
+./tools/collect/collect-ux-metrics.sh
 
 # 稳定性（4 分钟起步，建议 ≥60 分钟）
-DURATION_MINUTES=60 ./tools/collect-stability.sh
+DURATION_MINUTES=60 ./tools/collect/collect-stability.sh
 
 # 跑全部 CI 测试
 cargo test --package aios-cli --test resource_overhead_dataset_test
@@ -144,7 +144,7 @@ cargo test -p aios-agent --lib mock_cloud_e2e_tests
 定时采样 RSS / PSS / CPU，线性回归拟合增长速率：
 
 ```bash
-DURATION_MINUTES=60 SAMPLE_INTERVAL_SECS=30 ./tools/collect-stability.sh
+DURATION_MINUTES=60 SAMPLE_INTERVAL_SECS=30 ./tools/collect/collect-stability.sh
 ```
 
 ### 结果 (4 分钟 × 30s 间隔 = 8 采样)

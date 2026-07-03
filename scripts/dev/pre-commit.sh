@@ -1,5 +1,5 @@
 #!/bin/bash
-# scripts/pre-commit.sh
+# scripts/dev/pre-commit.sh
 
 # 颜色定义
 RED='\033[0;31m'
@@ -72,7 +72,7 @@ if [ ${#BIG_FILES[@]} -gt 0 ]; then
     if git rev-parse --verify HEAD > /dev/null 2>&1; then
         echo ""
         echo "💡 修复建议:"
-        echo "  1. 确保环境就绪: source scripts/setup-env.sh"
+        echo "  1. 确保环境就绪: source scripts/dev/setup-env.sh"
         echo "  2. 安装 Git LFS: https://git-lfs.github.com/"
         echo "  3. 配置追踪: git lfs track '*.bin' '*.zip'"
         echo "  4. 重设暂存并使用 LFS: git reset HEAD <file> && git lfs checkout"

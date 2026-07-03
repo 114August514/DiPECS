@@ -2,7 +2,7 @@
 
 > Status: Current  
 > Last verified: 2026-07-01  
-> Code anchors: `tests/scenarios/`, `tools/collect-*.sh`, `crates/aios-cli/tests/*_dataset_test.rs`
+> Code anchors: `tests/scenarios/`, `tools/collect/collect-*.sh`, `crates/aios-cli/tests/*_dataset_test.rs`
 
 **这篇文档回答什么**：DiPECS 如何验证功能正确性、资源开销、UX 影响和长期稳定性。  
 **适合谁读**：想复现评估结果、理解 CI 阈值，或者新增评估场景的人。

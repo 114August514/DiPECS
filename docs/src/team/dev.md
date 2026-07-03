@@ -53,7 +53,7 @@ PYTHONPATH=. uv run mkdocs serve
 
 ```bash
 # 一键全量检查
-./scripts/check-all.sh
+./scripts/dev/check-all.sh
 
 # 或逐项执行：
 cargo fmt --all -- --check
@@ -95,7 +95,7 @@ RUST_LOG=dipecs=info cargo run -p aios-daemon --bin dipecsd -- --no-daemon 2>&1 
 
 ```bash
 # 交叉编译
-source scripts/setup-env.sh
+source scripts/dev/setup-env.sh
 cargo build --target aarch64-linux-android --release
 
 # 推送到模拟器/设备
@@ -132,7 +132,7 @@ adb logcat -s dipecs
 A: 测试覆盖了各模块的单元行为，但 daemon 需要 tokio runtime 启动。检查 `RUST_LOG=debug` 输出，确认 mpsc channel 没有提前 drop。
 
 **Q: Android 交叉编译报链接错误？**
-A: 确认 `scripts/setup-env.sh` 已执行，`ANDROID_NDK_HOME` 指向 NDK r27d，且 NDK 的 LLVM bin 目录已加入 `PATH`（这样 `aarch64-linux-android33-clang` 和 `x86_64-linux-android33-clang` 可被找到）。检查 `.cargo/config.toml` 的 target 配置。
+A: 确认 `scripts/dev/setup-env.sh` 已执行，`ANDROID_NDK_HOME` 指向 NDK r27d，且 NDK 的 LLVM bin 目录已加入 `PATH`（这样 `aarch64-linux-android33-clang` 和 `x86_64-linux-android33-clang` 可被找到）。检查 `.cargo/config.toml` 的 target 配置。
 
 **Q: Golden Trace 回放不一致？**
 A: PrivacyAirGap 必须是纯函数——相同 RawEvent 输入必须产生相同 SanitizedEvent 输出。检查是否有非确定性来源（时间戳、UUID 生成），这些应使用 trace 中记录的值而非实时生成。

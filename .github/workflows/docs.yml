@@ -108,7 +108,7 @@ jobs:
         run: |
           sudo apt-get update -qq && sudo apt-get install -y -qq texlive-latex-base texlive-latex-extra texlive-xetex texlive-lang-chinese latexmk fonts-noto-cjk
           cd docs/academic-src
-          ../../scripts/build-academic-reports.sh
+          ../../scripts/docs/build-academic-reports.sh
 
       - name: Collect PDFs
         run: |

@@ -778,4 +778,35 @@ mod tests {
             .as_nanos();
         std::env::temp_dir().join(format!("dipecs-next-app-test-{suffix}"))
     }
+
+    #[test]
+    fn evaluate_ranker_counts_non_empty_wrong_predictions_as_predicted() {
+        let examples = vec![
+            NextAppTrainingExample {
+                user_id: "u1".into(),
+                current_app: "com.chat".into(),
+                history: vec![],
+                hour_bucket: 9,
+                weekday: 1,
+                label_app: "com.mail".into(),
+            },
+            NextAppTrainingExample {
+                user_id: "u1".into(),
+                current_app: "com.chat".into(),
+                history: vec![],
+                hour_bucket: 9,
+                weekday: 1,
+                label_app: "com.browser".into(),
+            },
+        ];
+        let report = evaluate_ranker(&examples, |_example| {
+            vec!["com.other".into(), "com.yetanother".into()]
+        });
+        assert_eq!(report.examples, 2);
+        assert_eq!(report.predicted, 2, "non-empty predictions must count toward coverage");
+        assert_eq!(report.hit_rate_at_1_pct, 0.0);
+        assert_eq!(report.hit_rate_at_3_pct, 0.0);
+        assert_eq!(report.hit_rate_at_5_pct, 0.0);
+        assert_eq!(report.prediction_coverage_pct, 100.0);
+    }
 }

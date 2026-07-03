@@ -2,11 +2,13 @@
 //!
 //! Routing priority:
 //! 1. Circuit breaker: too many consecutive backend errors -> FallbackNoOp.
-//! 2. Local actionable signal: foreground transitions, file activity, actionable
+//! 2. Privacy sensitivity: notifications with verification/financial hints ->
+//!    RuleBased (blocks cloud routing while keeping sensitive data local).
+//!    App transitions carry no raw text and are excluded from the privacy score,
+//!    so they pass through this gate unchanged.
+//! 3. Local actionable signal: foreground transitions, file activity, actionable
 //!    notifications -> LocalEvaluator (so next-app prediction and other local
 //!    proactive actions are not blocked by the privacy gate).
-//! 3. Privacy sensitivity: notifications with verification/financial hints ->
-//!    RuleBased (blocks cloud routing while keeping sensitive data local).
 //! 4. Semantic complexity: low complexity -> RuleBased, medium/high -> CloudLlm
 //!    when configured, otherwise LocalEvaluator.
 use std::cell::RefCell;
@@ -413,8 +415,9 @@ impl DecisionRouter {
 
     /// Count privacy-sensitive signals. Only notification events carrying
     /// `VerificationCode` or `FinancialContext` hints are counted; app
-    /// transitions carry no raw text and are routed to LocalEvaluator via
-    /// `has_local_actionable_signal` before this gate is evaluated.
+    /// transitions carry no raw text and are excluded from this score, so they
+    /// pass through the privacy gate unchanged and are then handled by
+    /// `has_local_actionable_signal` below.
     fn compute_privacy_score(context: &StructuredContext) -> usize {
         context
             .events

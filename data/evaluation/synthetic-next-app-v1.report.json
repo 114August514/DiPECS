@@ -2,6 +2,9 @@
   "schema_version": "dipecs.next_app_benchmark.v2",
   "dataset_id": "synthetic-next-app-v1",
   "source": "synthetic",
+  "evaluation_source": "synthetic_trace",
+  "action_value_source": "synthetic_model_prediction_only",
+  "benefit_claim_policy": "no_measured_action_benefit_claim",
   "config": {
     "window_secs": 10,
     "horizon_secs": 30,
@@ -89,7 +92,7 @@
       "macro_top3_accuracy_pct": 97.917,
       "rationale_coverage_pct": 0.0,
       "latency_us": {
-        "mean": 0.091,
+        "mean": 0.145,
         "p50": 0.0,
         "p95": 1.0
       }
@@ -135,7 +138,7 @@
       "macro_top3_accuracy_pct": 24.342,
       "rationale_coverage_pct": 0.0,
       "latency_us": {
-        "mean": 0.018,
+        "mean": 0.255,
         "p50": 0.0,
         "p95": 0.0
       }
@@ -158,9 +161,9 @@
       "macro_top3_accuracy_pct": 58.531,
       "rationale_coverage_pct": 100.0,
       "latency_us": {
-        "mean": 10.309,
-        "p50": 8.0,
-        "p95": 20.0
+        "mean": 12.127,
+        "p50": 9.0,
+        "p95": 24.0
       }
     },
     "markov": {
@@ -181,7 +184,7 @@
       "macro_top3_accuracy_pct": 100.0,
       "rationale_coverage_pct": 0.0,
       "latency_us": {
-        "mean": 0.164,
+        "mean": 0.2,
         "p50": 0.0,
         "p95": 1.0
       }
@@ -204,9 +207,9 @@
       "macro_top3_accuracy_pct": 72.325,
       "rationale_coverage_pct": 0.0,
       "latency_us": {
-        "mean": 1.4,
+        "mean": 1.673,
         "p50": 1.0,
-        "p95": 4.0
+        "p95": 5.0
       }
     },
     "per_current_app_majority": {
@@ -227,7 +230,7 @@
       "macro_top3_accuracy_pct": 100.0,
       "rationale_coverage_pct": 0.0,
       "latency_us": {
-        "mean": 0.073,
+        "mean": 0.145,
         "p50": 0.0,
         "p95": 1.0
       }
@@ -250,9 +253,9 @@
       "macro_top3_accuracy_pct": 97.917,
       "rationale_coverage_pct": 0.0,
       "latency_us": {
-        "mean": 0.636,
+        "mean": 0.945,
         "p50": 0.0,
-        "p95": 0.0
+        "p95": 1.0
       }
     },
     "recent_notification": {
@@ -273,7 +276,7 @@
       "macro_top3_accuracy_pct": 63.816,
       "rationale_coverage_pct": 0.0,
       "latency_us": {
-        "mean": 0.018,
+        "mean": 0.036,
         "p50": 0.0,
         "p95": 0.0
       }
@@ -296,7 +299,7 @@
       "macro_top3_accuracy_pct": 61.294,
       "rationale_coverage_pct": 100.0,
       "latency_us": {
-        "mean": 1.091,
+        "mean": 1.818,
         "p50": 1.0,
         "p95": 2.0
       }
@@ -380,7 +383,7 @@
           "macro_top3_accuracy_pct": null,
           "rationale_coverage_pct": 0.0,
           "latency_us": {
-            "mean": 0.1,
+            "mean": 0.15,
             "p50": 0.0,
             "p95": 0.0
           }
@@ -449,9 +452,9 @@
           "macro_top3_accuracy_pct": null,
           "rationale_coverage_pct": 100.0,
           "latency_us": {
-            "mean": 11.9,
-            "p50": 10.0,
-            "p95": 18.0
+            "mean": 14.15,
+            "p50": 11.0,
+            "p95": 20.0
           }
         },
         "markov": {
@@ -495,9 +498,9 @@
           "macro_top3_accuracy_pct": null,
           "rationale_coverage_pct": 0.0,
           "latency_us": {
-            "mean": 1.6,
+            "mean": 2.0,
             "p50": 1.0,
-            "p95": 4.0
+            "p95": 5.0
           }
         },
         "per_current_app_majority": {
@@ -518,9 +521,9 @@
           "macro_top3_accuracy_pct": null,
           "rationale_coverage_pct": 0.0,
           "latency_us": {
-            "mean": 0.05,
+            "mean": 0.1,
             "p50": 0.0,
-            "p95": 0.0
+            "p95": 1.0
           }
         },
         "random_candidate": {
@@ -541,7 +544,7 @@
           "macro_top3_accuracy_pct": null,
           "rationale_coverage_pct": 0.0,
           "latency_us": {
-            "mean": 0.8,
+            "mean": 1.15,
             "p50": 0.0,
             "p95": 0.0
           }
@@ -564,7 +567,7 @@
           "macro_top3_accuracy_pct": null,
           "rationale_coverage_pct": 0.0,
           "latency_us": {
-            "mean": 0.05,
+            "mean": 0.1,
             "p50": 0.0,
             "p95": 0.0
           }
@@ -587,9 +590,9 @@
           "macro_top3_accuracy_pct": null,
           "rationale_coverage_pct": 100.0,
           "latency_us": {
-            "mean": 1.55,
+            "mean": 2.55,
             "p50": 1.0,
-            "p95": 1.0
+            "p95": 2.0
           }
         }
       }
@@ -671,7 +674,7 @@
           "macro_top3_accuracy_pct": null,
           "rationale_coverage_pct": 0.0,
           "latency_us": {
-            "mean": 0.125,
+            "mean": 0.188,
             "p50": 0.0,
             "p95": 1.0
           }
@@ -717,9 +720,9 @@
           "macro_top3_accuracy_pct": null,
           "rationale_coverage_pct": 0.0,
           "latency_us": {
-            "mean": 0.0,
+            "mean": 0.813,
             "p50": 0.0,
-            "p95": 0.0
+            "p95": 1.0
           }
         },
         "local_evaluator": {
@@ -740,9 +743,9 @@
           "macro_top3_accuracy_pct": null,
           "rationale_coverage_pct": 100.0,
           "latency_us": {
-            "mean": 12.563,
-            "p50": 8.0,
-            "p95": 29.0
+            "mean": 14.375,
+            "p50": 9.0,
+            "p95": 32.0
           }
         },
         "markov": {
@@ -763,7 +766,7 @@
           "macro_top3_accuracy_pct": null,
           "rationale_coverage_pct": 0.0,
           "latency_us": {
-            "mean": 0.188,
+            "mean": 0.313,
             "p50": 0.0,
             "p95": 1.0
           }
@@ -786,9 +789,9 @@
           "macro_top3_accuracy_pct": null,
           "rationale_coverage_pct": 0.0,
           "latency_us": {
-            "mean": 0.75,
+            "mean": 0.938,
             "p50": 1.0,
-            "p95": 2.0
+            "p95": 4.0
           }
         },
         "per_current_app_majority": {
@@ -809,7 +812,7 @@
           "macro_top3_accuracy_pct": null,
           "rationale_coverage_pct": 0.0,
           "latency_us": {
-            "mean": 0.125,
+            "mean": 0.188,
             "p50": 0.0,
             "p95": 1.0
           }
@@ -832,9 +835,9 @@
           "macro_top3_accuracy_pct": null,
           "rationale_coverage_pct": 0.0,
           "latency_us": {
-            "mean": 0.625,
+            "mean": 0.938,
             "p50": 0.0,
-            "p95": 0.0
+            "p95": 1.0
           }
         },
         "recent_notification": {
@@ -878,7 +881,7 @@
           "macro_top3_accuracy_pct": null,
           "rationale_coverage_pct": 100.0,
           "latency_us": {
-            "mean": 0.875,
+            "mean": 1.563,
             "p50": 1.0,
             "p95": 2.0
           }
@@ -962,9 +965,9 @@
           "macro_top3_accuracy_pct": null,
           "rationale_coverage_pct": 0.0,
           "latency_us": {
-            "mean": 0.053,
+            "mean": 0.105,
             "p50": 0.0,
-            "p95": 0.0
+            "p95": 1.0
           }
         },
         "last_app_prewarm": {
@@ -1031,9 +1034,9 @@
           "macro_top3_accuracy_pct": null,
           "rationale_coverage_pct": 100.0,
           "latency_us": {
-            "mean": 6.737,
-            "p50": 5.0,
-            "p95": 13.0
+            "mean": 8.105,
+            "p50": 6.0,
+            "p95": 18.0
           }
         },
         "markov": {
@@ -1077,9 +1080,9 @@
           "macro_top3_accuracy_pct": null,
           "rationale_coverage_pct": 0.0,
           "latency_us": {
-            "mean": 1.737,
+            "mean": 1.947,
             "p50": 1.0,
-            "p95": 4.0
+            "p95": 5.0
           }
         },
         "per_current_app_majority": {
@@ -1100,9 +1103,9 @@
           "macro_top3_accuracy_pct": null,
           "rationale_coverage_pct": 0.0,
           "latency_us": {
-            "mean": 0.053,
+            "mean": 0.158,
             "p50": 0.0,
-            "p95": 0.0
+            "p95": 1.0
           }
         },
         "random_candidate": {
@@ -1123,7 +1126,7 @@
           "macro_top3_accuracy_pct": null,
           "rationale_coverage_pct": 0.0,
           "latency_us": {
-            "mean": 0.474,
+            "mean": 0.737,
             "p50": 0.0,
             "p95": 0.0
           }
@@ -1169,9 +1172,9 @@
           "macro_top3_accuracy_pct": null,
           "rationale_coverage_pct": 100.0,
           "latency_us": {
-            "mean": 0.789,
+            "mean": 1.263,
             "p50": 1.0,
-            "p95": 1.0
+            "p95": 2.0
           }
         }
       }
@@ -1182,7 +1185,6 @@
     "Accuracy is reported only for context-supported switches; coverage reports how selective that cohort is.",
     "Latency is measured during this run and is not byte-deterministic across machines.",
     "Statistical baselines are trained on the per-scenario train split and evaluated on the held-out test split.",
-    "Action-value fields (net_benefit_ms, saved_latency_ms, etc.) are derived from hard-coded constants (PREWARM_SAVED_MS=120ms, WASTED_PREWARM_COST_MS=12ms) multiplied by prediction hit rates. They MUST NOT be cited as measured device benefits; see docs/src/evaluation/action-benefit-coverage.md."
-  ],
-  "action_value_source": "synthetic_constant_backtest"
+    "This synthetic benchmark validates prediction-to-action mapping only; it does not import measured action-value data and must not be cited as measured device benefit."
+  ]
 }

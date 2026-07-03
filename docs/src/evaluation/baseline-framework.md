@@ -216,6 +216,9 @@ cargo run --bin aios-cli -- benchmark-next-app \
   说明在合成数据上单纯的 Top-1 并不能体现 DiPECS 价值；DiPECS 的真正优势在于 100% rationale
   覆盖、隐私气隙与治理拦截（见 §1、§8、§15），而非纯预测准确率。
 - 报告 schema 为 `dipecs.next_app_benchmark.v2`；若消费端校验 schema version，需同步升级。
+  报告由代码生成 `evaluation_source`、`action_value_source` 和 `benefit_claim_policy`：
+  当前值表示合成 trace 的 prediction-only 回归，不导入真实 action-value 测量，也不输出
+  `net_benefit_ms`。因此它只能用于快速回归预测到动作候选的映射，不能用于系统收益主张。
 
 ## 8. policy denial 率
 

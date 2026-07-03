@@ -94,10 +94,11 @@
 三环目前各自成立，却**从未在同一条 trace、同一台设备上端到端串起来**。
 
 1. **合成 action-value 是伪收益。**
-   `crates/aios-cli/src/benchmark_next_app/action_value.rs`（feat/synthetic 分支）里
-   `net_benefit_ms = 命中数 × 硬编码 120 ms − 浪费数 × 12 ms`。报告中的收益值不是
-   测量结果，是把预测命中率乘一个假设常量再改名。引用时必须标注为「合成回测常量，
-   非真实设备测量」。
+   `main` 当前不包含 `crates/aios-cli/src/benchmark_next_app/action_value.rs`，也不默认输出
+   `net_benefit_ms`。历史合成分支曾用
+   `net_benefit_ms = 命中数 × 硬编码 120 ms − 浪费数 × 12 ms`，这类收益值不是测量结果，
+   是把预测命中率乘一个假设常量再改名。若未来重新引入 action-value，必须导入真实测量数据，
+   或在报告中显式标注为「合成回测常量，非真实设备测量」。
 2. **LSApp 评估停在 Top-k 准确率，不发动作。**
    命中率很高（standard 集 ensemble hit@1 = 56.442%），但按准则「只证明 Top-k 准、
    不执行动作」属伪需求。它证明的是预测质量，不是系统收益。
@@ -121,8 +122,10 @@ DiPECS ensemble 胜出证据：hit@1 为 21.196% vs 48.050%。
 
 ## 补齐路径：分动作 net-benefit 实验
 
-总原则：每个动作单独定义收益机制、测量手段、浪费代价、对照组，禁止硬编码常量，
-禁止合并成单一笼统的 net_benefit。同一设备、同一 trace、同一动作预算。
+总原则：每个动作单独定义收益机制、测量手段、浪费代价、对照组，禁止无来源硬编码常量，
+禁止合并成单一笼统的 net_benefit。同一设备、同一 trace、同一动作预算。当前
+`synthetic-next-app-v1.report.json` 是预测回归报告，只能验证「预测→动作候选」映射；
+默认不包含 `net_benefit_ms`，也不能作为真实设备收益引用。
 
 通用骨架：
 

@@ -251,7 +251,7 @@ impl NextAppPredictor {
             (0.40, self.rank_markov(features)),
             (0.30, self.rank_feature_lift(features)),
         ] {
-            for score in scores.into_iter().take(10) {
+            for score in scores {
                 *combined.entry(score.app).or_default() += weight * score.score;
             }
         }
@@ -883,6 +883,59 @@ mod tests {
         assert_eq!(
             ranked[0].app, "com.browser",
             "with user_id=u2 Markov should rank com.browser first"
+        );
+    }
+
+    #[test]
+    fn ensemble_considers_candidates_beyond_each_component_top_10() {
+        let apps: Vec<String> = (0..12).map(|idx| format!("com.app{idx:02}")).collect();
+        let component_scores: Vec<AppScore> = apps
+            .iter()
+            .enumerate()
+            .map(|(idx, app)| AppScore {
+                app: app.clone(),
+                score: 1.0 - idx as f32 * 0.01,
+            })
+            .collect();
+        let artifact = NextAppModelArtifact {
+            schema_version: SCHEMA_VERSION.into(),
+            model_id: "unit".into(),
+            dataset_id: "unit".into(),
+            trained_at_ms: 0,
+            config: NextAppModelConfig::default(),
+            app_vocab: apps.clone(),
+            global_popularity: component_scores.clone(),
+            naive_bayes: NaiveBayesModel {
+                class_log_priors: vec![0.0; apps.len()],
+                unknown_feature_log_probs: vec![0.0; apps.len()],
+                feature_log_probs: BTreeMap::new(),
+            },
+            markov: MarkovModel {
+                global_transitions: BTreeMap::from([("com.current".into(), component_scores)]),
+                user_transitions: BTreeMap::new(),
+            },
+            feature_lift: FeatureLiftModel {
+                base_scores: vec![0.0; apps.len()],
+                trees: vec![],
+            },
+            training_summary: TrainingSummary {
+                examples: 1,
+                users: 1,
+                apps: apps.len(),
+            },
+        };
+        let predictor = NextAppPredictor::new(artifact).expect("artifact should validate");
+        let features = PredictionFeatures {
+            current_app: Some("com.current".into()),
+            ..PredictionFeatures::default()
+        };
+
+        let ranked = predictor.rank(&features, NextAppAlgorithm::Ensemble, apps.len());
+        let ranked_apps: Vec<&str> = ranked.iter().map(|score| score.app.as_str()).collect();
+
+        assert!(
+            ranked_apps.contains(&"com.app11"),
+            "ensemble must preserve long-tail candidates from full component rankings"
         );
     }
 

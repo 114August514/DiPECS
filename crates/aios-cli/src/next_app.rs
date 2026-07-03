@@ -332,7 +332,13 @@ fn split_cold_start(
         .map(|example| example.user_id.as_str())
         .collect();
     let cutoff = ((users.len() as f32) * 0.8).floor() as usize;
-    let train_users: BTreeSet<&str> = users.iter().take(cutoff.max(1)).copied().collect();
+    let mut ranked_users: Vec<&str> = users.into_iter().collect();
+    ranked_users.sort_by(|a, b| {
+        stable_user_split_hash(a)
+            .cmp(&stable_user_split_hash(b))
+            .then_with(|| a.cmp(b))
+    });
+    let train_users: BTreeSet<&str> = ranked_users.into_iter().take(cutoff.max(1)).collect();
     let mut train = Vec::new();
     let mut test = Vec::new();
     for example in examples {
@@ -343,6 +349,19 @@ fn split_cold_start(
         }
     }
     (train, test)
+}
+
+fn stable_user_split_hash(user_id: &str) -> u64 {
+    const FNV_OFFSET: u64 = 14_695_981_039_346_656_037;
+    const FNV_PRIME: u64 = 1_099_511_628_211;
+    const SEED: &[u8] = b"dipecs-next-app-cold-start-v1";
+
+    let mut hash = FNV_OFFSET;
+    for byte in SEED.iter().chain([0].iter()).chain(user_id.as_bytes()) {
+        hash ^= u64::from(*byte);
+        hash = hash.wrapping_mul(FNV_PRIME);
+    }
+    hash
 }
 
 fn load_records(path: &Path) -> Result<Vec<LsAppRecord>> {
@@ -705,6 +724,30 @@ mod tests {
                 .expect("report should parse");
         assert_eq!(value["schema_version"], "dipecs.next_app_eval.v1");
         assert!(value["metrics"]["ensemble"]["examples"].as_u64().unwrap() > 0);
+    }
+
+    #[test]
+    fn cold_start_split_uses_stable_hash_order_not_user_id_sort() {
+        let examples: Vec<NextAppTrainingExample> = ["u0", "u1", "u2", "u3", "u4"]
+            .into_iter()
+            .map(|user| NextAppTrainingExample {
+                user_id: user.into(),
+                current_app: "com.chat".into(),
+                history: vec![],
+                hour_bucket: 9,
+                weekday: 1,
+                event_type: "foreground".into(),
+                label_app: "com.mail".into(),
+            })
+            .collect();
+
+        let (_, test) = split_cold_start(&examples);
+        let test_users: Vec<&str> = test
+            .iter()
+            .map(|example| example.user_id.as_str())
+            .collect();
+
+        assert_eq!(test_users, vec!["u3"]);
     }
 
     fn write_fixture(path: &Path) {

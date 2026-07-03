@@ -11,12 +11,12 @@
     "ensemble": {
       "examples": 272519,
       "predicted": 272519,
-      "hit_rate_at_1_pct": 41.388,
-      "hit_rate_at_3_pct": 69.385,
-      "hit_rate_at_5_pct": 80.331,
+      "hit_rate_at_1_pct": 41.39,
+      "hit_rate_at_3_pct": 69.43,
+      "hit_rate_at_5_pct": 80.386,
       "mean_reciprocal_rank_at_5": 0.562,
       "prediction_coverage_pct": 100.0,
-      "macro_hit_rate_at_1_pct": 37.929
+      "macro_hit_rate_at_1_pct": 37.917
     },
     "global_popularity": {
       "examples": 272519,

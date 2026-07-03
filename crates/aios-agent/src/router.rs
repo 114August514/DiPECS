@@ -11,6 +11,8 @@
 //!    when configured, otherwise LocalEvaluator.
 use std::cell::RefCell;
 use std::collections::HashSet;
+#[cfg(test)]
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use aios_spec::{
@@ -195,6 +197,25 @@ impl DecisionRouter {
         cloud_llm: Option<Box<dyn DecisionBackend + Send + Sync>>,
         fallback: Box<dyn DecisionBackend + Send + Sync>,
     ) -> Self {
+        Self::with_backends_and_runtime_user_id(
+            config,
+            rule_based,
+            local_evaluator,
+            cloud_llm,
+            fallback,
+            None,
+        )
+    }
+
+    #[cfg(test)]
+    fn with_backends_and_runtime_user_id(
+        config: RouterConfig,
+        rule_based: Box<dyn DecisionBackend + Send + Sync>,
+        local_evaluator: Box<dyn DecisionBackend + Send + Sync>,
+        cloud_llm: Option<Box<dyn DecisionBackend + Send + Sync>>,
+        fallback: Box<dyn DecisionBackend + Send + Sync>,
+        runtime_user_id: Option<String>,
+    ) -> Self {
         let cloud_disabled = cloud_llm.is_none();
         Self {
             config,
@@ -205,7 +226,7 @@ impl DecisionRouter {
             cloud_disabled,
             cloud_misconfigured: None,
             circuit_state: RefCell::new(CircuitState::default()),
-            runtime_user_id: None,
+            runtime_user_id,
         }
     }
 
@@ -214,10 +235,7 @@ impl DecisionRouter {
     /// Uses interior mutability (`RefCell`) to track circuit breaker state
     /// across calls without requiring `&mut self`.
     pub fn evaluate(&self, context: &StructuredContext) -> DecisionBackendResult {
-        let mut input = ModelInput::current_only(context.clone());
-        if let Some(user_id) = &self.runtime_user_id {
-            input.behavior_profile.user_id = Some(user_id.clone());
-        }
+        let input = ModelInput::current_only(context.clone());
         self.evaluate_model_input(&input)
     }
 
@@ -237,6 +255,21 @@ impl DecisionRouter {
     /// Evaluate a model input that includes the current window plus optional
     /// behavior profile and recent feedback memory.
     pub fn evaluate_model_input(&self, input: &ModelInput) -> DecisionBackendResult {
+        let owned_input;
+        let input = if input.behavior_profile.user_id.is_none() {
+            if let Some(user_id) = &self.runtime_user_id {
+                owned_input = {
+                    let mut input = input.clone();
+                    input.behavior_profile.user_id = Some(user_id.clone());
+                    input
+                };
+                &owned_input
+            } else {
+                input
+            }
+        } else {
+            input
+        };
         let context = &input.current_context;
         let (route, reason) = self.determine_route(context);
         let reason_tag = reason.tag();
@@ -524,6 +557,30 @@ mod tests {
                 latency_us: 0,
                 error: None,
             }
+        }
+    }
+
+    struct UserIdCapturingBackend {
+        seen_user_ids: Arc<Mutex<Vec<Option<String>>>>,
+    }
+
+    impl DecisionBackend for UserIdCapturingBackend {
+        fn evaluate(&self, context: &StructuredContext) -> DecisionBackendResult {
+            DecisionBackendResult {
+                route: DecisionRoute::LocalEvaluator,
+                intent_batch: idle_batch(context),
+                rationale_tags: vec!["capturing_backend".into()],
+                latency_us: 0,
+                error: None,
+            }
+        }
+
+        fn evaluate_model_input(&self, input: &aios_spec::ModelInput) -> DecisionBackendResult {
+            self.seen_user_ids
+                .lock()
+                .expect("capture mutex should not be poisoned")
+                .push(input.behavior_profile.user_id.clone());
+            self.evaluate(&input.current_context)
         }
     }
 
@@ -849,6 +906,52 @@ mod tests {
             .rationale_tags
             .iter()
             .any(|tag| tag == "routing:local_actionable_signal"));
+    }
+
+    #[test]
+    fn evaluate_model_input_injects_runtime_user_id_when_profile_lacks_one() {
+        let seen_user_ids = Arc::new(Mutex::new(Vec::new()));
+        let router = DecisionRouter::with_backends_and_runtime_user_id(
+            RouterConfig::default(),
+            Box::new(OkBackend {
+                route: DecisionRoute::RuleBased,
+            }),
+            Box::new(UserIdCapturingBackend {
+                seen_user_ids: Arc::clone(&seen_user_ids),
+            }),
+            None,
+            Box::new(FallbackNoOpBackend),
+            Some("runtime-user".into()),
+        );
+        let ctx = StructuredContext {
+            window_id: "daemon-model-input-path".into(),
+            window_start_ms: 0,
+            window_end_ms: 1000,
+            duration_secs: 1,
+            events: vec![foreground_transition(100, "com.chat")],
+            summary: ContextSummary {
+                foreground_apps: vec!["com.chat".into()],
+                notified_apps: vec![],
+                all_semantic_hints: vec![],
+                file_activity: vec![],
+                latest_system_status: None,
+                source_tier: SourceTier::PublicApi,
+            },
+        };
+        let input = ModelInput::current_only(ctx);
+        assert_eq!(input.behavior_profile.user_id, None);
+
+        let result = router.evaluate_model_input(&input);
+
+        assert!(matches!(result.route, DecisionRoute::LocalEvaluator));
+        assert_eq!(
+            seen_user_ids
+                .lock()
+                .expect("capture mutex should not be poisoned")
+                .as_slice(),
+            &[Some("runtime-user".into())],
+            "daemon-style evaluate_model_input path must attach runtime user id"
+        );
     }
 
     fn foreground_transition(timestamp_ms: i64, package_name: &str) -> SanitizedEvent {

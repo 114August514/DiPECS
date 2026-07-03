@@ -2,7 +2,7 @@
 
 > Status: Current  
 > Last verified: 2026-07-01  
-> Code anchors: `.cargo/config.toml`, `scripts/setup-env.sh`, `scripts/android-runner.sh`, `apps/android-collector/scripts/ship-system.sh`
+> Code anchors: `.cargo/config.toml`, `scripts/dev/setup-env.sh`, `scripts/android/android-runner.sh`, `apps/android-collector/scripts/ship-system.sh`
 
 **这篇文档回答什么**：如何把 DiPECS 从源码构建、部署到 Android 模拟器/真机，以及如何打包 release。  
 **适合谁读**：需要在设备上运行 daemon 或发布 APK 的人。
@@ -13,7 +13,7 @@
 2. 装 Rust toolchain（仓库 `rust-toolchain.toml` 自动锁定）。
 3. 装 NDK r27d 并导出 `ANDROID_NDK_HOME`。
 4. `cargo build --target aarch64-linux-android --release`。
-5. 用 `adb push` 把 `dipecsd` 推到设备并运行；或 `./scripts/run-daemon-in-emulator.sh`。
+5. 用 `adb push` 把 `dipecsd` 推到设备并运行；或 `./scripts/android/run-daemon-in-emulator.sh`。
 
 ## 环境准备
 
@@ -55,7 +55,7 @@ aarch64-linux-android33-clang --version
 ### 一键自检
 
 ```bash
-source scripts/setup-env.sh
+source scripts/dev/setup-env.sh
 ```
 
 该脚本会检查系统依赖、toolchain、NDK，安装 git hooks，并把 NDK 工具链加入 PATH。
@@ -112,7 +112,7 @@ adb shell /data/local/tmp/dipecsd --no-daemon \
 
 ### 使用 cargo runner
 
-`.cargo/config.toml` 配置了 `scripts/android-runner.sh`，运行时会自动 push 并执行：
+`.cargo/config.toml` 配置了 `scripts/android/android-runner.sh`，运行时会自动 push 并执行：
 
 ```bash
 ADB_SERIAL=<serial> cargo run -p aios-daemon --bin dipecsd --release --target aarch64-linux-android
@@ -121,7 +121,7 @@ ADB_SERIAL=<serial> cargo run -p aios-daemon --bin dipecsd --release --target aa
 ### 模拟器一键脚本
 
 ```bash
-./scripts/run-daemon-in-emulator.sh --attach
+./scripts/android/run-daemon-in-emulator.sh --attach
 ```
 
 默认使用 x86_64 构建、bridge token `dipecs-dev-emulator-shared-token-00000000`、端口 46321。

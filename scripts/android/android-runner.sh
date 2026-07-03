@@ -1,5 +1,5 @@
 #!/bin/bash
-# scripts/android-runner.sh
+# scripts/android/android-runner.sh
 
 # 颜色定义
 GREEN='\033[0;32m'

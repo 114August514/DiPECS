@@ -1,5 +1,5 @@
 #!/bin/bash
-# scripts/check-all.sh
+# scripts/dev/check-all.sh
 
 set -e # 遇错即止
 

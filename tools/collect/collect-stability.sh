@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 # Long-running memory stability test for DiPECS collector.
-# Usage: DURATION_MINUTES=60 SAMPLE_INTERVAL_SECS=30 ./tools/collect-stability.sh
+# Usage: DURATION_MINUTES=60 SAMPLE_INTERVAL_SECS=30 ./tools/collect/collect-stability.sh
 
 ADB="${ADB:-}"
 PACKAGE="${PACKAGE:-com.dipecs.collector}"

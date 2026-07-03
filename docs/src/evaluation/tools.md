@@ -2,21 +2,17 @@
 
 > Status: Current  
 > Last verified: 2026-07-01  
-> Code anchors: `tools/collect-*.sh`, `tools/generate_synthetic_android_trace.py`, `crates/aios-cli/tests/*_dataset_test.rs`
+> Code anchors: `tools/collect/collect-*.sh`, `tools/generate/generate_synthetic_android_trace.py`, `crates/aios-cli/tests/*_dataset_test.rs`
 
 **这篇文档回答什么**：如何运行 DiPECS 的评估工具，生成资源、UX、稳定性数据集以及合成 trace。  
-**适合谁读**：需要在 Android 模拟器或真机上复现评估结果、生成 fixture 的人。
-
-## TL;DR
-
 `tools/` 下的脚本都是**手动测量工具**，产出结构化 JSON 数据集；CI 再通过 `crates/aios-cli/tests/*_dataset_test.rs` 校验这些数据集是否满足阈值。合成 trace 工具则不需要真机。
 
 | 工具 | 需要什么 | 输出 |
 | --- | --- | --- |
-| `collect-resource-overhead.sh` | Android 模拟器/真机 | 资源开销数据集 |
-| `collect-ux-metrics.sh` | Android 模拟器/真机 | UX 数据集 |
-| `collect-stability.sh` | Android 模拟器/真机 | 稳定性数据集 |
-| `generate_synthetic_android_trace.py` | 仅 Python | 合成脱敏 JSONL trace |
+| `tools/collect/collect-resource-overhead.sh` | Android 模拟器/真机 | 资源开销数据集 |
+| `tools/collect/collect-ux-metrics.sh` | Android 模拟器/真机 | UX 数据集 |
+| `tools/collect/collect-stability.sh` | Android 模拟器/真机 | 稳定性数据集 |
+| `tools/generate/generate_synthetic_android_trace.py` | 仅 Python | 合成脱敏 JSONL trace |
 
 ## 前置条件
 
@@ -47,7 +43,7 @@
 ### 运行
 
 ```bash
-./tools/collect-resource-overhead.sh
+./tools/collect/collect-resource-overhead.sh
 ```
 
 ### 可调环境变量
@@ -86,7 +82,7 @@
 ### 运行
 
 ```bash
-./tools/collect-ux-metrics.sh
+./tools/collect/collect-ux-metrics.sh
 ```
 
 ### 输出
@@ -111,10 +107,10 @@
 
 ```bash
 # 默认 10 分钟
-./tools/collect-stability.sh
+./tools/collect/collect-stability.sh
 
 # 标准长运行
-DURATION_MINUTES=60 SAMPLE_INTERVAL_SECS=30 ./tools/collect-stability.sh
+DURATION_MINUTES=60 SAMPLE_INTERVAL_SECS=30 ./tools/collect/collect-stability.sh
 ```
 
 ### 可调环境变量
@@ -146,7 +142,7 @@ DURATION_MINUTES=60 SAMPLE_INTERVAL_SECS=30 ./tools/collect-stability.sh
 ### 运行
 
 ```bash
-python3 tools/generate_synthetic_android_trace.py \
+python3 tools/generate/generate_synthetic_android_trace.py \
   --rows 2400 \
   --output data/traces/android_synthetic_large.redacted.jsonl \
   --summary data/traces/android_synthetic_large.redacted.summary.json \
@@ -171,13 +167,13 @@ python3 tools/generate_synthetic_android_trace.py \
 
 ## Trace Dashboard
 
-`tools/trace-dashboard/index.html` 是一个静态 HTML 页面，可在浏览器中浏览 JSON/JSONL/NDJSON trace 文件。
+`tools/view/trace-dashboard/index.html` 是一个静态 HTML 页面，可在浏览器中浏览 JSON/JSONL/NDJSON trace 文件。
 
 用法：
 
 ```bash
 # 用任意静态服务器打开
-python3 -m http.server 8080 --directory tools/trace-dashboard
+python3 -m http.server 8080 --directory tools/view/trace-dashboard
 # 然后访问 http://localhost:8080
 ```
 

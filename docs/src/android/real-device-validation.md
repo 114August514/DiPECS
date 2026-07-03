@@ -118,7 +118,7 @@ cargo run -p aios-daemon --bin dipecsd -- \
 可以直接用浏览器打开：
 
 ```text
-tools/trace-dashboard/index.html
+tools/view/trace-dashboard/index.html
 ```
 
 加载两个文件：

@@ -11,7 +11,7 @@ Current enforcement target:
   the action_value layer must not be presented as measured benefits).
 
 Usage:
-    python3 .github/scripts/check_action_value_quality.py \
+    python3 scripts/ci/check_action_value_quality.py \
         data/evaluation/synthetic-next-app-v1.report.json
 
 Exit codes:

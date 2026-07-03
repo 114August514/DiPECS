@@ -1,11 +1,11 @@
 #!/bin/bash
-# scripts/run-daemon-in-emulator.sh
+# scripts/android/run-daemon-in-emulator.sh
 #
 # Cross-compile dipecsd for the Android emulator (x86_64), push it, and
 # launch it in foreground mode with the collector app's JSONL path.
 #
 # Usage:
-#   ./scripts/run-daemon-in-emulator.sh [--attach]
+#   ./scripts/android/run-daemon-in-emulator.sh [--attach]
 #
 # Prerequisites:
 #   - NDK r27d installed, ANDROID_NDK_HOME set

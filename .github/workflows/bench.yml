@@ -32,7 +32,7 @@ jobs:
 
       - name: Block hard-coded action-value claims
         run: |
-          python3 .github/scripts/check_action_value_quality.py \
+          python3 scripts/ci/check_action_value_quality.py \
             data/evaluation/synthetic-next-app-v1.report.json
           echo "Action-value data quality check passed."
 

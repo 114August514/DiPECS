@@ -56,10 +56,16 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+        with:
+          lfs: true # privacy tests read redacted trace fixtures from LFS
       - name: Setup Rust Toolchain
         uses: dtolnay/rust-toolchain@stable
       - name: Data Masking Regression Test
         run: |
-          # Run all privacy boundary tests that verify raw signals never leak
+          # Run aios-core privacy boundary tests that verify raw signals never leak
           # across the PrivacyAirGap into model inputs or audit streams.
-          cargo test --workspace -- privacy_ --nocapture
+          cargo test -p aios-core \
+            --test privacy_leak_test \
+            --test privacy_airgap_test \
+            --test privacy_airgap_property_test \
+            -- --nocapture

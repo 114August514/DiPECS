@@ -35,7 +35,7 @@ jobs:
     
     steps:
       - name: Checkout Source
-        uses: actions/checkout@v4.2.2
+        uses: actions/checkout@v7
         with:
           submodules: recursive
 
@@ -55,7 +55,7 @@ jobs:
       - name: Cache Android NDK
         if: matrix.platform.use_ndk
         id: cache-ndk
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ${{ github.workspace }}/android-ndk-${{ env.NDK_VERSION }}
           key: ndk-linux-${{ env.NDK_VERSION }}
@@ -127,7 +127,7 @@ jobs:
           fi
 
       - name: Upload Artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: dipecs-${{ matrix.platform.target }}-${{ github.sha }}
           path: |

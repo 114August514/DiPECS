@@ -33,16 +33,16 @@ jobs:
     needs: build-academic
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Download Academic PDFs
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v6
         with:
           name: academic-pdfs
           path: docs/src/academic/reports/
 
       - name: Cache Cargo
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             ~/.cargo/registry/index/
@@ -53,7 +53,7 @@ jobs:
           restore-keys: cargo-doc-${{ runner.os }}-
 
       - name: Cache uv
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/.cache/uv
           key: uv-${{ runner.os }}-${{ hashFiles('docs/uv.lock') }}
@@ -65,12 +65,12 @@ jobs:
           toolchain: 1.95.0
 
       - name: Setup Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: '3.12'
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v5
+        uses: astral-sh/setup-uv@v6
 
       - name: Install System Dependencies (Graphviz, lld)
         run: sudo apt-get update && sudo apt-get install -y graphviz lld
@@ -90,7 +90,7 @@ jobs:
         run: cargo doc --no-deps --workspace --config 'target.x86_64-unknown-linux-gnu.rustdocflags = ["--extend-css", "rustdoc-custom.css"]'
 
       - name: Upload Docs Artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: docs-html
           path: |
@@ -102,7 +102,7 @@ jobs:
     name: Build Academic Reports
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Build Academic Reports
         run: |
@@ -122,7 +122,7 @@ jobs:
           done
           ls -la academic-pdfs/
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: academic-pdfs
           path: academic-pdfs/
@@ -135,17 +135,17 @@ jobs:
     if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Download Docs Artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v6
         with:
           name: docs-html
           path: site-temp
 
       - name: Download Academic Artifacts
         continue-on-error: true
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v6
         with:
           name: academic-pdfs
           path: academic-temp
@@ -219,7 +219,7 @@ jobs:
           mv "$PUB" deployment_payload
 
       - name: Upload Final Site
-        uses: actions/upload-pages-artifact@v3
+        uses: actions/upload-pages-artifact@v5
         with:
           path: deployment_payload/
 
@@ -238,7 +238,7 @@ jobs:
     steps:
       - name: Deploy to GitHub Pages
         id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5
 
   # 5. PR 预览 (仅构建，生成预览链接)
   pr-preview:
@@ -247,10 +247,10 @@ jobs:
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Download Docs Artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v6
         with:
           name: docs-html
           path: site-temp
@@ -272,7 +272,7 @@ jobs:
             "$PUB/index.html"
 
       - name: Upload Preview Artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: pr-preview
           path: public_html/

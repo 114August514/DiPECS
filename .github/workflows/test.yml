@@ -35,7 +35,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Source
-        uses: actions/checkout@v4.2.2
+        uses: actions/checkout@v7
         with:
           lfs: true # jsonl trace 数据已迁移到 LFS,单元测试需读取真实内容
 
@@ -72,7 +72,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Source
-        uses: actions/checkout@v4.2.2
+        uses: actions/checkout@v7
         with:
           lfs: true # 必须包含 Trace 数据
 
@@ -111,7 +111,7 @@ jobs:
 
       - name: Upload Test Artifacts
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: test-results-${{ github.sha }}-run-${{ github.run_number }}
           path: |

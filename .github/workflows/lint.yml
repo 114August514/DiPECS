@@ -41,7 +41,7 @@ jobs:
       # uses 表示使用别人写好的“现成机器人”。
       # checkout@v4.2.2 的作用是将你的 GitHub 仓库代码“克隆”到这台虚拟机上。
       - name: Checkout Source
-        uses: actions/checkout@v4.2.2
+        uses: actions/checkout@v7
 
       # --- 步骤 2: 安装工具链 ---
       # dtolnay/rust-toolchain 是 Rust 社区最稳的“装机机器人”。
@@ -64,7 +64,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Source
-        uses: actions/checkout@v4.2.2
+        uses: actions/checkout@v7
 
       - name: Install cargo-machete binary
         uses: taiki-e/install-action@cargo-machete
@@ -78,7 +78,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Source
-        uses: actions/checkout@v4.2.2
+        uses: actions/checkout@v7
         with:
           lfs: true # 保留 LFS，确保编译所需的资源就绪
 

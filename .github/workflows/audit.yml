@@ -30,7 +30,7 @@ jobs:
     name: Compliance & Anti-Bloat
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4.2.2
+      - uses: actions/checkout@v7
       - name: Run cargo-deny
         uses: EmbarkStudios/cargo-deny-action@v2
         with:
@@ -42,7 +42,7 @@ jobs:
     name: Topology Barrier
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4.2.2
+      - uses: actions/checkout@v7
       - name: Enforce Barrier Rules
         run: |
           # 核心屏障: aios-spec 零引用
@@ -55,13 +55,11 @@ jobs:
     name: Privacy-Check (Data Masking)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4.2.2
+      - uses: actions/checkout@v7
       - name: Setup Rust Toolchain
         uses: dtolnay/rust-toolchain@stable
       - name: Data Masking Regression Test
         run: |
-          # TODO: 此处应调用 aios-core 的集成测试
-          # 模拟输入隐私文本并验证结果
-          echo "Running regression for sensitive data scrubbing..."
-          # 建议后续集成脚本: cargo test -p aios-core --test privacy_scrubber_tests
-          cargo test --workspace -- --ignored --test-threads=1 || echo "Tests skipped as currently skeleton only"
+          # Run all privacy boundary tests that verify raw signals never leak
+          # across the PrivacyAirGap into model inputs or audit streams.
+          cargo test --workspace -- privacy_ --nocapture

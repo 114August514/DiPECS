@@ -1,7 +1,7 @@
 //! 路由策略 baseline：固定路由 vs DecisionRouter 动态路由。
 //!
 //! 目标：证明生产配置下的 `DecisionRouter` 不劣于任何固定路由：
-//! 1. 当隐私敏感度（AppTransition 数量）超过默认阈值时，安全地回退到 RuleBased；
+//! 1. 当通知携带验证码/金融语义导致隐私敏感度超过默认阈值时，安全地回退到 RuleBased；
 //! 2. 当隐私门允许时，富语义信号（FileMention / ImageMention / LinkAttachment）
 //!    会动态升级到 LocalEvaluator；
 //! 3. 通过固定路由对照组验证：动态路由在保守场景与固定 RuleBased 等价，
@@ -29,7 +29,6 @@ use aios_spec::{
 // `DecisionRouter::compute_privacy_score`（crate-private，无法直接复用），此处**忠实
 // 复刻**其逻辑：
 //   - Notification 事件中每个 `VerificationCode` / `FinancialContext` 语义提示 +1
-//   - 每个 `AppTransition` 事件 +1
 //   - 其它事件 +0
 struct HardcodedRouter;
 
@@ -49,7 +48,6 @@ impl HardcodedRouter {
                         )
                     })
                     .count(),
-                SanitizedEventType::AppTransition { .. } => 1,
                 _ => 0,
             })
             .sum()
@@ -203,7 +201,7 @@ fn notification_event(package: &str, hints: Vec<SemanticHint>) -> SanitizedEvent
 }
 
 fn make_rich_semantic_context() -> StructuredContext {
-    // 仅包含 1 条 AppTransition，隐私分为 1，低于默认阈值 3。
+    // AppTransition 不计入隐私分；两条通知也不携带验证码/金融语义，隐私分为 0。
     // 两条通知分别携带 FileMention / ImageMention / LinkAttachment，构成 local-actionable 信号。
     let events = vec![
         notification_event(
@@ -308,14 +306,14 @@ fn dynamic_router_escalates_for_rich_semantic_hints_when_privacy_gate_allows() {
 /// 固定路由对照组：`HardcodedRouter` 用与生产完全相同的隐私分做二元路由。
 ///
 /// 两个场景合起来证明：生产 `DecisionRouter` **至少不劣于**简单固定策略——
-/// - 高隐私（rich-workflow）：两者都选 RuleBased（安全一致）；
+/// - 高隐私（rich-workflow）：两者都选 RuleBased（敏感通知安全一致）；
 /// - 低隐私富语义：两者都选 LocalEvaluator。
 ///
 /// 同时严格优于任何**单一固定后端**：没有哪个固定后端能在两个场景都做对
 ///（固定 RuleBased 在低隐私场景不会升级，固定 LocalEvaluator 在高隐私场景不安全）。
 #[test]
 fn hardcoded_routing_matches_dynamic_router_on_both_scenarios() {
-    // 场景 1：高隐私 rich-workflow trace —— 隐私分远超阈值 3，固定路由选 RuleBased。
+    // 场景 1：高隐私 rich-workflow trace —— 敏感通知隐私分远超阈值 3，固定路由选 RuleBased。
     let events = load_scenario_trace("rich-workflow");
     let sanitized = sanitize_trace(&events);
     let ctx = build_context(&sanitized, 10);
@@ -351,7 +349,7 @@ fn hardcoded_routing_matches_dynamic_router_on_both_scenarios() {
          (production emitted {production_score}, replica computed {privacy_score})"
     );
 
-    // 场景 2：低隐私富语义合成上下文 —— 隐私分 = 1（单个 AppTransition），
+    // 场景 2：低隐私富语义合成上下文 —— 隐私分 = 0（AppTransition 不计入隐私分），
     // 固定路由与生产路由都应选 LocalEvaluator。
     let rich = make_rich_semantic_context();
     let rich_score = HardcodedRouter::compute_privacy_score(&rich);

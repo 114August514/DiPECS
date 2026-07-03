@@ -351,24 +351,7 @@ impl DecisionRouter {
             );
         }
 
-        // Priority 2: Low-risk proactive local signals.
-        //
-        // LocalEvaluator owns prefetch, process prewarm, and work-scoped
-        // keepalive. These are exactly the signals the next-app predictor
-        // needs (foreground transitions, file activity, actionable
-        // notifications). Route them to LocalEvaluator *before* the privacy
-        // score gate so that app-transition-heavy windows are not trapped in
-        // RuleBased. LocalEvaluator is still a local backend, so privacy is
-        // preserved; the privacy gate below continues to block cloud routing
-        // for sensitive contexts.
-        if Self::has_local_actionable_signal(context) {
-            return (
-                DecisionRoute::LocalEvaluator,
-                RoutingReason::LocalActionableSignal,
-            );
-        }
-
-        // Priority 3: Privacy sensitivity.
+        // Priority 2: Privacy sensitivity.
         //
         // App transitions are deliberately *not* counted as privacy-sensitive
         // (they carry no raw text), so this gate only fires for notifications
@@ -380,6 +363,22 @@ impl DecisionRouter {
                 RoutingReason::PrivacySensitive {
                     score: privacy_score,
                 },
+            );
+        }
+
+        // Priority 3: Low-risk proactive local signals.
+        //
+        // LocalEvaluator owns prefetch, process prewarm, and work-scoped
+        // keepalive. These are exactly the low-risk signals the next-app
+        // predictor needs (foreground transitions, file activity, and
+        // non-sensitive actionable notifications). Since the privacy gate above
+        // no longer counts AppTransition, app-transition-heavy windows are not
+        // trapped in RuleBased, while truly sensitive notification windows
+        // still route conservatively.
+        if Self::has_local_actionable_signal(context) {
+            return (
+                DecisionRoute::LocalEvaluator,
+                RoutingReason::LocalActionableSignal,
             );
         }
 

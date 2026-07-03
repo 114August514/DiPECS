@@ -139,6 +139,7 @@ nav:
     - 模拟器评估套件: evaluation/emulator-evaluation-suite.md
     - 评估场景与数据集: evaluation/scenarios.md
     - 评估工具: evaluation/tools.md
+    - 动作收益覆盖与实验缺口: evaluation/action-benefit-coverage.md
   - 调研分析:
     - research/index.md
     - 交付文档:

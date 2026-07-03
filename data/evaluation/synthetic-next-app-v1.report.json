@@ -1181,6 +1181,8 @@
     "All labels are derived from deterministic synthetic traces, not real-user behavior.",
     "Accuracy is reported only for context-supported switches; coverage reports how selective that cohort is.",
     "Latency is measured during this run and is not byte-deterministic across machines.",
-    "Statistical baselines are trained on the per-scenario train split and evaluated on the held-out test split."
-  ]
+    "Statistical baselines are trained on the per-scenario train split and evaluated on the held-out test split.",
+    "Action-value fields (net_benefit_ms, saved_latency_ms, etc.) are derived from hard-coded constants (PREWARM_SAVED_MS=120ms, WASTED_PREWARM_COST_MS=12ms) multiplied by prediction hit rates. They MUST NOT be cited as measured device benefits; see docs/src/evaluation/action-benefit-coverage.md."
+  ],
+  "action_value_source": "synthetic_constant_backtest"
 }

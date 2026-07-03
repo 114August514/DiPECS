@@ -13,10 +13,10 @@
       "predicted": 384136,
       "hit_rate_at_1_pct": 21.196,
       "hit_rate_at_3_pct": 40.852,
-      "hit_rate_at_5_pct": 52.568,
+      "hit_rate_at_5_pct": 52.567,
       "mean_reciprocal_rank_at_5": 0.321,
       "prediction_coverage_pct": 100.0,
-      "macro_hit_rate_at_1_pct": 21.39
+      "macro_hit_rate_at_1_pct": 21.389
     },
     "global_popularity": {
       "examples": 384136,
@@ -61,22 +61,32 @@
     "naive_bayes": {
       "examples": 384136,
       "predicted": 384136,
-      "hit_rate_at_1_pct": 9.986,
-      "hit_rate_at_3_pct": 24.057,
-      "hit_rate_at_5_pct": 32.737,
+      "hit_rate_at_1_pct": 9.983,
+      "hit_rate_at_3_pct": 24.054,
+      "hit_rate_at_5_pct": 32.727,
       "mean_reciprocal_rank_at_5": 0.179,
       "prediction_coverage_pct": 100.0,
-      "macro_hit_rate_at_1_pct": 9.517
+      "macro_hit_rate_at_1_pct": 9.515
+    },
+    "strong_predictive": {
+      "examples": 384136,
+      "predicted": 384136,
+      "hit_rate_at_1_pct": 48.05,
+      "hit_rate_at_3_pct": 58.263,
+      "hit_rate_at_5_pct": 63.724,
+      "mean_reciprocal_rank_at_5": 0.537,
+      "prediction_coverage_pct": 100.0,
+      "macro_hit_rate_at_1_pct": 45.862
     },
     "xgboost": {
       "examples": 384136,
       "predicted": 384136,
-      "hit_rate_at_1_pct": 27.042,
-      "hit_rate_at_3_pct": 41.444,
-      "hit_rate_at_5_pct": 46.953,
+      "hit_rate_at_1_pct": 27.047,
+      "hit_rate_at_3_pct": 41.443,
+      "hit_rate_at_5_pct": 46.954,
       "mean_reciprocal_rank_at_5": 0.346,
       "prediction_coverage_pct": 100.0,
-      "macro_hit_rate_at_1_pct": 27.684
+      "macro_hit_rate_at_1_pct": 27.686
     }
   }
 }

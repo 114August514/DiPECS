@@ -101,6 +101,7 @@ cargo test -p aios-agent --test baseline_comparison_test
 **解读**：
 
 - PreWarm 启动加速 ≥ 20% 或 ≥ 100 ms 视为有效。
+- 启动对比至少 cold/prewarm 合计 n≥20，并报告均值 + p95。
 - ReleaseMemory 不应使 jank 增加超过 20 个百分点。
 
 ## 4. 稳定性

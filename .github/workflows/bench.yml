@@ -160,9 +160,11 @@ jobs:
             -- personalization_contribution_on_lsapp \
             --release --nocapture
 
-      # C. 强基线集成 smoke（一旦 #91 完成，改为必须绿）
-      # 当前占位：确保 StrongPredictiveActionBaseline 代码可编译。
-      - name: StrongPredictiveActionBaseline Compile Guard
+      # C. 强基线集成 smoke：默认 CI 不跑完整 LSApp 训练，但必须确认
+      # StrongPredictiveActionBaseline 代码和 committed LSApp report 接线没有回退。
+      - name: StrongPredictiveActionBaseline Report Guard
         run: |
-          echo "TODO(#91): run StrongPredictiveActionBaseline comparison here"
-          cargo check -p aios-cli || true
+          cargo test -p aios-cli --lib next_app::strong_baseline -- --nocapture
+          cargo test -p aios-cli --test next_app_net_benefit_test \
+            -- lsapp_report_contains_strong_predictive_baseline \
+            --nocapture

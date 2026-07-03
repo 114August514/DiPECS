@@ -788,6 +788,7 @@ mod tests {
                 history: vec![],
                 hour_bucket: 9,
                 weekday: 1,
+                event_type: "foreground".into(),
                 label_app: "com.mail".into(),
             },
             NextAppTrainingExample {
@@ -796,6 +797,7 @@ mod tests {
                 history: vec![],
                 hour_bucket: 9,
                 weekday: 1,
+                event_type: "foreground".into(),
                 label_app: "com.browser".into(),
             },
         ];
@@ -803,7 +805,10 @@ mod tests {
             vec!["com.other".into(), "com.yetanother".into()]
         });
         assert_eq!(report.examples, 2);
-        assert_eq!(report.predicted, 2, "non-empty predictions must count toward coverage");
+        assert_eq!(
+            report.predicted, 2,
+            "non-empty predictions must count toward coverage"
+        );
         assert_eq!(report.hit_rate_at_1_pct, 0.0);
         assert_eq!(report.hit_rate_at_3_pct, 0.0);
         assert_eq!(report.hit_rate_at_5_pct, 0.0);

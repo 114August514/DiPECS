@@ -1,7 +1,7 @@
 # 动作收益覆盖核对与实验缺口
 
 > Status: Assessment
-> Last updated: 2026-07-03
+> Last updated: 2026-07-04
 > Purpose: 如实记录当前实验能证明什么、不能证明什么，防止把动作面覆盖度与
 > 收益证明覆盖度混为一谈，也防止合成层的伪收益被当成真实系统收益引用。
 
@@ -19,7 +19,10 @@
 
 本节按「已证实 / 部分证实 / 待证实」对 DiPECS 在真实场景下的价值做分级，避免
 把代码链完整度、动作可发度与最终用户收益混为一谈。数据来源为
-`data/evaluation/value-metrics-20260701.md`、`data/evaluation/ux-metrics-emulator-*.md`
+`data/evaluation/value-metrics-20260701.md`、`data/evaluation/ux-metrics-emulator-*.md`、
+`data/evaluation/ux-metrics/ux-metrics-real-device-20260704-172048.*`、
+`data/evaluation/action-latency/action-latency-real-device-20260704-172936.*`、
+`data/evaluation/resource-overhead/resource-overhead-real-device-20260704-172617.*`
 以及主分支上的 CI 离线回归。
 
 ### 已证实（有真实测量支撑）
@@ -31,16 +34,25 @@
 3. **PreWarm 在 Android 模拟器上确实加速启动。** 最新 committed run
    `ux-metrics-emulator-20260703-171457` 使用 cold/prewarm 启动样本合计 n=20，
    `am start -W TotalTime` 均值从 884.1 ms 降到 489.3 ms，p95 从 932.0 ms
-   降到 512.0 ms，快 44.7%。
+   降到 512.0 ms，快 44.7%。2026-07-04 Pixel 6a 真机 smoke run 复现同方向结果：
+   cold startup n=5 均值 600.4 ms、p95 620.0 ms；prewarm startup n=5 均值
+   142.6 ms、p95 168.0 ms，快 457.8 ms / 76.2%。该真机 run 样本量不足 #90
+   gate，只能作为正向证据，不能单独关闭端到端 net-benefit 缺口。
 4. **动作链路真实闭环。** 4 类可转发动作在 Android 模拟器/真机上均被设备确认并回执
-   (`EXECUTED`)，不只是代码里能调用。
+   (`EXECUTED`)，不只是代码里能调用。Pixel 6a 真机 action bridge 回执延迟为
+   841-1964 us：`PreWarmProcess own:warmup` 841 us、`KeepAlive` 973 us、
+   `ReleaseMemory` 971 us、`PrefetchFile` 1964 us。
 5. **系统开销够低、可常驻。** replay 1600+ 事件峰值 RSS 约 11 MB、wall time 128 ms；
-   长跑 4 分钟未现显著内存增长。
+   长跑 4 分钟未现显著内存增长。Pixel 6a 短窗口 resource-overhead smoke run 中，
+   observe-only PSS 均值 38.946 MB，action-loop PSS 均值 40.726 MB，`top`
+   CPU 读数低于该采样方法精度；这只能证明控制面开销量级较低，不能当作精确 CPU 结论。
 
 ### 部分证实（有正面数据但不足以下结论）
 
 1. **ReleaseMemory 降 jank。** run1 降 3.67 pp，run2 完全无变化，最新 idle
-   fixture 记为 `release_memory_effective=false`。由于测试不是真内存压力场景，只能算弱证据，需真压力复测。
+   fixture 记为 `release_memory_effective=false`。Pixel 6a 真机短窗口中
+   `post_release_jank` 仍为 4.76%，jank 改善 0.0 pp，PSS 降 20.418 MB。
+   由于测试不是真内存压力场景，只能算弱证据，需真压力复测。
 2. **云端复杂语义决策。** live DeepSeek 4 个场景全部成功产出 intent，但样本仅 4 个，
    不能说明泛化性。
 
@@ -74,13 +86,16 @@
 
 | ActionType | 语义 | 代码链 | 真机派发 | 收益实验 | 结论 |
 | --- | --- | --- | --- | --- | --- |
-| `PreWarmProcess` | 预热应用进程 | 齐 | 转发到设备 | 已测：+44.7% 启动（489.3 vs 884.1 ms，`am start -W TotalTime`，p95 512.0 vs 932.0 ms） | 真闪光点 |
-| `ReleaseMemory` | 释放非关键内存 | 齐 | 转发到设备 | 已测但不稳定：旧 run jank -3.67 pp，新 run idle 场景 0.0 pp、PSS -0.462 MB，最新结论为 neutral | 收益微弱，踩「伪需求」线，暂不作卖点 |
+| `PreWarmProcess` | 预热应用进程 | 齐 | 转发到设备 | 已测：模拟器 n=20 +44.7% 启动（489.3 vs 884.1 ms，p95 512.0 vs 932.0 ms）；Pixel 6a smoke n=5 +76.2%（142.6 vs 600.4 ms，p95 168.0 vs 620.0 ms） | 真闪光点，但 #90 net-benefit 仍未闭环 |
+| `ReleaseMemory` | 释放非关键内存 | 齐 | 转发到设备 | 已测但不稳定：旧 run jank -3.67 pp，新 run idle 场景 0.0 pp、PSS -0.462 MB；Pixel 6a idle jank 0.0 pp、PSS -20.418 MB，最新结论为 neutral | 收益微弱，踩「伪需求」线，暂不作卖点 |
 | `PrefetchFile` | 预加载热点文件到页缓存 | 齐 | 带 `url:`/`uri:` 时转发 | 无 | 能发≠有用，收益待证 |
 | `KeepAlive` | 保活当前前台进程 | 齐 | 无条件转发 | 无 | 能发≠有用，收益待证 |
 | `NoOp` | 不执行操作 | — | — | — | — |
 
-数据来源：`data/evaluation/ux-metrics-emulator-20260703-171457.md`。
+数据来源：`data/evaluation/ux-metrics-emulator-20260703-171457.md`、
+`data/evaluation/ux-metrics/ux-metrics-real-device-20260704-172048.md`、
+`data/evaluation/action-latency/action-latency-real-device-20260704-172936.md`、
+`data/evaluation/resource-overhead/resource-overhead-real-device-20260704-172617.md`。
 
 ## 当前实验的三个断层
 
@@ -104,8 +119,10 @@
    不执行动作」属伪需求。它证明的是预测质量，不是系统收益。
 3. **PreWarm 收益是「预热了就快」，接近同义反复。**
    `ux-metrics` 实验已经补到 cold/prewarm 启动样本合计 n=20，并报告均值 + p95；
-   standard split 已把真实预测命中率接入 gross-saved gate；但它仍没有测
-   误预热成本和控制面开销，因此不能把 placeholder net benefit 当作完整净收益。
+   Pixel 6a 真机 smoke run 也复现了同方向启动收益，并补了 action bridge latency
+   和短窗口控制面开销；standard split 已把真实预测命中率接入 gross-saved gate。
+   但它仍没有测误预热成本，也没有在同一 trace/action budget 下把强基线与 DiPECS
+   都接到真实动作执行，因此不能把 placeholder net benefit 当作完整净收益。
 
 此外，最关键的缺口是**没有与强基线在同设备同预算下对打**：准则要求主对照是
 `StrongPredictiveActionBaseline`（强预测也来驱动动作），而不是 native no-action。
@@ -117,8 +134,9 @@ DiPECS ensemble 已超过强基线：hit@1 为 56.442% vs 53.784%，hit@3 为
 「预测命中率 × 实测 PreWarm 加速」的 gross-saved 先决 gate。cold-start 仍不能作为
 DiPECS ensemble 胜出证据：hit@1 为 21.196% vs 48.050%。
 
-这只解决 #90/#91 的预测质量和已测启动收益连接问题；完整 action-level net benefit
-仍必须补齐真实动作预算、误预热成本、控制面开销和治理收益后再计算。
+这只解决 #90/#91 的预测质量和已测启动收益连接问题，并为 #90/#94 补充了真机
+smoke evidence；完整 action-level net benefit 仍必须补齐真实动作预算、误预热成本、
+控制面开销和治理收益后再计算。
 
 ## 补齐路径：分动作 net-benefit 实验
 

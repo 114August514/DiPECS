@@ -1,0 +1,412 @@
+{
+  "schema_version": "dipecs.ux_metrics.v1",
+  "dataset_id": "ux-metrics-real-device-20260704-172048",
+  "status": "measured_android_real_device",
+  "environment": {
+    "device": "Pixel 6a (bluejay), Android 16",
+    "package": "com.dipecs.collector",
+    "sample_interval_secs": 5,
+    "samples_per_mode": 5,
+    "adb_serial": "2B071JEGR05551",
+    "collected_at": "2026-07-04T17:24:15"
+  },
+  "notes": [
+    "Measured with adb on a Pixel 6a real device.",
+    "Startup latency measured via am start -W (TotalTime).",
+    "Jank measured via dumpsys gfxinfo.",
+    "PreWarm and ReleaseMemory actions sent through the bridge socket (adb forward).",
+    "ReleaseMemory is marked effective only when jank improves; idle no-change runs are neutral pending memory-pressure retest."
+  ],
+  "thresholds": {
+    "min_prewarm_pct_faster": 20.0,
+    "min_prewarm_ms_faster": 100,
+    "max_jank_pct_points_increase": 20.0,
+    "max_rss_mb": 250.0,
+    "max_pss_mb": 80.0
+  },
+  "runs": [
+    {
+      "mode": "no_dipecs_baseline",
+      "samples": [
+        {
+          "sample_index": 0,
+          "timestamp_ms": 1783156855517,
+          "mode": "no_dipecs_baseline",
+          "system_free_ram_kb": 2047064
+        },
+        {
+          "sample_index": 1,
+          "timestamp_ms": 1783156865677,
+          "mode": "no_dipecs_baseline",
+          "system_free_ram_kb": 2046576
+        },
+        {
+          "sample_index": 2,
+          "timestamp_ms": 1783156875866,
+          "mode": "no_dipecs_baseline",
+          "system_free_ram_kb": 2043008
+        },
+        {
+          "sample_index": 3,
+          "timestamp_ms": 1783156886047,
+          "mode": "no_dipecs_baseline",
+          "system_free_ram_kb": 2042320
+        },
+        {
+          "sample_index": 4,
+          "timestamp_ms": 1783156896212,
+          "mode": "no_dipecs_baseline",
+          "system_free_ram_kb": 2043624
+        }
+      ],
+      "summary": {
+        "avg_startup_total_time_ms": null,
+        "p95_startup_total_time_ms": null,
+        "avg_system_free_ram_kb": 2044518.4,
+        "avg_cpu_pct": 0.0,
+        "avg_rss_mb": 0.0,
+        "max_rss_mb": 0.0,
+        "avg_pss_mb": 0.0,
+        "max_pss_mb": 0.0,
+        "avg_jank_pct": 0.0,
+        "max_jank_pct": 0.0,
+        "total_frames_last": 0,
+        "janky_frames_last": 0
+      }
+    },
+    {
+      "mode": "cold_startup",
+      "samples": [
+        {
+          "sample_index": 0,
+          "timestamp_ms": 1783156899521,
+          "mode": "cold_startup",
+          "startup_total_time_ms": 590,
+          "rss_mb": 210.59,
+          "pss_mb": 93.767,
+          "total_frames": 3,
+          "janky_frames": 2,
+          "jank_pct": 66.67
+        },
+        {
+          "sample_index": 1,
+          "timestamp_ms": 1783156907469,
+          "mode": "cold_startup",
+          "startup_total_time_ms": 597,
+          "rss_mb": 209.672,
+          "pss_mb": 93.121,
+          "total_frames": 3,
+          "janky_frames": 2,
+          "jank_pct": 66.67
+        },
+        {
+          "sample_index": 2,
+          "timestamp_ms": 1783156915531,
+          "mode": "cold_startup",
+          "startup_total_time_ms": 597,
+          "rss_mb": 211.137,
+          "pss_mb": 94.017,
+          "total_frames": 3,
+          "janky_frames": 2,
+          "jank_pct": 66.67
+        },
+        {
+          "sample_index": 3,
+          "timestamp_ms": 1783156923549,
+          "mode": "cold_startup",
+          "startup_total_time_ms": 620,
+          "rss_mb": 210.367,
+          "pss_mb": 93.612,
+          "total_frames": 3,
+          "janky_frames": 2,
+          "jank_pct": 66.67
+        },
+        {
+          "sample_index": 4,
+          "timestamp_ms": 1783156931535,
+          "mode": "cold_startup",
+          "startup_total_time_ms": 598,
+          "rss_mb": 210.734,
+          "pss_mb": 93.776,
+          "total_frames": 3,
+          "janky_frames": 2,
+          "jank_pct": 66.67
+        }
+      ],
+      "summary": {
+        "avg_startup_total_time_ms": 600.4,
+        "p95_startup_total_time_ms": 620.0,
+        "avg_system_free_ram_kb": null,
+        "avg_cpu_pct": 0.0,
+        "avg_rss_mb": 210.5,
+        "max_rss_mb": 211.137,
+        "avg_pss_mb": 93.659,
+        "max_pss_mb": 94.017,
+        "avg_jank_pct": 66.67,
+        "max_jank_pct": 66.67,
+        "total_frames_last": 3,
+        "janky_frames_last": 2
+      }
+    },
+    {
+      "mode": "prewarm_startup",
+      "samples": [
+        {
+          "sample_index": 0,
+          "timestamp_ms": 1783156940168,
+          "mode": "prewarm_startup",
+          "startup_total_time_ms": 109,
+          "rss_mb": 227.062,
+          "pss_mb": 109.075,
+          "total_frames": 7,
+          "janky_frames": 1,
+          "jank_pct": 14.29
+        },
+        {
+          "sample_index": 1,
+          "timestamp_ms": 1783156953867,
+          "mode": "prewarm_startup",
+          "startup_total_time_ms": 113,
+          "rss_mb": 239.316,
+          "pss_mb": 121.375,
+          "total_frames": 7,
+          "janky_frames": 1,
+          "jank_pct": 14.29
+        },
+        {
+          "sample_index": 2,
+          "timestamp_ms": 1783156967605,
+          "mode": "prewarm_startup",
+          "startup_total_time_ms": 164,
+          "rss_mb": 209.273,
+          "pss_mb": 91.928,
+          "total_frames": 3,
+          "janky_frames": 1,
+          "jank_pct": 33.33
+        },
+        {
+          "sample_index": 3,
+          "timestamp_ms": 1783156981254,
+          "mode": "prewarm_startup",
+          "startup_total_time_ms": 159,
+          "rss_mb": 209.023,
+          "pss_mb": 91.84,
+          "total_frames": 3,
+          "janky_frames": 1,
+          "jank_pct": 33.33
+        },
+        {
+          "sample_index": 4,
+          "timestamp_ms": 1783156994931,
+          "mode": "prewarm_startup",
+          "startup_total_time_ms": 168,
+          "rss_mb": 209.453,
+          "pss_mb": 92.088,
+          "total_frames": 3,
+          "janky_frames": 1,
+          "jank_pct": 33.33
+        }
+      ],
+      "summary": {
+        "avg_startup_total_time_ms": 142.6,
+        "p95_startup_total_time_ms": 168.0,
+        "avg_system_free_ram_kb": null,
+        "avg_cpu_pct": 0.0,
+        "avg_rss_mb": 218.825,
+        "max_rss_mb": 239.316,
+        "avg_pss_mb": 101.261,
+        "max_pss_mb": 121.375,
+        "avg_jank_pct": 25.714,
+        "max_jank_pct": 33.33,
+        "total_frames_last": 3,
+        "janky_frames_last": 1
+      }
+    },
+    {
+      "mode": "baseline_jank",
+      "samples": [
+        {
+          "sample_index": 0,
+          "timestamp_ms": 1783156999615,
+          "mode": "baseline_jank",
+          "pid": 24259,
+          "cpu_pct": 0.0,
+          "rss_mb": 207.902,
+          "pss_mb": 88.468,
+          "total_frames": 21,
+          "janky_frames": 1,
+          "jank_pct": 4.76
+        },
+        {
+          "sample_index": 1,
+          "timestamp_ms": 1783157005184,
+          "mode": "baseline_jank",
+          "pid": 24259,
+          "cpu_pct": 0.0,
+          "rss_mb": 206.434,
+          "pss_mb": 86.995,
+          "total_frames": 21,
+          "janky_frames": 1,
+          "jank_pct": 4.76
+        },
+        {
+          "sample_index": 2,
+          "timestamp_ms": 1783157010840,
+          "mode": "baseline_jank",
+          "pid": 24259,
+          "cpu_pct": 0.0,
+          "rss_mb": 206.293,
+          "pss_mb": 86.851,
+          "total_frames": 21,
+          "janky_frames": 1,
+          "jank_pct": 4.76
+        },
+        {
+          "sample_index": 3,
+          "timestamp_ms": 1783157016524,
+          "mode": "baseline_jank",
+          "pid": 24259,
+          "cpu_pct": 0.0,
+          "rss_mb": 206.293,
+          "pss_mb": 86.851,
+          "total_frames": 21,
+          "janky_frames": 1,
+          "jank_pct": 4.76
+        },
+        {
+          "sample_index": 4,
+          "timestamp_ms": 1783157022189,
+          "mode": "baseline_jank",
+          "pid": 24259,
+          "cpu_pct": 6.8,
+          "rss_mb": 207.375,
+          "pss_mb": 87.933,
+          "total_frames": 21,
+          "janky_frames": 1,
+          "jank_pct": 4.76
+        }
+      ],
+      "summary": {
+        "avg_startup_total_time_ms": null,
+        "p95_startup_total_time_ms": null,
+        "avg_system_free_ram_kb": null,
+        "avg_cpu_pct": 1.36,
+        "avg_rss_mb": 206.859,
+        "max_rss_mb": 207.902,
+        "avg_pss_mb": 87.42,
+        "max_pss_mb": 88.468,
+        "avg_jank_pct": 4.76,
+        "max_jank_pct": 4.76,
+        "total_frames_last": 21,
+        "janky_frames_last": 1
+      }
+    },
+    {
+      "mode": "post_release_jank",
+      "samples": [
+        {
+          "sample_index": 0,
+          "timestamp_ms": 1783157024822,
+          "mode": "post_release_jank",
+          "pid": 24259,
+          "cpu_pct": 0.0,
+          "rss_mb": 205.492,
+          "pss_mb": 86.05,
+          "total_frames": 21,
+          "janky_frames": 1,
+          "jank_pct": 4.76
+        },
+        {
+          "sample_index": 1,
+          "timestamp_ms": 1783157032466,
+          "mode": "post_release_jank",
+          "pid": 24259,
+          "cpu_pct": 0.0,
+          "rss_mb": 206.574,
+          "pss_mb": 87.13,
+          "total_frames": 21,
+          "janky_frames": 1,
+          "jank_pct": 4.76
+        },
+        {
+          "sample_index": 2,
+          "timestamp_ms": 1783157040046,
+          "mode": "post_release_jank",
+          "pid": 24259,
+          "cpu_pct": 0.0,
+          "rss_mb": 174.938,
+          "pss_mb": 54.077,
+          "total_frames": 21,
+          "janky_frames": 1,
+          "jank_pct": 4.76
+        },
+        {
+          "sample_index": 3,
+          "timestamp_ms": 1783157047738,
+          "mode": "post_release_jank",
+          "pid": 24259,
+          "cpu_pct": 0.0,
+          "rss_mb": 171.434,
+          "pss_mb": 52.775,
+          "total_frames": 21,
+          "janky_frames": 1,
+          "jank_pct": 4.76
+        },
+        {
+          "sample_index": 4,
+          "timestamp_ms": 1783157055267,
+          "mode": "post_release_jank",
+          "pid": 24259,
+          "cpu_pct": 0.0,
+          "rss_mb": 173.547,
+          "pss_mb": 54.979,
+          "total_frames": 21,
+          "janky_frames": 1,
+          "jank_pct": 4.76
+        }
+      ],
+      "summary": {
+        "avg_startup_total_time_ms": null,
+        "p95_startup_total_time_ms": null,
+        "avg_system_free_ram_kb": null,
+        "avg_cpu_pct": 0.0,
+        "avg_rss_mb": 186.397,
+        "max_rss_mb": 206.574,
+        "avg_pss_mb": 67.002,
+        "max_pss_mb": 87.13,
+        "avg_jank_pct": 4.76,
+        "max_jank_pct": 4.76,
+        "total_frames_last": 21,
+        "janky_frames_last": 1
+      }
+    }
+  ],
+  "ux_deltas": {
+    "prewarm_vs_cold": {
+      "startup_total_time_ms_reduction": 457.8,
+      "pct_faster": 76.2
+    },
+    "release_vs_baseline": {
+      "avg_jank_pct_points_reduction": 0.0,
+      "avg_pss_mb_reduction": 20.418
+    }
+  },
+  "comparison": {
+    "without_dipecs": {
+      "system_free_ram_kb_avg": 2044518.4,
+      "cold_startup_ms": 600.4,
+      "cold_startup_jank_pct": 66.67
+    },
+    "with_dipecs": {
+      "prewarm_startup_ms": 142.6,
+      "baseline_jank_pct": 4.76,
+      "post_release_jank_pct": 4.76
+    }
+  },
+  "conclusion": {
+    "accepted": true,
+    "prewarm_effective": true,
+    "release_memory_effective": false,
+    "release_memory_status": "neutral_idle_no_jank_improvement"
+  }
+}

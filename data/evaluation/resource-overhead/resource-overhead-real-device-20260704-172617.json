@@ -1,0 +1,433 @@
+{
+  "schema_version": "dipecs.resource_overhead.v1",
+  "dataset_id": "resource-overhead-real-device-20260704-172617",
+  "status": "measured_android_real_device",
+  "environment": {
+    "device": "Pixel 6a (bluejay), Android 16",
+    "package": "com.dipecs.collector",
+    "sample_interval_secs": 5,
+    "samples_per_mode": 5,
+    "cpu_top_samples_per_measurement": 3,
+    "cpu_top_interval_secs": 1.0,
+    "adb_serial": "2B071JEGR05551",
+    "collected_at": "2026-07-04T17:28:37"
+  },
+  "notes": [
+    "Measured with adb on a Pixel 6a real device.",
+    "Battery percentage and thermal sensors stayed flat during this short run; report-facing battery and thermal values use estimates from measured CPU/PSS deltas.",
+    "baseline_idle force-stops the DiPECS app; app process CPU/RSS/PSS are therefore expected to be zero.",
+    "CPU is a median of adb top sub-samples and should be treated as a rough budget smoke; near-zero or negative deltas are below measurement precision, not exact CPU conclusions."
+  ],
+  "thresholds": {
+    "max_cpu_delta_pct_points": 8.0,
+    "max_rss_delta_mb": 220.0,
+    "max_pss_delta_mb": 80.0,
+    "max_battery_pct_delta": 1.0,
+    "max_estimated_battery_mah_per_min": 0.35,
+    "max_estimated_thermal_delta_c": 1.5,
+    "max_thermal_delta_c": 2.0,
+    "max_jank_delta_pct_points": 20.0
+  },
+  "runs": [
+    {
+      "mode": "baseline_idle",
+      "samples": [
+        {
+          "sample_index": 0,
+          "timestamp_ms": 1783157183137,
+          "mode": "baseline_idle",
+          "pid": null,
+          "cpu_pct": 0.0,
+          "cpu_top_samples": 0,
+          "top_res_mb": 0.0,
+          "rss_mb": 0.0,
+          "pss_mb": 0.0,
+          "battery_pct": 38,
+          "ac_powered": false,
+          "thermal_c": 28.055,
+          "total_frames": 0,
+          "janky_frames": 0,
+          "jank_pct": 0.0
+        },
+        {
+          "sample_index": 1,
+          "timestamp_ms": 1783157191496,
+          "mode": "baseline_idle",
+          "pid": null,
+          "cpu_pct": 0.0,
+          "cpu_top_samples": 0,
+          "top_res_mb": 0.0,
+          "rss_mb": 0.0,
+          "pss_mb": 0.0,
+          "battery_pct": 38,
+          "ac_powered": false,
+          "thermal_c": 28.055,
+          "total_frames": 0,
+          "janky_frames": 0,
+          "jank_pct": 0.0
+        },
+        {
+          "sample_index": 2,
+          "timestamp_ms": 1783157199802,
+          "mode": "baseline_idle",
+          "pid": null,
+          "cpu_pct": 0.0,
+          "cpu_top_samples": 0,
+          "top_res_mb": 0.0,
+          "rss_mb": 0.0,
+          "pss_mb": 0.0,
+          "battery_pct": 38,
+          "ac_powered": false,
+          "thermal_c": 28.055,
+          "total_frames": 0,
+          "janky_frames": 0,
+          "jank_pct": 0.0
+        },
+        {
+          "sample_index": 3,
+          "timestamp_ms": 1783157208136,
+          "mode": "baseline_idle",
+          "pid": null,
+          "cpu_pct": 0.0,
+          "cpu_top_samples": 0,
+          "top_res_mb": 0.0,
+          "rss_mb": 0.0,
+          "pss_mb": 0.0,
+          "battery_pct": 38,
+          "ac_powered": false,
+          "thermal_c": 28.055,
+          "total_frames": 0,
+          "janky_frames": 0,
+          "jank_pct": 0.0
+        },
+        {
+          "sample_index": 4,
+          "timestamp_ms": 1783157216420,
+          "mode": "baseline_idle",
+          "pid": null,
+          "cpu_pct": 0.0,
+          "cpu_top_samples": 0,
+          "top_res_mb": 0.0,
+          "rss_mb": 0.0,
+          "pss_mb": 0.0,
+          "battery_pct": 38,
+          "ac_powered": false,
+          "thermal_c": 28.055,
+          "total_frames": 0,
+          "janky_frames": 0,
+          "jank_pct": 0.0
+        }
+      ],
+      "summary": {
+        "avg_cpu_pct": 0.0,
+        "max_cpu_pct": 0.0,
+        "avg_rss_mb": 0.0,
+        "max_rss_mb": 0.0,
+        "avg_pss_mb": 0.0,
+        "max_pss_mb": 0.0,
+        "battery_pct_delta": 0.0,
+        "ac_powered": false,
+        "thermal_delta_c": 0.0,
+        "avg_jank_pct": 0.0,
+        "max_jank_pct": 0.0,
+        "total_frames_last": 0,
+        "janky_frames_last": 0
+      }
+    },
+    {
+      "mode": "dipecs_observe_only",
+      "samples": [
+        {
+          "sample_index": 0,
+          "timestamp_ms": 1783157222939,
+          "mode": "dipecs_observe_only",
+          "pid": 27209,
+          "cpu_pct": 0.0,
+          "cpu_top_samples": 3,
+          "top_res_mb": 126.0,
+          "rss_mb": 130.281,
+          "pss_mb": 37.031,
+          "battery_pct": 38,
+          "ac_powered": false,
+          "thermal_c": 28.055,
+          "total_frames": 0,
+          "janky_frames": 0,
+          "jank_pct": 0.0
+        },
+        {
+          "sample_index": 1,
+          "timestamp_ms": 1783157231390,
+          "mode": "dipecs_observe_only",
+          "pid": 27209,
+          "cpu_pct": 0.0,
+          "cpu_top_samples": 3,
+          "top_res_mb": 130.0,
+          "rss_mb": 134.957,
+          "pss_mb": 38.953,
+          "battery_pct": 38,
+          "ac_powered": false,
+          "thermal_c": 28.055,
+          "total_frames": 0,
+          "janky_frames": 0,
+          "jank_pct": 0.0
+        },
+        {
+          "sample_index": 2,
+          "timestamp_ms": 1783157239866,
+          "mode": "dipecs_observe_only",
+          "pid": 27209,
+          "cpu_pct": 0.0,
+          "cpu_top_samples": 3,
+          "top_res_mb": 131.0,
+          "rss_mb": 135.672,
+          "pss_mb": 39.665,
+          "battery_pct": 38,
+          "ac_powered": false,
+          "thermal_c": 28.055,
+          "total_frames": 0,
+          "janky_frames": 0,
+          "jank_pct": 0.0
+        },
+        {
+          "sample_index": 3,
+          "timestamp_ms": 1783157248353,
+          "mode": "dipecs_observe_only",
+          "pid": 27209,
+          "cpu_pct": 0.0,
+          "cpu_top_samples": 3,
+          "top_res_mb": 131.0,
+          "rss_mb": 136.266,
+          "pss_mb": 40.239,
+          "battery_pct": 38,
+          "ac_powered": false,
+          "thermal_c": 28.055,
+          "total_frames": 0,
+          "janky_frames": 0,
+          "jank_pct": 0.0
+        },
+        {
+          "sample_index": 4,
+          "timestamp_ms": 1783157256770,
+          "mode": "dipecs_observe_only",
+          "pid": 27209,
+          "cpu_pct": 0.0,
+          "cpu_top_samples": 3,
+          "top_res_mb": 130.0,
+          "rss_mb": 134.879,
+          "pss_mb": 38.843,
+          "battery_pct": 38,
+          "ac_powered": false,
+          "thermal_c": 28.055,
+          "total_frames": 0,
+          "janky_frames": 0,
+          "jank_pct": 0.0
+        }
+      ],
+      "summary": {
+        "avg_cpu_pct": 0.0,
+        "max_cpu_pct": 0.0,
+        "avg_rss_mb": 134.411,
+        "max_rss_mb": 136.266,
+        "avg_pss_mb": 38.946,
+        "max_pss_mb": 40.239,
+        "battery_pct_delta": 0.0,
+        "ac_powered": false,
+        "thermal_delta_c": 0.0,
+        "avg_jank_pct": 0.0,
+        "max_jank_pct": 0.0,
+        "total_frames_last": 0,
+        "janky_frames_last": 0
+      }
+    },
+    {
+      "mode": "dipecs_action_loop",
+      "samples": [
+        {
+          "sample_index": 0,
+          "timestamp_ms": 1783157267337,
+          "mode": "dipecs_action_loop",
+          "pid": 27209,
+          "cpu_pct": 0.0,
+          "cpu_top_samples": 3,
+          "top_res_mb": 134.0,
+          "rss_mb": 138.965,
+          "pss_mb": 42.757,
+          "battery_pct": 38,
+          "ac_powered": false,
+          "thermal_c": 28.055,
+          "total_frames": 0,
+          "janky_frames": 0,
+          "jank_pct": 0.0
+        },
+        {
+          "sample_index": 1,
+          "timestamp_ms": 1783157279904,
+          "mode": "dipecs_action_loop",
+          "pid": 27209,
+          "cpu_pct": 0.0,
+          "cpu_top_samples": 3,
+          "top_res_mb": 135.0,
+          "rss_mb": 137.754,
+          "pss_mb": 41.538,
+          "battery_pct": 38,
+          "ac_powered": false,
+          "thermal_c": 28.055,
+          "total_frames": 0,
+          "janky_frames": 0,
+          "jank_pct": 0.0
+        },
+        {
+          "sample_index": 2,
+          "timestamp_ms": 1783157292356,
+          "mode": "dipecs_action_loop",
+          "pid": 27209,
+          "cpu_pct": 0.0,
+          "cpu_top_samples": 3,
+          "top_res_mb": 132.0,
+          "rss_mb": 135.535,
+          "pss_mb": 39.315,
+          "battery_pct": 38,
+          "ac_powered": false,
+          "thermal_c": 28.055,
+          "total_frames": 0,
+          "janky_frames": 0,
+          "jank_pct": 0.0
+        },
+        {
+          "sample_index": 3,
+          "timestamp_ms": 1783157304957,
+          "mode": "dipecs_action_loop",
+          "pid": 27209,
+          "cpu_pct": 0.0,
+          "cpu_top_samples": 3,
+          "top_res_mb": 132.0,
+          "rss_mb": 136.352,
+          "pss_mb": 40.124,
+          "battery_pct": 38,
+          "ac_powered": false,
+          "thermal_c": 28.055,
+          "total_frames": 0,
+          "janky_frames": 0,
+          "jank_pct": 0.0
+        },
+        {
+          "sample_index": 4,
+          "timestamp_ms": 1783157317490,
+          "mode": "dipecs_action_loop",
+          "pid": 27209,
+          "cpu_pct": 0.0,
+          "cpu_top_samples": 3,
+          "top_res_mb": 132.0,
+          "rss_mb": 136.172,
+          "pss_mb": 39.897,
+          "battery_pct": 38,
+          "ac_powered": false,
+          "thermal_c": 28.055,
+          "total_frames": 0,
+          "janky_frames": 0,
+          "jank_pct": 0.0
+        }
+      ],
+      "summary": {
+        "avg_cpu_pct": 0.0,
+        "max_cpu_pct": 0.0,
+        "avg_rss_mb": 136.956,
+        "max_rss_mb": 138.965,
+        "avg_pss_mb": 40.726,
+        "max_pss_mb": 42.757,
+        "battery_pct_delta": 0.0,
+        "ac_powered": false,
+        "thermal_delta_c": 0.0,
+        "avg_jank_pct": 0.0,
+        "max_jank_pct": 0.0,
+        "total_frames_last": 0,
+        "janky_frames_last": 0
+      }
+    }
+  ],
+  "estimated_power_thermal": {
+    "status": "simulated_from_measured_cpu_pss",
+    "model_note": "The real device reported stable battery percentage and thermal values during this short run. These estimates are derived from measured DiPECS CPU/PSS deltas for report planning, not from Android battery fuel-gauge discharge.",
+    "assumptions": {
+      "battery_capacity_mah": 4000,
+      "nominal_voltage_v": 3.85,
+      "cpu_delta_mw_per_pct_point": 22,
+      "pss_mw_per_mb": 0.25,
+      "prefetch_network_mw_action_loop": 15,
+      "thermal_c_per_mw": 0.018,
+      "run_duration_min": 10
+    },
+    "estimates_vs_baseline": {
+      "dipecs_observe_only": {
+        "estimated_power_mw": 9.7,
+        "estimated_battery_mah_per_min": 0.042,
+        "estimated_battery_pct_per_10min": 0.011,
+        "estimated_thermal_delta_c": 0.17
+      },
+      "dipecs_action_loop": {
+        "estimated_power_mw": 25.2,
+        "estimated_battery_mah_per_min": 0.109,
+        "estimated_battery_pct_per_10min": 0.027,
+        "estimated_thermal_delta_c": 0.45
+      }
+    }
+  },
+  "report_summary": {
+    "status": "measured_with_estimated_power_thermal",
+    "note": "RSS/PSS/jank are measured from adb. CPU is retained as a noisy budget smoke only; battery and thermal values use estimated_power_thermal because the short real-device run reported no sensor movement.",
+    "rows": [
+      {
+        "mode": "baseline_idle",
+        "avg_cpu_pct": 0.0,
+        "avg_rss_mb": 0.0,
+        "avg_pss_mb": 0.0,
+        "estimated_battery_mah_per_min": 0,
+        "estimated_battery_pct_per_10min": 0,
+        "estimated_thermal_delta_c": 0,
+        "avg_jank_pct": 0.0
+      },
+      {
+        "mode": "dipecs_observe_only",
+        "avg_cpu_pct": 0.0,
+        "avg_rss_mb": 134.411,
+        "avg_pss_mb": 38.946,
+        "estimated_battery_mah_per_min": 0.042,
+        "estimated_battery_pct_per_10min": 0.011,
+        "estimated_thermal_delta_c": 0.17,
+        "avg_jank_pct": 0.0
+      },
+      {
+        "mode": "dipecs_action_loop",
+        "avg_cpu_pct": 0.0,
+        "avg_rss_mb": 136.956,
+        "avg_pss_mb": 40.726,
+        "estimated_battery_mah_per_min": 0.109,
+        "estimated_battery_pct_per_10min": 0.027,
+        "estimated_thermal_delta_c": 0.45,
+        "avg_jank_pct": 0.0
+      }
+    ]
+  },
+  "conclusion": {
+    "baseline_mode": "baseline_idle",
+    "accepted": true,
+    "deltas_vs_baseline": {
+      "dipecs_observe_only": {
+        "avg_cpu_pct_points": 0.0,
+        "avg_rss_mb": 134.411,
+        "avg_pss_mb": 38.946,
+        "battery_pct_delta": 0.0,
+        "thermal_delta_c": 0.0,
+        "avg_jank_pct_points": 0.0
+      },
+      "dipecs_action_loop": {
+        "avg_cpu_pct_points": 0.0,
+        "avg_rss_mb": 136.956,
+        "avg_pss_mb": 40.726,
+        "battery_pct_delta": 0.0,
+        "thermal_delta_c": 0.0,
+        "avg_jank_pct_points": 0.0
+      }
+    }
+  }
+}

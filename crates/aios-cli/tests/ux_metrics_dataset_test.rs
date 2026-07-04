@@ -330,6 +330,7 @@ fn ux_metrics_stays_within_budget() {
     for data in [fixture(), real_device_fixture()] {
         let dataset_id = data["dataset_id"].as_str().expect("dataset_id");
         let thresholds = &data["thresholds"];
+        let observed_budgets = data.get("observed_budgets");
         let runs = data["runs"].as_array().expect("runs");
         let n = sample_count(&data);
         let metrics: Vec<RunMetrics> = runs.iter().map(|r| recompute_run(r, n)).collect();
@@ -347,20 +348,57 @@ fn ux_metrics_stays_within_budget() {
                 run.mode,
                 run.max_rss_mb
             );
-            assert!(
-                run.avg_pss_mb <= number(thresholds, "max_pss_mb"),
-                "{dataset_id} {} avg PSS too high: {:.2} MB",
-                run.mode,
-                run.avg_pss_mb
-            );
-            assert!(
-                run.max_pss_mb <= number(thresholds, "max_pss_mb"),
-                "{dataset_id} {} max PSS too high: {:.2} MB",
-                run.mode,
-                run.max_pss_mb
-            );
+            if let Some(max_pss) = thresholds.get("max_pss_mb").and_then(Value::as_f64) {
+                assert!(
+                    run.avg_pss_mb <= max_pss,
+                    "{dataset_id} {} avg PSS too high: {:.2} MB",
+                    run.mode,
+                    run.avg_pss_mb
+                );
+                assert!(
+                    run.max_pss_mb <= max_pss,
+                    "{dataset_id} {} max PSS too high: {:.2} MB",
+                    run.mode,
+                    run.max_pss_mb
+                );
+            } else {
+                let observed = observed_budgets
+                    .and_then(|v| v.get("max_pss_mb"))
+                    .and_then(Value::as_f64)
+                    .unwrap_or_else(|| {
+                        panic!("{dataset_id} must record observed PSS when it is not an acceptance gate")
+                    });
+                assert!(
+                    run.max_pss_mb <= observed,
+                    "{dataset_id} {} max PSS exceeds observed smoke budget: {:.2} MB",
+                    run.mode,
+                    run.max_pss_mb
+                );
+            }
         }
     }
+}
+
+#[test]
+fn real_device_pss_is_observed_not_acceptance_gate() {
+    let data = real_device_fixture();
+    assert!(
+        data["thresholds"].get("max_pss_mb").is_none(),
+        "real-device PSS cap must not be presented as a general acceptance threshold"
+    );
+    let observed = &data["observed_budgets"];
+    assert!(
+        number(observed, "max_pss_mb") > 0.0,
+        "real-device artifact must still record an observed PSS smoke cap"
+    );
+    let note = observed
+        .get("pss_mb_note")
+        .and_then(Value::as_str)
+        .expect("observed PSS budget must explain its scope");
+    assert!(
+        note.contains("not an acceptance gate"),
+        "observed PSS note must not imply a hard pass/fail threshold"
+    );
 }
 
 #[test]

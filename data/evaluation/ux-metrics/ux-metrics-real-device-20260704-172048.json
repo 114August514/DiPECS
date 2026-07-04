@@ -21,8 +21,11 @@
     "min_prewarm_pct_faster": 20.0,
     "min_prewarm_ms_faster": 100,
     "max_jank_pct_points_increase": 20.0,
-    "max_rss_mb": 250.0,
-    "max_pss_mb": 125.0
+    "max_rss_mb": 250.0
+  },
+  "observed_budgets": {
+    "max_pss_mb": 125.0,
+    "pss_mb_note": "Pixel 6a real-device PSS is recorded as an observed smoke cap for this artifact, not an acceptance gate."
   },
   "runs": [
     {

@@ -78,15 +78,12 @@ impl TimeMarkov {
                     .get(current)
                     .and_then(|counts| rank_counts(counts.clone()).into_iter().next());
 
-                match (hour_top1, global_top1) {
-                    (Some(ref h), Some(ref g)) => {
-                        if *h == example.label_app {
-                            temporal_hit += 1;
-                        } else if *g == example.label_app {
-                            temporal_miss += 1;
-                        }
-                    },
-                    _ => {},
+                if let (Some(ref h), Some(ref g)) = (hour_top1, global_top1) {
+                    if *h == example.label_app {
+                        temporal_hit += 1;
+                    } else if *g == example.label_app {
+                        temporal_miss += 1;
+                    }
                 }
             }
         }

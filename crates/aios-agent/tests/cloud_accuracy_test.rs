@@ -13,7 +13,7 @@ use std::fs;
 use std::path::PathBuf;
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
-use aios_agent::{CloudLlmBackend, CloudLlmConfig, CloudProvider, DecisionBackend};
+use aios_agent::{CloudLlmBackend, CloudLlmConfig, DecisionBackend};
 use aios_spec::{
     ActionType, AppTransition, ContextSummary, ExtensionCategory, FsActivityType, Intent,
     IntentType, LocationType, NetworkType, RingerMode, SanitizedEvent, SanitizedEventType,
@@ -331,10 +331,6 @@ fn hit_rank(result: &aios_spec::DecisionBackendResult, case: &AccuracyCase) -> O
     None
 }
 
-fn case_hit(result: &aios_spec::DecisionBackendResult, case: &AccuracyCase) -> bool {
-    hit_rank(result, case).is_some()
-}
-
 fn rendered_intents(result: &aios_spec::DecisionBackendResult) -> Vec<String> {
     result
         .intent_batch
@@ -370,9 +366,13 @@ fn deepseek_suggestion_accuracy_over_labeled_personas() {
         panic!("rustls ring provider install failed: {e:?}");
     }
 
-    let api_key = env::var("DIPECS_CLOUD_LLM_API_KEY")
-        .or_else(|_| env::var("DEEPSEEK_API_KEY"))
-        .expect("set DIPECS_CLOUD_LLM_API_KEY or DEEPSEEK_API_KEY");
+    // Ensure API key is available (from_env() reads it internally)
+    assert!(
+        env::var("DIPECS_CLOUD_LLM_API_KEY")
+            .or_else(|_| env::var("DEEPSEEK_API_KEY"))
+            .is_ok(),
+        "set DIPECS_CLOUD_LLM_API_KEY or DEEPSEEK_API_KEY"
+    );
     let rounds = env::var("CLOUD_ACCURACY_ROUNDS")
         .ok()
         .and_then(|s| s.parse().ok())
@@ -385,16 +385,23 @@ fn deepseek_suggestion_accuracy_over_labeled_personas() {
     let dataset = load_accuracy_cases();
     assert!(dataset.cases.len() >= 30);
 
-    let endpoint = env::var("DIPECS_CLOUD_LLM_ENDPOINT")
-        .ok()
-        .filter(|value| !value.trim().is_empty())
-        .unwrap_or_else(|| "https://api.deepseek.com/chat/completions".into());
-    let model = env::var("DIPECS_CLOUD_LLM_MODEL")
-        .ok()
-        .filter(|value| !value.trim().is_empty())
-        .unwrap_or_else(|| "deepseek-v4-flash".into());
-    let config =
-        CloudLlmConfig::new_for_test(CloudProvider::DeepSeek, endpoint, model.clone(), api_key);
+    // Set env vars so from_env() picks up the correct values
+    env::set_var(
+        "DIPECS_CLOUD_LLM_ENDPOINT",
+        env::var("DIPECS_CLOUD_LLM_ENDPOINT")
+            .ok()
+            .filter(|value| !value.trim().is_empty())
+            .unwrap_or_else(|| "https://api.deepseek.com/chat/completions".into()),
+    );
+    env::set_var(
+        "DIPECS_CLOUD_LLM_MODEL",
+        env::var("DIPECS_CLOUD_LLM_MODEL")
+            .ok()
+            .filter(|value| !value.trim().is_empty())
+            .unwrap_or_else(|| "deepseek-v4-flash".into()),
+    );
+    let config = CloudLlmConfig::from_env().expect("cloud config from env failed");
+    let model = config.model.clone();
     let backend = CloudLlmBackend::try_new(config).expect("cloud backend init failed");
 
     let mut hits = 0u32;

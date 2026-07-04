@@ -141,6 +141,7 @@ nav:
     - 评估工具: evaluation/tools.md
     - 动作收益覆盖与实验缺口: evaluation/action-benefit-coverage.md
     - 强 Baseline 与动作收益准则: evaluation/strong-baseline-action-value.md
+    - 学术 Baseline 对比: evaluation/academic-baseline-comparison.md
   - 调研分析:
     - research/index.md
     - 交付文档:

@@ -1,0 +1,258 @@
+{
+  "schema_version": "dipecs.academic_next_app_baselines.v1",
+  "last_updated": "2026-07-04",
+  "purpose": "Maintain sourced academic next-app baseline numbers without treating incompatible datasets, splits, or metric definitions as direct DiPECS comparisons.",
+  "dipecs_reference": {
+    "method": "DiPECS ensemble",
+    "dataset": "LSApp",
+    "split": "Standard",
+    "report_path": "data/evaluation/next-app/lsapp-standard.report.json",
+    "test_examples": 272519,
+    "metric_scope": "micro hit@K and MRR@5 from the committed DiPECS LSApp Standard report",
+    "metrics": {
+      "hit_at_1_pct": 56.442,
+      "hit_at_3_pct": 76.104,
+      "hit_at_5_pct": 84.241,
+      "mrr_at_5_pct": 67.0,
+      "macro_hit_at_1_pct": 52.963
+    }
+  },
+  "comparability_legend": {
+    "direct": "Same dataset, same split construction, same metric definition, and same candidate/label pipeline as DiPECS.",
+    "contextual_only": "Useful literature context, but at least one of dataset, preprocessing, split, candidate set, or metric definition differs from DiPECS.",
+    "excluded_unclear": "The source does not expose enough compatible Top-K detail for a numeric DiPECS comparison."
+  },
+  "baselines": [
+    {
+      "method": "DiPECS strong_predictive",
+      "paper": "Internal deterministic strong predictive baseline",
+      "year": 2026,
+      "venue_or_status": "project fixture",
+      "dataset": "LSApp",
+      "split": "Standard",
+      "metric_scope": "micro hit@K and MRR@5 from the committed DiPECS LSApp Standard report",
+      "metrics": {
+        "hit_at_1_pct": 53.784,
+        "hit_at_3_pct": 72.563,
+        "hit_at_5_pct": 80.428,
+        "mrr_at_5_pct": 63.8,
+        "macro_hit_at_1_pct": 49.696
+      },
+      "reported_comparable_to_dipecs": true,
+      "comparability": "direct",
+      "comparability_note": "Same JSON report, same Standard split, same test windows, and same metric implementation as the DiPECS ensemble row.",
+      "source_url": "data/evaluation/next-app/lsapp-standard.report.json",
+      "source_locator": "metrics.strong_predictive"
+    },
+    {
+      "method": "MAPLE",
+      "paper": "Mobile App Prediction Leveraging Large Language Model Embeddings",
+      "year": 2024,
+      "venue_or_status": "arXiv",
+      "dataset": "LSApp",
+      "split": "standard, chronological 70/10/20 by user in the TGT reproduction table",
+      "metric_scope": "HR@K and MRR@K reported as percentages; MAPLE values are cited by TGT from the original paper without standard deviations.",
+      "metrics": {
+        "hit_at_1_pct": 71.57,
+        "hit_at_3_pct": 86.49,
+        "hit_at_5_pct": 91.5,
+        "mrr_at_5_pct": 79.36,
+        "macro_hit_at_1_pct": null
+      },
+      "reported_comparable_to_dipecs": false,
+      "comparability": "contextual_only",
+      "comparability_note": "LSApp is shared, but DiPECS uses its own committed report/candidate pipeline and does not reproduce MAPLE preprocessing, train/validation handling, or model artifacts.",
+      "source_url": "https://arxiv.org/html/2502.16957",
+      "source_locator": "Table II, LSapp standard split, MAPLE row"
+    },
+    {
+      "method": "MAPLE",
+      "paper": "Mobile App Prediction Leveraging Large Language Model Embeddings",
+      "year": 2024,
+      "venue_or_status": "arXiv",
+      "dataset": "LSApp",
+      "split": "cold-start, user-level 90/10 in the TGT reproduction table",
+      "metric_scope": "HR@K and MRR@K reported as percentages; MAPLE values are cited by TGT from the original paper without standard deviations.",
+      "metrics": {
+        "hit_at_1_pct": 76.44,
+        "hit_at_3_pct": 88.48,
+        "hit_at_5_pct": 92.47,
+        "mrr_at_5_pct": 82.72,
+        "macro_hit_at_1_pct": null
+      },
+      "reported_comparable_to_dipecs": false,
+      "comparability": "contextual_only",
+      "comparability_note": "Cold-start evaluates unseen users and is not the same split objective as the DiPECS Standard report.",
+      "source_url": "https://arxiv.org/html/2502.16957",
+      "source_locator": "Table III, LSapp cold-start split, MAPLE row"
+    },
+    {
+      "method": "TGT",
+      "paper": "TGT: A Temporal Gating Transformer for Smartphone App Usage Prediction",
+      "year": 2025,
+      "venue_or_status": "arXiv",
+      "dataset": "LSApp",
+      "split": "standard, chronological 70/10/20 by user",
+      "metric_scope": "HR@K and MRR@K reported as mean percentages over 5 runs.",
+      "metrics": {
+        "hit_at_1_pct": 81.15,
+        "hit_at_3_pct": 94.94,
+        "hit_at_5_pct": 96.67,
+        "mrr_at_5_pct": 88.07,
+        "macro_hit_at_1_pct": null
+      },
+      "reported_comparable_to_dipecs": false,
+      "comparability": "contextual_only",
+      "comparability_note": "Same public dataset family and Top-K vocabulary, but not the same DiPECS trace conversion, candidate filtering, report fixture, or deployment constraints.",
+      "source_url": "https://arxiv.org/html/2502.16957",
+      "source_locator": "Table II, LSapp standard split, TGT row"
+    },
+    {
+      "method": "TGT",
+      "paper": "TGT: A Temporal Gating Transformer for Smartphone App Usage Prediction",
+      "year": 2025,
+      "venue_or_status": "arXiv",
+      "dataset": "LSApp",
+      "split": "cold-start, user-level 90/10",
+      "metric_scope": "HR@K and MRR@K reported as mean percentages over 5 runs.",
+      "metrics": {
+        "hit_at_1_pct": 82.02,
+        "hit_at_3_pct": 95.46,
+        "hit_at_5_pct": 96.71,
+        "mrr_at_5_pct": 88.76,
+        "macro_hit_at_1_pct": null
+      },
+      "reported_comparable_to_dipecs": false,
+      "comparability": "contextual_only",
+      "comparability_note": "Cold-start evaluates unseen users and cannot be read as a direct DiPECS Standard split comparison.",
+      "source_url": "https://arxiv.org/html/2502.16957",
+      "source_locator": "Table III, LSapp cold-start split, TGT row"
+    },
+    {
+      "method": "AppFormer + K + T",
+      "paper": "Appformer: A Novel Framework for Mobile App Usage Prediction Leveraging Progressive Multi-Modal Data Fusion and Feature Extraction",
+      "year": 2024,
+      "venue_or_status": "arXiv / Expert Systems with Applications",
+      "dataset": "Shanghai carrier app usage with POI features",
+      "split": "paper-specific partition based on PAULCI comparison",
+      "metric_scope": "Hit@K and MRR reported by AppFormer Table V; MRR is reported as average reciprocal rank rather than a DiPECS MRR@5 fixture.",
+      "metrics": {
+        "hit_at_1_pct": 31.92,
+        "hit_at_3_pct": 52.13,
+        "hit_at_5_pct": 61.05,
+        "mrr_at_5_pct": null,
+        "macro_hit_at_1_pct": null
+      },
+      "reported_comparable_to_dipecs": false,
+      "comparability": "contextual_only",
+      "comparability_note": "Different dataset, POI feature source, partitioning scheme, and MRR definition; useful only as a multimodal literature reference.",
+      "source_url": "https://arxiv.org/html/2407.19414",
+      "source_locator": "Table V, Appformer + K + T row"
+    },
+    {
+      "method": "AppFormer + K + T",
+      "paper": "Appformer: A Novel Framework for Mobile App Usage Prediction Leveraging Progressive Multi-Modal Data Fusion and Feature Extraction",
+      "year": 2024,
+      "venue_or_status": "arXiv / Expert Systems with Applications",
+      "dataset": "Shanghai carrier app usage with POI features",
+      "split": "paper-specific partition based on DUGN comparison",
+      "metric_scope": "Hit@K, NDCG@K, and MRR@K reported by AppFormer Table VI; Hit@1/3/5 are extracted for the DiPECS matrix.",
+      "metrics": {
+        "hit_at_1_pct": 42.68,
+        "hit_at_3_pct": 62.3,
+        "hit_at_5_pct": 69.6,
+        "mrr_at_5_pct": 53.03,
+        "macro_hit_at_1_pct": null
+      },
+      "reported_comparable_to_dipecs": false,
+      "comparability": "contextual_only",
+      "comparability_note": "Different dataset and split; the row helps position AppFormer but cannot establish a direct DiPECS win/loss.",
+      "source_url": "https://arxiv.org/html/2407.19414",
+      "source_locator": "Table VI, Appformer + K + T row"
+    },
+    {
+      "method": "PAULCI",
+      "paper": "POI-aware / location-context app usage baseline as cited by AppFormer",
+      "year": 2024,
+      "venue_or_status": "cited baseline",
+      "dataset": "Shanghai carrier app usage with POI features",
+      "split": "paper-specific partition based on AppFormer Table V",
+      "metric_scope": "Hit@K and MRR reported by AppFormer Table V.",
+      "metrics": {
+        "hit_at_1_pct": 27.17,
+        "hit_at_3_pct": 47.53,
+        "hit_at_5_pct": 57.32,
+        "mrr_at_5_pct": null,
+        "macro_hit_at_1_pct": null
+      },
+      "reported_comparable_to_dipecs": false,
+      "comparability": "contextual_only",
+      "comparability_note": "Different source dataset and feature assumptions; retained because issue #102 explicitly asks for POI-style app prediction context.",
+      "source_url": "https://arxiv.org/html/2407.19414",
+      "source_locator": "Table V, PAULCI row"
+    },
+    {
+      "method": "POI transfer-learning app popularity",
+      "paper": "Smartphone App Usage Prediction Using Points of Interest",
+      "year": 2017,
+      "venue_or_status": "arXiv / IMWUT",
+      "dataset": "Shanghai city-scale carrier dataset",
+      "split": "paper-specific sparse sampling and location-based popularity estimation",
+      "metric_scope": "Top-5 hit rate for popular applications at a location, not next individual app prediction.",
+      "metrics": {
+        "hit_at_1_pct": null,
+        "hit_at_3_pct": null,
+        "hit_at_5_pct": 83.0,
+        "mrr_at_5_pct": null,
+        "macro_hit_at_1_pct": null
+      },
+      "reported_comparable_to_dipecs": false,
+      "comparability": "excluded_unclear",
+      "comparability_note": "The reported 83.0% hit rate targets top-five popular apps by location, so it is not a DiPECS next-app window metric.",
+      "source_url": "https://arxiv.org/abs/1711.09337",
+      "source_locator": "abstract"
+    },
+    {
+      "method": "GNN + self-attention next-app model",
+      "paper": "Next app prediction based on graph neural networks and self-attention enhancement",
+      "year": 2025,
+      "venue_or_status": "Scientific Reports",
+      "dataset": "Tsinghua App Usage",
+      "split": "first five days train, sixth day validation, seventh day test",
+      "metric_scope": "TopK Hitrate, TopK MRR, and TopK NDCG with K=1 and K=5.",
+      "metrics": {
+        "hit_at_1_pct": null,
+        "hit_at_3_pct": null,
+        "hit_at_5_pct": null,
+        "mrr_at_5_pct": null,
+        "macro_hit_at_1_pct": null
+      },
+      "reported_comparable_to_dipecs": false,
+      "comparability": "excluded_unclear",
+      "comparability_note": "The article page documents the dataset, split, and metrics, but the numeric table is not encoded until the exact values are re-verified from an accessible table.",
+      "source_url": "https://www.nature.com/articles/s41598-025-05260-1",
+      "source_locator": "Datasets, Experiment metrics, Results and analysis"
+    },
+    {
+      "method": "HAPP / APPredict family",
+      "paper": "Historical app prediction family, exact paper mapping pending",
+      "year": null,
+      "venue_or_status": "tracking row",
+      "dataset": "unknown",
+      "split": "unknown",
+      "metric_scope": "No sourced Top-1/Top-3/Top-5 row has been verified for the current DiPECS fixture.",
+      "metrics": {
+        "hit_at_1_pct": null,
+        "hit_at_3_pct": null,
+        "hit_at_5_pct": null,
+        "mrr_at_5_pct": null,
+        "macro_hit_at_1_pct": null
+      },
+      "reported_comparable_to_dipecs": false,
+      "comparability": "excluded_unclear",
+      "comparability_note": "Kept as an explicit maintenance placeholder because issue #102 names APPredict/HAPP-style baselines, but no exact compatible numeric claim is recorded without a primary source.",
+      "source_url": "https://github.com/114August514/DiPECS/issues/102",
+      "source_locator": "acceptance criteria baseline list"
+    }
+  ]
+}

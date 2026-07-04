@@ -138,6 +138,22 @@ DiPECS ensemble 胜出证据：hit@1 为 21.196% vs 48.050%。
 smoke evidence；完整 action-level net benefit 仍必须补齐真实动作预算、误预热成本、
 控制面开销和治理收益后再计算。
 
+## PR #108 的 issue 归属
+
+PR #108 (`real-device-action-evidence`) 应被理解为**证据收敛 PR**,而不是完整收益
+闭环 PR:
+
+- 对 #90:仅补充 Pixel 6a 真机 smoke evidence、action bridge latency 和短窗口
+  控制面开销。它不满足 #90 的 n>=20、误预热成本、同 trace/同预算强基线对照和
+  `net_benefit_ms > 0` 要求,因此不能关闭 #90。
+- 对 #94:补充 ReleaseMemory 在真机 idle 短窗口下 jank 仍为 0.0 pp 改善的证据,
+  并把 value-metrics / coverage 文档统一为「中性/弱证据/待真内存压力复测」,
+  从而关闭“把 ReleaseMemory 当作稳定正收益”的数据质量问题。更严格的真内存
+  压力 n>=20 复测仍由 #99 跟踪。
+
+因此该分支关闭 #94 的结论降级问题,并为 #90 提供前置实测证据;最终 net-benefit
+闭环和 ReleaseMemory 压力场景复测仍应落在后续专门实验分支。
+
 ## 补齐路径：分动作 net-benefit 实验
 
 总原则：每个动作单独定义收益机制、测量手段、浪费代价、对照组，禁止无来源硬编码常量，

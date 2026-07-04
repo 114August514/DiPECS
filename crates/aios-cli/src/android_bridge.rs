@@ -34,12 +34,6 @@ pub fn send_ping(host: &str, port: u16, auth_token: &str) -> Result<()> {
         .flush()
         .with_context(|| format!("flushing ping to {host}:{port}"))?;
 
-    // Signal EOF so the server (which reads until EOF) knows the request is
-    // complete and can send its pong without waiting for a half-open timeout.
-    stream
-        .shutdown(Shutdown::Write)
-        .with_context(|| format!("shutting down write side to {host}:{port}"))?;
-
     let mut buf = Vec::with_capacity(MAX_RESPONSE_BYTES);
     let mut chunk = [0u8; 1024];
     loop {
@@ -250,6 +244,7 @@ mod tests {
     use std::io::{Read, Write};
     use std::net::{Shutdown, TcpListener};
     use std::thread;
+    use std::time::Duration;
 
     use super::{action_signature, send_action, send_ping};
 
@@ -265,8 +260,8 @@ mod tests {
         assert_eq!(value["auth_token"], "secret");
     }
 
-    /// Read until EOF, like Android's `readPayload`, then reply.
-    fn read_until_eof_then_reply(listener: TcpListener, response: &[u8]) {
+    /// Read until a complete JSON value, like Android's `readPayload`, then reply.
+    fn read_valid_json_then_reply(listener: TcpListener, response: &[u8]) {
         let response = response.to_vec();
         thread::spawn(move || {
             let (mut stream, _) = listener.accept().unwrap();
@@ -274,8 +269,17 @@ mod tests {
             let mut chunk = [0u8; 1024];
             loop {
                 match stream.read(&mut chunk) {
-                    Ok(0) => break,
-                    Ok(n) => buf.extend_from_slice(&chunk[..n]),
+                    Ok(0) => panic!("payload ended before a complete JSON value"),
+                    Ok(n) => {
+                        buf.extend_from_slice(&chunk[..n]);
+                        if std::str::from_utf8(&buf)
+                            .ok()
+                            .and_then(|text| serde_json::from_str::<serde_json::Value>(text).ok())
+                            .is_some()
+                        {
+                            break;
+                        }
+                    },
                     Err(_) => break,
                 }
             }
@@ -293,7 +297,7 @@ mod tests {
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
         let port = listener.local_addr().unwrap().port();
 
-        read_until_eof_then_reply(listener, br#"{"status":"ok","message":"pong"}"#);
+        read_valid_json_then_reply(listener, br#"{"status":"ok","message":"pong"}"#);
 
         send_ping("127.0.0.1", port, "secret").unwrap();
     }
@@ -303,10 +307,59 @@ mod tests {
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
         let port = listener.local_addr().unwrap().port();
 
-        read_until_eof_then_reply(listener, br#"{"status":"forbidden"}"#);
+        read_valid_json_then_reply(listener, br#"{"status":"forbidden"}"#);
 
         let err = send_ping("127.0.0.1", port, "secret").unwrap_err();
         assert!(err.to_string().contains("forbidden"));
+    }
+
+    #[test]
+    fn ping_keeps_write_side_open_until_bridge_replies() {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+
+        let saw_eof_before_reply = std::sync::Arc::new(std::sync::Mutex::new(false));
+        let saw_eof_clone = saw_eof_before_reply.clone();
+        let handle = thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut buf = Vec::new();
+            let mut chunk = [0u8; 1024];
+            loop {
+                let n = stream.read(&mut chunk).unwrap();
+                assert_ne!(n, 0, "ping payload must arrive before EOF");
+                buf.extend_from_slice(&chunk[..n]);
+                let text = std::str::from_utf8(&buf).unwrap();
+                if serde_json::from_str::<serde_json::Value>(text).is_ok() {
+                    break;
+                }
+            }
+
+            stream
+                .set_read_timeout(Some(Duration::from_millis(100)))
+                .unwrap();
+            let mut probe = [0u8; 1];
+            match stream.read(&mut probe) {
+                Ok(0) => *saw_eof_clone.lock().unwrap() = true,
+                Err(error)
+                    if error.kind() == std::io::ErrorKind::WouldBlock
+                        || error.kind() == std::io::ErrorKind::TimedOut => {},
+                Ok(n) => panic!("unexpected extra {n} bytes after complete JSON"),
+                Err(error) => panic!("unexpected probe read error: {error}"),
+            }
+
+            stream
+                .write_all(br#"{"status":"ok","message":"pong"}"#)
+                .unwrap();
+            stream.flush().unwrap();
+            stream.shutdown(Shutdown::Write).ok();
+        });
+
+        send_ping("127.0.0.1", port, "secret").unwrap();
+        assert!(
+            !*saw_eof_before_reply.lock().unwrap(),
+            "ping must not half-close before the bridge can reply"
+        );
+        handle.join().unwrap();
     }
 
     #[test]

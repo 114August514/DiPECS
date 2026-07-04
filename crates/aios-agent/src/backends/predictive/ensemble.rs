@@ -202,13 +202,12 @@ pub(super) fn fit_ensemble_models(
         .map(|(_, example)| example.clone())
         .collect();
     let mut logistic = fit_logistic_reranker(&logistic_fit);
-    if !logistic.is_empty() {
-        if logistic_gate.is_empty()
+    if !logistic.is_empty()
+        && (logistic_gate.is_empty()
             || logistic_hit_at_1(&logistic_gate, &logistic)
-                < weighted_hit_at_1(&logistic_gate, &rrf.weights)
-        {
-            logistic = LogisticRerankerModel::default();
-        }
+                < weighted_hit_at_1(&logistic_gate, &rrf.weights))
+    {
+        logistic = LogisticRerankerModel::default();
     }
     EnsembleModels { rrf, logistic }
 }

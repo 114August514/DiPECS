@@ -45,31 +45,35 @@ cargo test -p aios-agent --lib mock_cloud_e2e_tests
 | `dipecs_observe_only` | 后台运行，仅采集不动作 |
 | `dipecs_action_loop` | 后台运行 + 持续发送 KeepAlive / ReleaseMemory / PreWarm / Prefetch |
 
-### 结果 (10 采样 × 10s 间隔)
+### 结果 (30 采样 × 10s 间隔)
 
-| 模式 | CPU | RSS | PSS | Jank |
+| 模式 | CPU top 读数 | RSS | PSS | Jank |
 |------|----:|----:|----:|----:|
-| baseline_idle | 0.00% | 0 MB | 0 MB | 0% |
-| dipecs_observe_only | 1.15% | 138 MB | 28 MB | 0% |
-| dipecs_action_loop | 1.16% | 145 MB | 31 MB | 0% |
+| baseline_idle | 0.493% | 118.3 MB | 36.0 MB | 0.0% |
+| dipecs_observe_only | 0.387% | 125.9 MB | 39.6 MB | 0.0% |
+| dipecs_action_loop | 0.0% | 132.8 MB | 41.6 MB | 0.0% |
+
+> CPU 来自历史 adb `top` 快照，`0.0%` 和负 delta 只能说明低于本轮测量精度，
+> 不能引用为精确 CPU 结论。
 
 **增量 vs 基线：**
 
 | 指标 | observe_only | action_loop | 阈值 |
 |------|------------:|------------:|-----:|
-| CPU Δ | +1.15 pp | +1.16 pp | ≤ 8 pp |
-| RSS Δ | +138 MB | +145 MB | ≤ 220 MB |
-| PSS Δ | +28 MB | +31 MB | ≤ 80 MB |
+| CPU Δ | 噪声内 | 噪声内 | ≤ 8 pp guard |
+| RSS Δ | +7.6 MB | +14.5 MB | ≤ 220 MB |
+| PSS Δ | +3.6 MB | +5.6 MB | ≤ 80 MB |
 
 **预估功耗 (CPU/PSS 模型估算，模拟器 AC 供电)：**
 
 | 指标 | observe_only | action_loop | 阈值 |
 |------|------------:|------------:|-----:|
-| 耗电 | 0.14 mAh/min | 0.21 mAh/min | ≤ 0.35 |
-| 10min 耗电占比 (4000mAh) | 0.035% | 0.052% | — |
-| 温升 | +0.58°C | +0.87°C | ≤ 1.5°C |
+| 耗电 | 0.004 mAh/min | 0.071 mAh/min | ≤ 0.35 |
+| 10min 耗电占比 (4000mAh) | 0.001% | 0.018% | — |
+| 温升 | +0.02°C | +0.3°C | ≤ 1.5°C |
 
-> **结论：CPU < 2%，PSS ≈ 30MB，10 分钟耗电 ≈ 0.05%。用户不可感知。**
+> **结论：稳定可报的是 RSS/PSS 增量小、jank 0.0%。CPU 与功耗/温升只作为
+> 噪声内预算烟测和 AC 供电估算，不作精确结论。**
 
 ### 测试 (5 个，CI 自动)
 
@@ -295,15 +299,15 @@ cargo test -p aios-core                  # 全部 core 测试 (含隐私三层)
 
 | 维度 | 投入 | 回报 |
 |------|------|------|
-| 后台 CPU | +1.16% | — |
-| 内存 (PSS) | +31 MB | — |
-| 预估耗电 | 0.21 mAh/min (10min ≈ 0.05%) | — |
+| 后台 CPU | 噪声内预算烟测 | — |
+| 内存 (PSS) | +5.6 MB vs baseline | — |
+| 预估耗电 | AC 供电估算，非燃料计实测 | — |
 | 启动加速 | — | 1552 → 873 ms (**44%**) |
-| 卡顿降低 | — | 19.1% → 15.4% (**−3.7 pp**) |
+| 卡顿降低 | — | idle 场景 0.0 pp；ReleaseMemory 待内存压力复测 |
 | 云端延迟 | — | < 30s p95 |
 | 稳定性 | — | 无内存泄漏 |
 
-**用极低的资源代价 (CPU < 2%, 内存 < 150MB)，换取用户可感知的启动加速和流畅度提升。**
+**当前可支撑的综合结论：资源增量小、PreWarm 启动加速可复现；CPU 精确占用与 ReleaseMemory 正收益仍需更强测量场景。**
 
 ---
 

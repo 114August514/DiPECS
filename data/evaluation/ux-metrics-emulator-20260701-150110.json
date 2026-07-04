@@ -336,6 +336,7 @@
   "conclusion": {
     "accepted": true,
     "prewarm_effective": true,
-    "release_memory_effective": true
+    "release_memory_effective": false,
+    "release_memory_status": "weak_idle_positive_jank_only"
   }
 }

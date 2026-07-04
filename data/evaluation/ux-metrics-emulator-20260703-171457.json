@@ -14,7 +14,8 @@
     "Measured with adb on Android Studio emulator.",
     "Startup latency measured via am start -W (TotalTime).",
     "Jank measured via dumpsys gfxinfo.",
-    "PreWarm and ReleaseMemory actions sent through the bridge socket (adb forward)."
+    "PreWarm and ReleaseMemory actions sent through the bridge socket (adb forward).",
+    "ReleaseMemory showed no jank improvement in this idle emulator run and is treated as neutral pending memory-pressure retest."
   ],
   "thresholds": {
     "min_prewarm_pct_faster": 20.0,
@@ -665,6 +666,7 @@
   "conclusion": {
     "accepted": true,
     "prewarm_effective": true,
-    "release_memory_effective": true
+    "release_memory_effective": false,
+    "release_memory_status": "neutral_idle_no_jank_improvement"
   }
 }

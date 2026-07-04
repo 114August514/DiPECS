@@ -307,8 +307,8 @@ fn ux_metrics_conclusion_matches_deltas() {
     let jank_reduction = number(release_delta, "avg_jank_pct_points_reduction");
     assert_eq!(
         conclusion["release_memory_effective"].as_bool().unwrap(),
-        jank_reduction >= 0.0,
-        "release_memory_effective must match jank reduction sign"
+        jank_reduction > 0.0,
+        "release_memory_effective must require positive jank reduction"
     );
 }
 

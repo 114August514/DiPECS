@@ -23,7 +23,10 @@
 
 **ReleaseMemory effect:** jank 3.67 pp, PSS -0.31 MB
 
+**ReleaseMemory interpretation:** weak idle-scenario evidence only; not cited as a stable positive benefit until memory-pressure retest.
+
 ## Conclusion
 
 - PreWarm effective: True
-- ReleaseMemory effective: True
+- ReleaseMemory effective: False
+- ReleaseMemory status: weak_idle_positive_jank_only

@@ -6,6 +6,8 @@ PYTHON="${PYTHON:-}"
 PACKAGE="${PACKAGE:-com.dipecs.collector}"
 SAMPLES_PER_MODE="${SAMPLES_PER_MODE:-10}"
 SAMPLE_INTERVAL_SECS="${SAMPLE_INTERVAL_SECS:-10}"
+CPU_TOP_SAMPLES="${CPU_TOP_SAMPLES:-5}"
+CPU_TOP_INTERVAL_SECS="${CPU_TOP_INTERVAL_SECS:-1}"
 OUT_DIR="${OUT_DIR:-data/evaluation}"
 TOKEN="${TOKEN:-dipecs-dev-emulator-shared-token-00000000}"
 PORT="${PORT:-46321}"
@@ -87,19 +89,58 @@ PY
 }
 
 get_top_metrics() {
-  local line pid cpu res res_mb
-  line="$(adb_cmd shell top -b -n 1 -o PID,%CPU,RES,ARGS 2>/dev/null | grep "$PACKAGE" | head -n 1 || true)"
-  if [[ -z "$line" ]]; then
-    echo "null 0 0"
+  local snapshots="" line i
+  for ((i=0; i<CPU_TOP_SAMPLES; i++)); do
+    line="$(adb_cmd shell top -b -n 1 -o PID,%CPU,RES,ARGS 2>/dev/null | grep -F "$PACKAGE" | head -n 1 || true)"
+    if [[ -n "$line" ]]; then
+      snapshots+="$line"$'\n'
+    fi
+    if [[ "$i" -lt $((CPU_TOP_SAMPLES - 1)) ]]; then
+      sleep "$CPU_TOP_INTERVAL_SECS"
+    fi
+  done
+  if [[ -z "$snapshots" ]]; then
+    echo "null 0 0 0"
     return
   fi
-  # shellcheck disable=SC2086
-  set -- $line
-  pid="$1"
-  cpu="$2"
-  res="$3"
-  res_mb="$(parse_size_mb "$res")"
-  echo "$pid $cpu $res_mb"
+  "$PYTHON" - "$snapshots" <<'PY'
+import re
+import statistics
+import sys
+
+snapshots = [line.split() for line in sys.argv[1].splitlines() if line.strip()]
+records = []
+for parts in snapshots:
+    if len(parts) < 3:
+        continue
+    try:
+        cpu = float(parts[1].rstrip("%"))
+    except ValueError:
+        continue
+    records.append((parts[0], cpu, parts[2]))
+
+if not records:
+    print("null 0 0 0")
+    raise SystemExit
+
+pid = records[-1][0]
+cpu = statistics.median(record[1] for record in records)
+raw_res = records[-1][2]
+match = re.match(r"^([0-9.]+)([KMG]?)$", raw_res)
+if not match:
+    res_mb = 0.0
+else:
+    value = float(match.group(1))
+    unit = match.group(2)
+    if unit == "K" or unit == "":
+        res_mb = value / 1024
+    elif unit == "G":
+        res_mb = value * 1024
+    else:
+        res_mb = value
+
+print(pid, round(cpu, 3), round(res_mb, 3), len(records))
+PY
 }
 
 get_meminfo() {
@@ -145,8 +186,8 @@ get_gfxinfo() {
 
 sample_json() {
   local mode="$1" idx="$2"
-  local pid cpu top_res rss pss battery ac thermal total_frames janky_frames jank_pct ts
-  read -r pid cpu top_res < <(get_top_metrics)
+  local pid cpu top_res cpu_top_samples rss pss battery ac thermal total_frames janky_frames jank_pct ts
+  read -r pid cpu top_res cpu_top_samples < <(get_top_metrics)
   if [[ "$pid" == "null" ]]; then
     rss=0
     pss=0
@@ -160,15 +201,16 @@ sample_json() {
   read -r battery ac < <(get_battery)
   thermal="$(get_thermal)"
   ts="$(date -u +%s%3N)"
-  "$PYTHON" - "$idx" "$ts" "$mode" "$pid" "$cpu" "$top_res" "$rss" "$pss" "$battery" "$ac" "$thermal" "$total_frames" "$janky_frames" "$jank_pct" <<'PY'
+  "$PYTHON" - "$idx" "$ts" "$mode" "$pid" "$cpu" "$top_res" "$cpu_top_samples" "$rss" "$pss" "$battery" "$ac" "$thermal" "$total_frames" "$janky_frames" "$jank_pct" <<'PY'
 import json, sys
-idx, ts, mode, pid, cpu, top_res, rss, pss, battery, ac, thermal, total_frames, janky_frames, jank_pct = sys.argv[1:]
+idx, ts, mode, pid, cpu, top_res, cpu_top_samples, rss, pss, battery, ac, thermal, total_frames, janky_frames, jank_pct = sys.argv[1:]
 obj = {
   "sample_index": int(idx),
   "timestamp_ms": int(ts),
   "mode": mode,
   "pid": None if pid == "null" else int(pid),
   "cpu_pct": round(float(cpu), 3),
+  "cpu_top_samples": int(float(cpu_top_samples)),
   "top_res_mb": round(float(top_res), 3),
   "rss_mb": round(float(rss), 3),
   "pss_mb": round(float(pss), 3),
@@ -272,9 +314,9 @@ json_path="$OUT_DIR/resource-overhead-emulator-$timestamp.json"
 md_path="$OUT_DIR/resource-overhead-emulator-$timestamp.md"
 adb_serial="$(adb_cmd get-serialno | tr -d '\r')"
 
-"$PYTHON" - "$tmpdir/baseline.jsonl" "$tmpdir/observe.jsonl" "$tmpdir/action.jsonl" "$json_path" "$md_path" "$timestamp" "$SAMPLE_INTERVAL_SECS" "$SAMPLES_PER_MODE" "$PACKAGE" "$adb_serial" <<'PY'
+"$PYTHON" - "$tmpdir/baseline.jsonl" "$tmpdir/observe.jsonl" "$tmpdir/action.jsonl" "$json_path" "$md_path" "$timestamp" "$SAMPLE_INTERVAL_SECS" "$SAMPLES_PER_MODE" "$CPU_TOP_SAMPLES" "$CPU_TOP_INTERVAL_SECS" "$PACKAGE" "$adb_serial" <<'PY'
 import json, sys, datetime, pathlib
-baseline_path, observe_path, action_path, json_path, md_path, timestamp, interval, samples_per, package, adb_serial = sys.argv[1:]
+baseline_path, observe_path, action_path, json_path, md_path, timestamp, interval, samples_per, cpu_top_samples, cpu_top_interval, package, adb_serial = sys.argv[1:]
 
 def load_run(path, mode):
     samples = [json.loads(line) for line in open(path, encoding="utf-8") if line.strip()]
@@ -321,7 +363,8 @@ def delta(run):
     }
 
 def estimate(d, network_mw=0.0):
-    power = round(d["avg_cpu_pct_points"] * 22 + d["avg_pss_mb"] * 0.25 + network_mw, 1)
+    cpu_delta = max(d["avg_cpu_pct_points"], 0)
+    power = round(cpu_delta * 22 + max(d["avg_pss_mb"], 0) * 0.25 + network_mw, 1)
     mah_min = round(power / 3.85 / 60, 3)
     return {
         "estimated_power_mw": power,
@@ -357,6 +400,8 @@ data = {
         "package": package,
         "sample_interval_secs": int(interval),
         "samples_per_mode": int(samples_per),
+        "cpu_top_samples_per_measurement": int(cpu_top_samples),
+        "cpu_top_interval_secs": float(cpu_top_interval),
         "adb_serial": adb_serial,
         "collected_at": datetime.datetime.now().isoformat(timespec="seconds"),
     },
@@ -364,6 +409,7 @@ data = {
         "Measured with adb on Android Studio emulator.",
         "Battery is AC powered in this emulator run; report-facing battery and thermal values use estimates from measured CPU/PSS deltas.",
         "baseline_idle force-stops the DiPECS app; app process CPU/RSS/PSS are therefore expected to be zero.",
+        "CPU is a median of adb top sub-samples and should be treated as a rough budget smoke; near-zero or negative deltas are below measurement precision, not exact CPU conclusions.",
     ],
     "thresholds": {
         "max_cpu_delta_pct_points": 8.0,
@@ -395,7 +441,7 @@ data = {
     },
     "report_summary": {
         "status": "measured_with_estimated_power_thermal",
-        "note": "CPU/RSS/PSS/jank are measured from adb. Battery and thermal values use estimated_power_thermal because the emulator stayed AC powered and reported no sensor movement.",
+        "note": "RSS/PSS/jank are measured from adb. CPU is retained as a noisy budget smoke only; battery and thermal values use estimated_power_thermal because the emulator stayed AC powered and reported no sensor movement.",
         "rows": [report_row(baseline), report_row(observe, observe_est), report_row(action, action_est)],
     },
     "conclusion": {
@@ -420,6 +466,7 @@ md = f"""# DiPECS Emulator Resource Overhead Measurement
 - Status: measured on Android Studio emulator
 - Sample interval: {interval} seconds
 - Samples per mode: {samples_per}
+- CPU note: median of {cpu_top_samples} adb top sub-samples per sample; near-zero or negative deltas are below measurement precision and should not be cited as exact CPU usage.
 - Battery/thermal note: emulator was AC powered, so report-facing battery and thermal values below use the clearly marked estimate derived from measured CPU/PSS deltas.
 
 | Mode | Avg CPU | Avg RSS | Avg PSS | Estimated battery drain | Estimated thermal delta | Avg jank |

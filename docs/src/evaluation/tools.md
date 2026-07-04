@@ -34,7 +34,7 @@
 
 ## 资源开销：`collect-resource-overhead.sh`
 
-测量三种模式下的 CPU、RSS、PSS、电池/温度估算和 jank：
+测量三种模式下的 RSS、PSS、jank，并记录粗粒度 CPU 预算烟测与电池/温度估算：
 
 - `baseline_idle`：app 被 force-stop
 - `dipecs_observe_only`：仅采集
@@ -64,7 +64,7 @@
 
 阈值：
 
-- CPU delta ≤ 8 个百分点
+- CPU delta ≤ 8 个百分点（仅预算烟测；近 0 或负 delta 不作精确 CPU 结论）
 - PSS delta ≤ 80 MB
 
 ## UX 指标：`collect-ux-metrics.sh`

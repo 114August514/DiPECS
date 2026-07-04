@@ -39,8 +39,8 @@
 
 ### 部分证实（有正面数据但不足以下结论）
 
-1. **ReleaseMemory 降 jank。** run1 降 3.67 pp，run2 完全无变化，且测试在 idle
-   模拟器而非真内存压力场景。只能算弱证据，需真压力复测。
+1. **ReleaseMemory 降 jank。** run1 降 3.67 pp，run2 完全无变化，最新 idle
+   fixture 记为 `release_memory_effective=false`。由于测试不是真内存压力场景，只能算弱证据，需真压力复测。
 2. **云端复杂语义决策。** live DeepSeek 4 个场景全部成功产出 intent，但样本仅 4 个，
    不能说明泛化性。
 
@@ -75,7 +75,7 @@
 | ActionType | 语义 | 代码链 | 真机派发 | 收益实验 | 结论 |
 | --- | --- | --- | --- | --- | --- |
 | `PreWarmProcess` | 预热应用进程 | 齐 | 转发到设备 | 已测：+44.7% 启动（489.3 vs 884.1 ms，`am start -W TotalTime`，p95 512.0 vs 932.0 ms） | 真闪光点 |
-| `ReleaseMemory` | 释放非关键内存 | 齐 | 转发到设备 | 已测但不稳定：旧 run jank -3.67 pp，新 run idle 场景 0.0 pp、PSS -0.462 MB | 收益微弱，踩「伪需求」线，暂不作卖点 |
+| `ReleaseMemory` | 释放非关键内存 | 齐 | 转发到设备 | 已测但不稳定：旧 run jank -3.67 pp，新 run idle 场景 0.0 pp、PSS -0.462 MB，最新结论为 neutral | 收益微弱，踩「伪需求」线，暂不作卖点 |
 | `PrefetchFile` | 预加载热点文件到页缓存 | 齐 | 带 `url:`/`uri:` 时转发 | 无 | 能发≠有用，收益待证 |
 | `KeepAlive` | 保活当前前台进程 | 齐 | 无条件转发 | 无 | 能发≠有用，收益待证 |
 | `NoOp` | 不执行操作 | — | — | — | — |

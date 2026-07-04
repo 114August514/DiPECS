@@ -36,11 +36,11 @@
 | MAPLE | LSApp，按用户时间顺序 70/10/20 | 71.57% | 86.49% | 91.50% | 79.36% | 仅作背景 | TGT Table II 引用了 MAPLE 原论文数值，未给标准差。 |
 | MAPLE | LSApp，cold-start 用户级 90/10 | 76.44% | 88.48% | 92.47% | 82.72% | 仅作背景 | cold-start 是 unseen-user 协议，不是 DiPECS Standard split。 |
 | TGT | LSApp，按用户时间顺序 70/10/20 | 81.15% | 94.94% | 96.67% | 88.07% | 仅作背景 | 使用同一公开数据集家族，但预处理和模型管线不同。 |
-| TGT | LSApp，cold-start 用户级 90/10 | 82.02% | 95.46% | 96.71% | 88.76% | 仅作背景 | 可用于定位学术上限，但不能直接比较 DiPECS Standard。 |
+| TGT | LSApp，cold-start 用户级 90/10 | 82.02% | 95.46% | 96.71% | 88.76% | 仅作背景 | 可用于了解相关论文报告水平，但不能直接比较 DiPECS Standard。 |
 | AppFormer + K + T | 上海运营商 app usage + POI，PAULCI 对照 partition | 31.92% | 52.13% | 61.05% | - | 仅作背景 | Table V 报告 Hit@K；其 MRR 口径没有作为 DiPECS MRR@5 写入。 |
 | AppFormer + K + T | 上海运营商 app usage + POI，DUGN 对照 partition | 42.68% | 62.30% | 69.60% | 53.03% | 仅作背景 | Table VI 报告 Hit@K/MRR@K，但数据集和 split 与 DiPECS 不同。 |
 | PAULCI | 上海运营商 app usage + POI | 27.17% | 47.53% | 57.32% | - | 仅作背景 | AppFormer Table V 中的 POI/location context baseline。 |
-| POI transfer-learning popularity | 上海 city-scale 运营商数据 | - | - | 83.00% | - | 暂不纳入比较 | 该数字是 location-level top-five popular apps，不是个人 next-app 窗口预测。 |
+| POI transfer-learning popularity | 上海 city-scale 运营商数据 | - | - | - | - | 暂不纳入比较 | 原文报告 location-level top-five popular-app hit rate 83.00%，不是个人 next-app 窗口预测。 |
 | GNN + self-attention | Tsinghua App Usage，5/1/1 天 split | - | - | - | - | 暂不纳入比较 | 已确认数据集、split 和指标族，但暂未把可验证数值写入 fixture。 |
 | HAPP / APPredict family | 未确认 | - | - | - | - | 暂不纳入比较 | 只作为跟踪行；拿到主来源前不写数值主张。 |
 

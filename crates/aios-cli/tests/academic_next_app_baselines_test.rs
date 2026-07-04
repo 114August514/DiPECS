@@ -48,6 +48,34 @@ fn optional_metric(metrics: &Value, field: &str) -> Option<f64> {
     }
 }
 
+fn metric_pairs() -> [(&'static str, &'static str, f64); 5] {
+    [
+        ("hit_at_1_pct", "hit_rate_at_1_pct", 1.0),
+        ("hit_at_3_pct", "hit_rate_at_3_pct", 1.0),
+        ("hit_at_5_pct", "hit_rate_at_5_pct", 1.0),
+        ("mrr_at_5_pct", "mean_reciprocal_rank_at_5", 100.0),
+        ("macro_hit_at_1_pct", "macro_hit_rate_at_1_pct", 1.0),
+    ]
+}
+
+fn assert_metrics_match_report(label: &str, fixture_metrics: &Value, report_metrics: &Value) {
+    for (fixture_field, report_field, multiplier) in metric_pairs() {
+        let fixture_value = fixture_metrics
+            .get(fixture_field)
+            .and_then(Value::as_f64)
+            .unwrap_or_else(|| panic!("{label} fixture metric {fixture_field} missing"));
+        let report_value = report_metrics
+            .get(report_field)
+            .and_then(Value::as_f64)
+            .unwrap_or_else(|| panic!("{label} report metric {report_field} missing"))
+            * multiplier;
+        assert!(
+            (fixture_value - report_value).abs() < 0.001,
+            "{label} {fixture_field} ({fixture_value}) must match report {report_field} ({report_value})"
+        );
+    }
+}
+
 #[test]
 fn academic_baseline_fixture_has_maintainable_schema() {
     let fixture = load_json(baselines_path());
@@ -119,6 +147,28 @@ fn academic_baseline_fixture_has_maintainable_schema() {
             }
         }
 
+        if comparability == "excluded_unclear" {
+            assert_eq!(
+                numeric_metrics, 0,
+                "{method} is excluded_unclear, so aligned metrics must remain null"
+            );
+        }
+
+        if method == "POI transfer-learning app popularity" {
+            let raw_metrics = baseline
+                .get("raw_reported_metrics")
+                .and_then(Value::as_array)
+                .expect("POI popularity row should preserve incompatible raw metrics separately");
+            assert!(
+                raw_metrics.iter().any(|metric| {
+                    metric.get("name").and_then(Value::as_str)
+                        == Some("location_top5_popular_app_hit_rate_pct")
+                        && metric.get("value_pct").and_then(Value::as_f64) == Some(83.0)
+                }),
+                "POI popularity row should keep 83.0% as a raw location-level metric"
+            );
+        }
+
         let comparable = baseline
             .get("reported_comparable_to_dipecs")
             .and_then(Value::as_bool)
@@ -185,28 +235,56 @@ fn dipecs_reference_matches_committed_lsapp_standard_report() {
         report.get("test_examples").and_then(Value::as_u64)
     );
 
-    let metric_pairs = [
-        ("hit_at_1_pct", "hit_rate_at_1_pct", 1.0),
-        ("hit_at_3_pct", "hit_rate_at_3_pct", 1.0),
-        ("hit_at_5_pct", "hit_rate_at_5_pct", 1.0),
-        ("mrr_at_5_pct", "mean_reciprocal_rank_at_5", 100.0),
-        ("macro_hit_at_1_pct", "macro_hit_rate_at_1_pct", 1.0),
-    ];
-    for (fixture_field, report_field, multiplier) in metric_pairs {
-        let fixture_value = reference_metrics
-            .get(fixture_field)
-            .and_then(Value::as_f64)
-            .unwrap_or_else(|| panic!("dipecs_reference metric {fixture_field} missing"));
-        let report_value = report_ensemble
-            .get(report_field)
-            .and_then(Value::as_f64)
-            .unwrap_or_else(|| panic!("report ensemble metric {report_field} missing"))
-            * multiplier;
-        assert!(
-            (fixture_value - report_value).abs() < 0.001,
-            "{fixture_field} ({fixture_value}) must match report {report_field} ({report_value})"
+    assert_metrics_match_report("dipecs_reference", reference_metrics, report_ensemble);
+}
+
+#[test]
+fn direct_baseline_rows_match_committed_report_sources() {
+    let fixture = load_json(baselines_path());
+    let report = load_json(lsapp_standard_report_path());
+    let report_metrics = report
+        .get("metrics")
+        .and_then(Value::as_object)
+        .expect("report metrics object missing");
+    let baselines = fixture
+        .get("baselines")
+        .and_then(Value::as_array)
+        .expect("baselines must be an array");
+
+    let mut checked_direct_rows = 0usize;
+    for baseline in baselines {
+        if baseline
+            .get("reported_comparable_to_dipecs")
+            .and_then(Value::as_bool)
+            != Some(true)
+        {
+            continue;
+        }
+
+        let method = non_empty_str(baseline, "method");
+        assert_eq!(
+            baseline.get("source_url").and_then(Value::as_str),
+            Some("data/evaluation/next-app/lsapp-standard.report.json"),
+            "{method} direct rows must point at the committed LSApp Standard report"
         );
+        let source_locator = non_empty_str(baseline, "source_locator");
+        let report_key = source_locator
+            .strip_prefix("metrics.")
+            .unwrap_or_else(|| panic!("{method} direct source_locator must start with metrics."));
+        let source_metrics = report_metrics
+            .get(report_key)
+            .unwrap_or_else(|| panic!("{method} report metrics key {report_key} missing"));
+        let fixture_metrics = baseline
+            .get("metrics")
+            .unwrap_or_else(|| panic!("{method} fixture metrics missing"));
+        assert_metrics_match_report(method, fixture_metrics, source_metrics);
+        checked_direct_rows += 1;
     }
+
+    assert!(
+        checked_direct_rows >= 1,
+        "at least one direct comparable baseline row should be verified"
+    );
 }
 
 #[test]
@@ -227,6 +305,10 @@ fn academic_baseline_doc_is_wired_and_mentions_comparability_policy() {
     assert!(doc.contains("AppFormer"));
     assert!(doc.contains("POI"));
     assert!(doc.contains("GNN"));
+    assert!(
+        !doc.contains("学术上限"),
+        "contextual-only rows should not be described as an academic upper bound"
+    );
 
     let nav = fs::read_to_string(root.join("docs").join("mkdocs.yml"))
         .expect("docs/mkdocs.yml should be readable");

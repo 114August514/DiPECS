@@ -202,10 +202,17 @@
       "metrics": {
         "hit_at_1_pct": null,
         "hit_at_3_pct": null,
-        "hit_at_5_pct": 83.0,
+        "hit_at_5_pct": null,
         "mrr_at_5_pct": null,
         "macro_hit_at_1_pct": null
       },
+      "raw_reported_metrics": [
+        {
+          "name": "location_top5_popular_app_hit_rate_pct",
+          "value_pct": 83.0,
+          "scope": "location-level top-five popular app hit rate"
+        }
+      ],
       "reported_comparable_to_dipecs": false,
       "comparability": "excluded_unclear",
       "comparability_note": "The reported 83.0% hit rate targets top-five popular apps by location, so it is not a DiPECS next-app window metric.",

@@ -37,9 +37,13 @@
 //! model's gap strictly exceeds that control gap.
 //!
 //! ## Runtime / how to run
-//! Full train+eval per split is ~24s in release, ~2min in debug; this runs two
-//! splits. Canonical invocation is release:
-//!   cargo test -p aios-cli --release --test next_app_ablation_test -- --nocapture
+//! Full train+eval over LSApp is intentionally heavy and belongs in the
+//! scheduled / `next-app-eval` label-gated CI lane. Canonical invocation is
+//! release with one cargo job to avoid stacking compile/runtime pressure:
+//!   cargo test -j 1 -p aios-cli --release --test next_app_ablation_test \
+//!     personalization_contribution_on_lsapp -- --nocapture
+//! Avoid running the full gate from constrained IDE sessions; use the debug
+//! loud-skip behavior for local smoke checks unless the machine has spare RAM.
 //! In a debug build the test skips LOUDLY (pointing at `--release`) unless
 //! `DIPECS_NEXT_APP_EVAL_FORCE=1` is set. Never a silent pass.
 //!
@@ -174,8 +178,9 @@ fn personalization_contribution_on_lsapp() {
              # SKIPPED next_app_ablation_test: debug build.             #\n\
              # Full LSApp train+eval is ~2min/split in debug (x2).      #\n\
              # Run the release invocation instead:                      #\n\
-             #   cargo test -p aios-cli --release \\                     #\n\
-             #     --test next_app_ablation_test -- --nocapture         #\n\
+             #   cargo test -j 1 -p aios-cli --release \\                #\n\
+             #     --test next_app_ablation_test \\                      #\n\
+             #     personalization_contribution_on_lsapp -- --nocapture #\n\
              # or force debug with DIPECS_NEXT_APP_EVAL_FORCE=1.        #\n\
              ############################################################\n"
         );

@@ -1,8 +1,8 @@
 # 测试策略
 
-> Status: Current  
-> Last verified: 2026-07-01  
-> Code anchors: `crates/*/tests/`, `tests/scenarios/`, `.github/workflows/test.yml`
+> Status: Current
+> Last verified: 2026-07-05
+> Code anchors: `crates/*/tests/`, `tests/scenarios/`, `.github/workflows/test.yml`, `.github/workflows/bench.yml`
 
 **这篇文档回答什么**：DiPECS 有哪些测试层、每层验证什么、需要什么前置条件。  
 **适合谁读**：需要决定跑哪些测试、新增测试或排查 CI 失败的人。
@@ -46,6 +46,29 @@
 | `resource_overhead_dataset_test` | `data/evaluation/resource-overhead-emulator-*.json` | CPU delta ≤ 8 pp，PSS delta ≤ 80 MB |
 | `ux_metrics_dataset_test` | `data/evaluation/ux-metrics-emulator-*.json` | PreWarm 加速 ≥ 20% 或 ≥ 100 ms；jank 增加 ≤ 20 pp |
 | `stability_dataset_test` | `data/evaluation/stability-emulator-canonical.json` | RSS ≤ 50 MB/h，PSS ≤ 20 MB/h，CPU ≤ 10% |
+
+## LSApp personalization gate
+
+`next_app_ablation_test` 是完整 LSApp train+eval gate，用于验证个性化模型在真实 LSApp trace 上以严格 pp margin 胜过非个性化/强 baseline。它不属于默认快速本地测试；CI 通过 `.github/workflows/bench.yml` 的 scheduled run 或 PR 上的 `next-app-eval` label 执行。
+
+CI canonical command：
+
+```bash
+./tools/prepare-lsapp.sh
+cargo test -j 1 -p aios-cli --release --test next_app_ablation_test \
+  personalization_contribution_on_lsapp -- --nocapture
+```
+
+前置条件：
+
+- `third_party/LSApp` submodule 已 checkout；CI 里由 `actions/checkout` 的 `submodules: true` 保证。
+- `tools/prepare-lsapp.sh` 已生成 `data/lsapp/lsapp.tsv`。
+- release 模式必须作为 cargo 参数出现在 test-harness `--` 之前；`next_app_ablation_ci_test` 会守住这个 workflow contract。
+
+本地调试建议：
+
+- 日常只跑 debug loud-skip 或 workflow contract test：`cargo test -p aios-cli --test next_app_ablation_ci_test --offline`。
+- 不要在资源紧张的 IDE 会话里直接跑全量 LSApp gate；它会读取完整 3.66M 行 trace 并进行两轮 train/eval，可能造成明显 RAM/swap 压力。
 
 ## 场景脚本
 

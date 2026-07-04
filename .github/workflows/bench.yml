@@ -2,7 +2,11 @@
 name: Performance-Bench
 
 on:
+  schedule:
+    # Weekly heavy LSApp gate; PRs can also opt in with the next-app-eval label.
+    - cron: '17 18 * * 0'
   pull_request:
+    types: [ opened, synchronize, reopened, labeled ]
     branches: [ main ]
     paths:
       - '**.rs'
@@ -136,6 +140,9 @@ jobs:
       - uses: actions/checkout@v7
         with:
           lfs: true
+          # LSApp lives in third_party/LSApp; the optional ablation lane prepares
+          # data/lsapp/lsapp.tsv from that submodule before running the gate.
+          submodules: true
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@master
@@ -158,13 +165,13 @@ jobs:
 
       # B. 预测质量 vs 强基线（scheduled / label-gated，因数据大/训练慢）
       # 失败语义：个性化模型未以严格边距击败 popularity/markov 强基线。
+      # 这是完整 LSApp train+eval gate；release 模式和 -j 1 用于控制 CI 资源压力。
       - name: LSApp Personalization Ablation (optional)
         if: github.event_name == 'schedule' || contains(github.event.pull_request.labels.*.name, 'next-app-eval')
         run: |
           ./tools/prepare-lsapp.sh
-          cargo test -p aios-cli --test next_app_ablation_test \
-            -- personalization_contribution_on_lsapp \
-            --release --nocapture
+          cargo test -j 1 -p aios-cli --release --test next_app_ablation_test \
+            personalization_contribution_on_lsapp -- --nocapture
 
       # C. 强基线集成 smoke：默认 CI 不跑完整 LSApp 训练，但必须确认
       # StrongPredictiveActionBaseline 代码和 committed LSApp report 接线没有回退。

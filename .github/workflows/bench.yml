@@ -167,10 +167,9 @@ jobs:
 
       # B. 完整 LSApp 个性化消融 —— 本地专用，不在 CI 跑。
       # 该 gate 冷编译 release 依赖链约 55 分钟，远超 CI 快速反馈预算。它现在是
-      # 本地 #[ignore] 测试，跑法见 next_app_ablation_test.rs 文件头：
-      #   cargo test -j 1 -p aios-cli --release --test next_app_ablation_test \
-      #     -- --ignored --nocapture
-      # 基线数字通过重生成 committed report 保护，回归由下面的 smoke 兜底。
+      # 本地 #[ignore] 测试，本地跑法（release + --ignored）见文件头文档：
+      # crates/aios-cli/tests/next_app_ablation_test.rs。基线数字通过重生成
+      # committed report 保护，回归由下面的 smoke 兜底。
 
       # C. 强基线集成 smoke：默认 CI 不跑完整 LSApp 训练，但必须确认
       # StrongPredictiveActionBaseline 代码和 committed LSApp report 接线没有回退。

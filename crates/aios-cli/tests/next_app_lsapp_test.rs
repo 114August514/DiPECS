@@ -269,7 +269,12 @@ fn personalized_models_beat_popularity_on_lsapp() {
     let cold = run_split(&input, NextAppSplit::ColdStart, &dir, "cold-start");
     print_table("cold-start split", &cold);
 
-    let cold_candidates = ["markov", "xgboost", "strong_predictive", "adaptive_predictive"];
+    let cold_candidates = [
+        "markov",
+        "xgboost",
+        "strong_predictive",
+        "adaptive_predictive",
+    ];
     let cold_winners: Vec<&str> = cold_candidates
         .into_iter()
         .filter(|model| beats_all(&cold, model, POPULARITY_BASELINES))

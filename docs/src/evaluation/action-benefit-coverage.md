@@ -1,7 +1,7 @@
 # 动作收益覆盖核对与实验缺口
 
 > Status: Assessment
-> Last updated: 2026-07-03
+> Last updated: 2026-07-04
 > Purpose: 如实记录当前实验能证明什么、不能证明什么，防止把动作面覆盖度与
 > 收益证明覆盖度混为一谈，也防止合成层的伪收益被当成真实系统收益引用。
 
@@ -48,12 +48,15 @@
 
 1. **PrefetchFile / KeepAlive 的真实收益。** 只证明"能发出去并被确认"，没证明
    "发出去后系统变好了"。
-2. **DiPECS 相对强基线的净收益。** `StrongPredictiveActionBaseline` 已开始接入
-   LSApp 评估，但还没有在同设备同预算下执行动作并测量净收益。
+2. **DiPECS 相对强基线的离线净收益。** `StrongPredictiveActionBaseline` 已接入
+   LSApp 评估，PreWarmProcess 已有 committed action-net-benefit fixture，把
+   LSApp standard hit@1、emulator TotalTime saved latency、设备确认延迟和离线 replay
+   控制面开销接成一个非 placeholder gate。但它仍不是新的同设备 wrong-target 多样本实验。
 3. **真实长期用户体验。** 无真实用户、无 field study，无法支撑"用了 DiPECS 后
    电池/流畅度/启动延迟整体改善"。
 4. **预测→动作→收益的端到端链。** LSApp 真实数据只到预测准确率；ux-metrics 只到
-   "预热就快"；合成 action-value 是硬编码常量回测。
+   "预热就快"；`action-net-benefit` fixture 已把二者与实测成本连接起来，但设备侧
+   wrong-target prewarm 成本仍来自既有动作确认延迟的保守近似，不是新采集的多样本错预热实验。
 
 ### 对外表述建议
 
@@ -117,8 +120,50 @@ DiPECS ensemble 已超过强基线：hit@1 为 56.442% vs 53.784%，hit@3 为
 「预测命中率 × 实测 PreWarm 加速」的 gross-saved 先决 gate。cold-start 仍不能作为
 DiPECS ensemble 胜出证据：hit@1 为 21.196% vs 48.050%。
 
-这只解决 #90/#91 的预测质量和已测启动收益连接问题；完整 action-level net benefit
-仍必须补齐真实动作预算、误预热成本、控制面开销和治理收益后再计算。
+`data/evaluation/action-net-benefit/prewarm-emulator-20260704-measured-v1.json` 进一步补上了
+#90 的离线 measured gate：
+
+| 输入 | 数值 | 来源 | 说明 |
+| --- | ---: | --- | --- |
+| DiPECS ensemble hit@1 | 56.442% | `lsapp-standard.report.json` | standard split |
+| StrongPredictive hit@1 | 53.784% | `lsapp-standard.report.json` | strong baseline 同 test window |
+| PreWarm saved latency | 394.8 ms | `ux-metrics-emulator-20260703-171457.json` | `am start -W TotalTime`，cold/prewarm 合计 n=20 |
+| Wasted PreWarm cost | 31.231 ms | `value-metrics-20260701.md` | PreWarmProcess 设备确认延迟，作为错预热成本的保守近似 |
+| DiPECS control-plane cost | 0.07848 ms / prediction | `value-metrics-20260701.md` | replay 128.0 ms / 1631 events 摊销 |
+| Strong baseline control-plane cost | 0.0 ms / prediction | `lsapp-standard.report.json` | 对 baseline 有利的下界 |
+
+对应公式为：
+
+```text
+net_benefit =
+  examples * hit@1 * prewarm_saved_ms
+  - examples * (1 - hit@1) * wasted_prewarm_ms
+  - examples * control_plane_ms
+```
+
+在 `test_examples = 272519` 下，当前 fixture gate 要求 DiPECS PreWarm measured net
+benefit 为正，并且优于 `StrongPredictiveActionBaseline`。这个 gate 已由
+`crates/aios-cli/tests/next_app_net_benefit_test.rs` 非 ignored 测试覆盖。
+
+边界仍需写清：这不是新的真机多样本 wrong-target prewarm 实验；`wasted_prewarm_ms`
+目前用既有设备确认延迟作为保守近似，RSS/PSS/CPU 资源浪费没有折算进 ms。若未来采集
+wrong-target 多样本，应替换 fixture，而不是绕过 schema。
+
+生成命令示例：
+
+```bash
+cargo run -p aios-cli -- generate-prewarm-net-benefit-fixture \
+  --report data/evaluation/next-app/lsapp-standard.report.json \
+  --ux-metrics data/evaluation/ux-metrics/ux-metrics-emulator-20260703-171457.json \
+  --output data/evaluation/action-net-benefit/prewarm-emulator-YYYYMMDD.json \
+  --dataset-id prewarm-emulator-YYYYMMDD \
+  --wasted-prewarm-ms 31.231 \
+  --wasted-prewarm-samples 1 \
+  --dipecs-control-plane-ms 0.07848 \
+  --dipecs-control-plane-samples 1631 \
+  --strong-control-plane-ms 0.0 \
+  --strong-control-plane-samples 272519
+```
 
 ## 补齐路径：分动作 net-benefit 实验
 

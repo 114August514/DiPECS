@@ -1,7 +1,7 @@
 # 强 Baseline 与动作收益评估准则
 
 > Status: Active
-> Last updated: 2026-07-03
+> Last updated: 2026-07-04
 > Purpose: 防止评估退回 toy baseline，明确 DiPECS 要证明的系统价值。
 
 ## 结论先行
@@ -128,8 +128,30 @@ hit@1 为 56.442% vs 53.784%，hit@3 为 76.104% vs 72.563%，hit@5 为
 gross-saved gate，用真实 LSApp hit@1 和 emulator TotalTime saving 证明标准 split 的
 已测启动收益先决条件成立。
 
-这个 gate 仍不是完整 #90 action-level net benefit：它没有测误预热成本，也没有把
-DiPECS control-plane overhead 从收益中扣除。
+在此基础上，`feat/prewarm-net-benefit-fixture` 为 #90 增加了一个离线
+action-level measured fixture gate：
+
+- fixture：`data/evaluation/action-net-benefit/prewarm-emulator-20260704-measured-v1.json`
+- 生成入口：`aios-cli generate-prewarm-net-benefit-fixture`
+- 计算入口：`compute_measured_net_benefit`
+- CI 覆盖：`next_app_net_benefit_test` 中的 fixture validation、CLI generation、
+  DiPECS-vs-strong measured net-benefit gate，以及大量坏数据/边界矩阵测试。
+
+当前 measured fixture 使用：
+
+| 字段 | 数值 | 解释 |
+| --- | ---: | --- |
+| `prewarm_saved.mean_ms` | 394.8 | emulator `am start -W TotalTime` cold/prewarm 均值差 |
+| `wasted_prewarm.mean_ms` | 31.231 | PreWarmProcess 设备确认延迟，作为错预热成本的保守近似 |
+| `control_plane.dipecs.mean_ms` | 0.07848 | replay 128.0 ms / 1631 events 摊销 |
+| `control_plane.strong_baseline.mean_ms` | 0.0 | 对强基线有利的下界 |
+
+这比 gross-saved gate 前进一步：`net_benefit` 不再依赖无来源 placeholder，且测试会拒绝
+placeholder source、0 samples、负值、空 provenance、坏 report/UX fixture 等常见坏数据。
+
+但这个 gate 仍需按边界解读：它是**离线 measured fixture gate**，不是新采集的
+同设备多样本 wrong-target prewarm 实验。尤其 `wasted_prewarm` 目前采用既有设备确认延迟，
+尚未把错预热后的 CPU/RSS/PSS 资源浪费折算进 ms。
 
 下一步必须补齐真实 action-level net benefit：
 
@@ -137,5 +159,5 @@ DiPECS control-plane overhead 从收益中扣除。
 net_benefit = measured_saved_latency - measured_wasted_action_cost - measured_control_plane_cost
 ```
 
-这个 gate 只有在同设备、同 trace、同动作预算下，DiPECS 的净收益为正且优于
-`StrongPredictiveActionBaseline` 时才应默认启用。
+默认 CI 可以启用当前离线 fixture gate；论文/对外叙述若要声称完整真实设备净收益，
+仍应补同设备、同 trace、同动作预算下的多样本 wrong-target prewarm 成本和资源开销。

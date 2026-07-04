@@ -1,0 +1,59 @@
+{
+  "schema_version": "dipecs.action_net_benefit.prewarm.v1",
+  "dataset_id": "prewarm-emulator-20260704-measured-v1",
+  "action": "PreWarmProcess",
+  "status": "measured_from_committed_emulator_fixtures",
+  "trace": {
+    "source": "data/evaluation/next-app/lsapp-standard.report.json",
+    "split": "Standard",
+    "examples": 272519
+  },
+  "measurements": {
+    "prewarm_saved": {
+      "mean_ms": 394.8,
+      "p95_ms": 420.0,
+      "samples": 20,
+      "source": {
+        "kind": "measured_android_emulator_total_time",
+        "path": "data/evaluation/ux-metrics/ux-metrics-emulator-20260703-171457.json",
+        "field": "ux_deltas.prewarm_vs_cold.startup_total_time_ms_reduction",
+        "note": "am start -W TotalTime cold_startup vs prewarm_startup, 10 samples per mode"
+      }
+    },
+    "wasted_prewarm": {
+      "mean_ms": 31.231,
+      "p95_ms": 31.231,
+      "samples": 1,
+      "source": {
+        "kind": "measured_android_emulator_action_ack_latency_conservative",
+        "path": "data/evaluation/value-metrics-20260701.md",
+        "field": "section 5 PreWarmProcess device confirmation latency",
+        "note": "Conservative missed-prewarm cost uses measured PreWarmProcess bridge-to-device terminal ack latency. RSS/PSS deltas are recorded elsewhere but not converted to ms. Replace with multi-sample wrong-target prewarm fixture when available."
+      }
+    },
+    "control_plane": {
+      "dipecs": {
+        "mean_ms": 0.07848,
+        "p95_ms": null,
+        "samples": 1631,
+        "source": {
+          "kind": "measured_offline_replay_wall_time_per_ingested_event",
+          "path": "data/evaluation/value-metrics-20260701.md",
+          "field": "section 2 wall time 128.0 ms / 1631 events ingested",
+          "note": "Offline replay wall time amortized per ingested event; conservative until per-prediction instrumentation lands."
+        }
+      },
+      "strong_baseline": {
+        "mean_ms": 0.0,
+        "p95_ms": null,
+        "samples": 272519,
+        "source": {
+          "kind": "measured_in_report_no_action_control_plane_floor",
+          "path": "data/evaluation/next-app/lsapp-standard.report.json",
+          "field": "metrics.strong_predictive",
+          "note": "StrongPredictiveActionBaseline report contains predictions but no measured device control-plane loop. Use zero as a favorable lower-bound cost for the baseline, so DiPECS must beat it without penalizing the baseline."
+        }
+      }
+    }
+  }
+}

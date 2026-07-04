@@ -21,7 +21,11 @@ mod net_benefit;
 mod split;
 mod strong_baseline;
 
-pub use net_benefit::{compute_net_benefit, NetBenefitInputs, NetBenefitReport};
+pub use net_benefit::{
+    build_prewarm_net_benefit_fixture, compute_measured_net_benefit, compute_net_benefit,
+    MeasuredNetBenefitInputs, MeasuredValue, MeasurementSource, NetBenefitInputs, NetBenefitReport,
+    NetBenefitTrace, PrewarmFixtureBuildInputs, PrewarmNetBenefitFixture,
+};
 
 use adaptive_baseline::AdaptiveBaseline;
 use baselines::BaselineTables;

@@ -10,8 +10,12 @@
 
 use std::fs;
 use std::path::PathBuf;
+use std::process::Command;
+use std::time::{SystemTime, UNIX_EPOCH};
 
-use aios_cli::next_app::{compute_net_benefit, NetBenefitInputs};
+use aios_cli::next_app::{
+    compute_measured_net_benefit, compute_net_benefit, NetBenefitInputs, PrewarmNetBenefitFixture,
+};
 
 fn workspace_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..")
@@ -44,7 +48,12 @@ fn find_ux_metrics() -> Option<PathBuf> {
     candidates.sort();
     candidates.into_iter().last()
 }
-
+fn find_prewarm_net_benefit_fixture() -> Option<PathBuf> {
+    let path = evaluation_dir()
+        .join("action-net-benefit")
+        .join("prewarm-emulator-20260704-measured-v1.json");
+    path.exists().then_some(path)
+}
 fn load_json(path: &PathBuf) -> Option<serde_json::Value> {
     let text = match fs::read_to_string(path) {
         Ok(t) => t,
@@ -60,6 +69,50 @@ fn load_json(path: &PathBuf) -> Option<serde_json::Value> {
             None
         },
     }
+}
+
+fn unique_tmp_fixture_path() -> PathBuf {
+    let suffix = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_nanos();
+    std::env::temp_dir()
+        .join(format!("dipecs-prewarm-net-benefit-{suffix}"))
+        .join("fixture.json")
+}
+
+fn unique_tmp_dir(prefix: &str) -> PathBuf {
+    let suffix = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_nanos();
+    std::env::temp_dir().join(format!("{prefix}-{suffix}"))
+}
+
+fn run_fixture_generator(report: &PathBuf, ux_metrics: &PathBuf, output: &PathBuf) -> bool {
+    Command::new(env!("CARGO_BIN_EXE_aios-cli"))
+        .arg("generate-prewarm-net-benefit-fixture")
+        .arg("--report")
+        .arg(report)
+        .arg("--ux-metrics")
+        .arg(ux_metrics)
+        .arg("--output")
+        .arg(output)
+        .arg("--wasted-prewarm-ms")
+        .arg("31.231")
+        .arg("--wasted-prewarm-samples")
+        .arg("1")
+        .arg("--dipecs-control-plane-ms")
+        .arg("0.07848")
+        .arg("--dipecs-control-plane-samples")
+        .arg("1631")
+        .arg("--strong-control-plane-ms")
+        .arg("0.0")
+        .arg("--strong-control-plane-samples")
+        .arg("272519")
+        .status()
+        .expect("aios-cli should run")
+        .success()
 }
 
 #[cfg(test)]
@@ -286,7 +339,7 @@ mod tests {
             strong_gross
         );
 
-        // The current UX fixtures measure the cold→prewarm saving, but do not yet
+        // The current UX fixtures measure the cold-to-prewarm saving, but do not yet
         // expose a dedicated missed-prewarm cost or control-plane overhead. Build
         // the inputs through the placeholder constructor so those two unmeasured
         // fields are impossible to mistake for real data (see TODO(#90) on
@@ -309,5 +362,276 @@ mod tests {
             "strong baseline net_benefit_ms={} (PLACEHOLDER wasted/control costs, not measured)",
             strong_report.net_benefit_ms
         );
+    }
+    #[test]
+    fn prewarm_net_benefit_fixture_is_fully_measured() {
+        let fixture_path = find_prewarm_net_benefit_fixture()
+            .expect("prewarm action-net-benefit fixture must be committed");
+        let fixture: PrewarmNetBenefitFixture =
+            serde_json::from_reader(fs::File::open(&fixture_path).expect("fixture should open"))
+                .expect("prewarm action-net-benefit fixture must parse");
+
+        fixture
+            .validate()
+            .expect("prewarm action-net-benefit fixture must contain measured inputs");
+        assert_eq!(fixture.action, "PreWarmProcess");
+        assert_eq!(fixture.trace.split, "Standard");
+        assert!(
+            !fixture.status.to_ascii_lowercase().contains("placeholder"),
+            "fixture status must not describe placeholder data"
+        );
+        assert!(
+            fixture.measurements.prewarm_saved.samples >= 20,
+            "prewarm saved latency must keep the 10 cold + 10 prewarm measured sample count"
+        );
+        assert!(
+            fixture.measurements.wasted_prewarm.mean_ms > 0.0,
+            "wasted prewarm cost must be measured and non-zero"
+        );
+    }
+
+    #[test]
+    fn dipecs_measured_prewarm_net_benefit_beats_strong_baseline() {
+        let report_path =
+            find_report().expect("lsapp-standard.report.json fixture must be committed");
+        let report = load_json(&report_path).expect("lsapp-standard.report.json must parse");
+        let fixture_path = find_prewarm_net_benefit_fixture()
+            .expect("prewarm action-net-benefit fixture must be committed");
+        let fixture: PrewarmNetBenefitFixture =
+            serde_json::from_reader(fs::File::open(&fixture_path).expect("fixture should open"))
+                .expect("prewarm action-net-benefit fixture must parse");
+        fixture.validate().expect("fixture must be measured");
+
+        let examples = report
+            .get("test_examples")
+            .and_then(|v| v.as_u64())
+            .expect("test_examples missing from report") as usize;
+        assert_eq!(
+            fixture.trace.examples, examples,
+            "net-benefit fixture must use the same LSApp Standard test window count"
+        );
+
+        let ensemble_hit = report
+            .get("metrics")
+            .and_then(|m| m.get("ensemble"))
+            .and_then(|e| e.get("hit_rate_at_1_pct"))
+            .and_then(|v| v.as_f64())
+            .expect("ensemble hit_rate_at_1_pct missing from report")
+            as f32;
+        let strong_hit = report
+            .get("metrics")
+            .and_then(|m| m.get("strong_predictive"))
+            .and_then(|e| e.get("hit_rate_at_1_pct"))
+            .and_then(|v| v.as_f64())
+            .expect("strong_predictive hit_rate_at_1_pct missing from report")
+            as f32;
+
+        let ensemble_report =
+            compute_measured_net_benefit(&fixture.dipecs_inputs(ensemble_hit), examples)
+                .expect("DiPECS measured net benefit should compute");
+        let strong_report =
+            compute_measured_net_benefit(&fixture.strong_baseline_inputs(strong_hit), examples)
+                .expect("strong baseline measured net benefit should compute");
+
+        assert!(
+            ensemble_report.net_benefit_ms > 0.0,
+            "DiPECS measured PreWarm net benefit should be positive; got {:.0} ms",
+            ensemble_report.net_benefit_ms
+        );
+        assert!(
+            ensemble_report.net_benefit_ms > strong_report.net_benefit_ms,
+            "DiPECS measured PreWarm net benefit ({:.0} ms) should beat strong baseline ({:.0} ms)",
+            ensemble_report.net_benefit_ms,
+            strong_report.net_benefit_ms
+        );
+    }
+
+    #[test]
+    fn cli_generates_valid_prewarm_net_benefit_fixture() {
+        let report_path =
+            find_report().expect("lsapp-standard.report.json fixture must be committed");
+        let ux_path = find_ux_metrics().expect("ux-metrics fixture must be committed");
+        let output = unique_tmp_fixture_path();
+
+        let status = Command::new(env!("CARGO_BIN_EXE_aios-cli"))
+            .arg("generate-prewarm-net-benefit-fixture")
+            .arg("--report")
+            .arg(&report_path)
+            .arg("--ux-metrics")
+            .arg(&ux_path)
+            .arg("--output")
+            .arg(&output)
+            .arg("--dataset-id")
+            .arg("prewarm-cli-generated-test")
+            .arg("--wasted-prewarm-ms")
+            .arg("31.231")
+            .arg("--wasted-prewarm-samples")
+            .arg("1")
+            .arg("--dipecs-control-plane-ms")
+            .arg("0.07848")
+            .arg("--dipecs-control-plane-samples")
+            .arg("1631")
+            .arg("--strong-control-plane-ms")
+            .arg("0.0")
+            .arg("--strong-control-plane-samples")
+            .arg("272519")
+            .status()
+            .expect("aios-cli should run");
+        assert!(
+            status.success(),
+            "fixture generator should exit successfully"
+        );
+
+        let fixture: PrewarmNetBenefitFixture =
+            serde_json::from_reader(fs::File::open(&output).expect("fixture should open"))
+                .expect("generated fixture must parse");
+        fixture.validate().expect("generated fixture must validate");
+        assert_eq!(fixture.dataset_id, "prewarm-cli-generated-test");
+        assert_eq!(fixture.trace.split, "Standard");
+        assert!(fixture.measurements.prewarm_saved.samples >= 20);
+    }
+
+    #[test]
+    fn cli_rejects_negative_wasted_prewarm_cost() {
+        let report_path =
+            find_report().expect("lsapp-standard.report.json fixture must be committed");
+        let ux_path = find_ux_metrics().expect("ux-metrics fixture must be committed");
+        let output = unique_tmp_fixture_path();
+
+        let status = Command::new(env!("CARGO_BIN_EXE_aios-cli"))
+            .arg("generate-prewarm-net-benefit-fixture")
+            .arg("--report")
+            .arg(&report_path)
+            .arg("--ux-metrics")
+            .arg(&ux_path)
+            .arg("--output")
+            .arg(&output)
+            .arg("--wasted-prewarm-ms")
+            .arg("-1.0")
+            .arg("--dipecs-control-plane-ms")
+            .arg("0.07848")
+            .status()
+            .expect("aios-cli should run");
+
+        assert!(
+            !status.success(),
+            "negative wasted-prewarm cost must fail validation"
+        );
+        assert!(
+            !output.exists(),
+            "failed fixture generation must not leave an output fixture"
+        );
+    }
+
+    #[test]
+    fn cli_rejects_ux_metrics_without_prewarm_delta() {
+        let report_path =
+            find_report().expect("lsapp-standard.report.json fixture must be committed");
+        let tmp = unique_tmp_dir("dipecs-bad-ux");
+        fs::create_dir_all(&tmp).expect("tmp dir should be created");
+        let bad_ux = tmp.join("bad-ux.json");
+        fs::write(
+            &bad_ux,
+            r#"{"schema_version":"dipecs.ux_metrics.v1","runs":[]}"#,
+        )
+        .expect("bad UX fixture should be written");
+        let output = tmp.join("fixture.json");
+
+        let status = Command::new(env!("CARGO_BIN_EXE_aios-cli"))
+            .arg("generate-prewarm-net-benefit-fixture")
+            .arg("--report")
+            .arg(&report_path)
+            .arg("--ux-metrics")
+            .arg(&bad_ux)
+            .arg("--output")
+            .arg(&output)
+            .arg("--wasted-prewarm-ms")
+            .arg("31.231")
+            .arg("--dipecs-control-plane-ms")
+            .arg("0.07848")
+            .status()
+            .expect("aios-cli should run");
+
+        assert!(
+            !status.success(),
+            "missing prewarm delta must fail fixture generation"
+        );
+        assert!(
+            !output.exists(),
+            "failed fixture generation must not leave an output fixture"
+        );
+    }
+
+    #[test]
+    fn cli_rejects_many_corrupt_report_and_ux_fixtures() {
+        let tmp = unique_tmp_dir("dipecs-corrupt-fixtures");
+        fs::create_dir_all(&tmp).expect("tmp dir should be created");
+        let good_report = tmp.join("good-report.json");
+        fs::write(
+            &good_report,
+            r#"{"split":"Standard","test_examples":272519,"metrics":{"ensemble":{"hit_rate_at_1_pct":56.442},"strong_predictive":{"hit_rate_at_1_pct":53.784}}}"#,
+        )
+        .expect("good report should be written");
+        let good_ux = tmp.join("good-ux.json");
+        fs::write(
+            &good_ux,
+            r#"{
+                "ux_deltas":{"prewarm_vs_cold":{"startup_total_time_ms_reduction":394.8}},
+                "runs":[
+                    {"mode":"cold_startup","samples":[{},{}],"summary":{"p95_startup_total_time_ms":932.0}},
+                    {"mode":"prewarm_startup","samples":[{},{}],"summary":{"p95_startup_total_time_ms":512.0}}
+                ]
+            }"#,
+        )
+        .expect("good UX should be written");
+
+        let report_cases = [
+            ("missing_split", r#"{"test_examples":1}"#),
+            ("missing_examples", r#"{"split":"Standard"}"#),
+            ("zero_examples", r#"{"split":"Standard","test_examples":0}"#),
+            (
+                "string_examples",
+                r#"{"split":"Standard","test_examples":"272519"}"#,
+            ),
+        ];
+        for (name, json) in report_cases {
+            let report = tmp.join(format!("{name}.report.json"));
+            fs::write(&report, json).expect("bad report should be written");
+            let output = tmp.join(format!("{name}.fixture.json"));
+            assert!(
+                !run_fixture_generator(&report, &good_ux, &output),
+                "{name} report should be rejected"
+            );
+            assert!(!output.exists(), "{name} must not leave output");
+        }
+
+        let ux_cases = [
+            ("missing_deltas", r#"{"runs":[]}"#),
+            (
+                "string_delta",
+                r#"{"ux_deltas":{"prewarm_vs_cold":{"startup_total_time_ms_reduction":"394.8"}},"runs":[]}"#,
+            ),
+            (
+                "missing_runs_allowed_but_delta_present",
+                r#"{"ux_deltas":{"prewarm_vs_cold":{"startup_total_time_ms_reduction":394.8}}}"#,
+            ),
+            (
+                "negative_delta",
+                r#"{"ux_deltas":{"prewarm_vs_cold":{"startup_total_time_ms_reduction":-1.0}},"runs":[]}"#,
+            ),
+        ];
+        for (name, json) in ux_cases {
+            let ux = tmp.join(format!("{name}.ux.json"));
+            fs::write(&ux, json).expect("UX fixture should be written");
+            let output = tmp.join(format!("{name}.fixture.json"));
+            let success = run_fixture_generator(&good_report, &ux, &output);
+            if name == "missing_runs_allowed_but_delta_present" {
+                assert!(success, "{name} should fall back to one sample");
+                assert!(output.exists(), "{name} should write output");
+            } else {
+                assert!(!success, "{name} UX should be rejected");
+                assert!(!output.exists(), "{name} must not leave output");
+            }
+        }
     }
 }

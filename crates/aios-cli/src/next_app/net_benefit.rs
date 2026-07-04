@@ -230,23 +230,18 @@ impl From<&MeasuredNetBenefitInputs> for NetBenefitInputs {
 }
 
 impl NetBenefitInputs {
-    /// Build inputs whose `prewarm_wasted_ms` and `control_plane_ms` are
-    /// **placeholders, not measurements**. Only `hit_rate_at_1_pct` and
-    /// `prewarm_saved_ms` come from real data (the LSApp report and the
-    /// `am start -W` UX fixture).
+    /// Build provisional inputs whose `prewarm_wasted_ms` and
+    /// `control_plane_ms` are **placeholders, not measurements**.
     ///
-    /// TODO(#90): replace the placeholder wasted-prewarm and control-plane
-    /// costs with real on-device measurements. Until then, any `net_benefit_ms`
-    /// derived from these inputs is NOT a measured system benefit and must not
-    /// be asserted on or cited as one; only `gross_saved_ms`, which depends
-    /// solely on the two measured fields, is safe to gate on.
+    /// Use this only for exploratory reporting. Measured gates must use
+    /// committed fixture inputs instead, via `next_app_net_benefit_test`.
     pub fn placeholder_pending_measurement(hit_rate_at_1_pct: f32, prewarm_saved_ms: f64) -> Self {
         Self {
             hit_rate_at_1_pct,
             prewarm_saved_ms,
-            // Placeholder; see TODO(#90) above. Not measured.
+            // Placeholder. Not measured; do not use for gating.
             prewarm_wasted_ms: 12.0,
-            // Placeholder; see TODO(#90) above. Not measured.
+            // Placeholder. Not measured; do not use for gating.
             control_plane_ms: 0.0,
         }
     }

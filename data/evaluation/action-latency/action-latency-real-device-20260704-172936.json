@@ -1,0 +1,38 @@
+{
+  "schema_version": "dipecs.action_latency.v1",
+  "dataset_id": "action-latency-real-device-20260704-172936",
+  "status": "measured_android_real_device",
+  "environment": {
+    "device": "Pixel 6a (bluejay), Android 16",
+    "package": "com.dipecs.collector",
+    "adb_serial": "2B071JEGR05551",
+    "collected_at": "2026-07-04T17:29:36"
+  },
+  "notes": [
+    "Measured by tests/scenarios/action-latency-sweep.sh over adb forward tcp:46321 tcp:46321.",
+    "device_latency_us is reported by AuthorizedActionSocketServer and measures device-side time from accept through dispatch/ack.",
+    "PrefetchFile acknowledgement means the prefetch was accepted/queued, not necessarily that remote network fetch completed."
+  ],
+  "samples": [
+    {
+      "action_type": "KeepAlive",
+      "target": "work:collector_heartbeat",
+      "device_latency_us": 973
+    },
+    {
+      "action_type": "ReleaseMemory",
+      "target": "cache:prefetch",
+      "device_latency_us": 971
+    },
+    {
+      "action_type": "PreWarmProcess",
+      "target": "own:warmup",
+      "device_latency_us": 841
+    },
+    {
+      "action_type": "PrefetchFile",
+      "target": "url:https://example.com/",
+      "device_latency_us": 1964
+    }
+  ]
+}

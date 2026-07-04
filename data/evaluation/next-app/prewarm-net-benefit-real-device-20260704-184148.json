@@ -1,0 +1,662 @@
+{
+  "schema_version": "dipecs.prewarm_net_benefit.v1",
+  "dataset_id": "prewarm-net-benefit-real-device-20260704-184148",
+  "source": "measured_device",
+  "status": "measured_android_real_device",
+  "environment": {
+    "device": "Pixel 6a (bluejay), Android 16",
+    "package": "com.dipecs.collector",
+    "miss_actual_package": "com.android.settings",
+    "adb_serial": "2B071JEGR05551",
+    "samples_per_mode": 20,
+    "collected_at": "2026-07-04T18:50:39"
+  },
+  "provenance": {
+    "prediction_report": "data/evaluation/next-app/lsapp-standard.report.json",
+    "startup_measurement": "adb shell am start -W TotalTime",
+    "hit_definition": "PreWarmProcess own:warmup before launching com.dipecs.collector",
+    "miss_definition": "PreWarmProcess own:warmup before launching Android Settings"
+  },
+  "runs": [
+    {
+      "mode": "collector_cold_startup",
+      "samples": [
+        {
+          "sample_index": 0,
+          "timestamp_ms": 1783161711628,
+          "mode": "collector_cold_startup",
+          "startup_total_time_ms": 691,
+          "prewarm_latency_us": 0
+        },
+        {
+          "sample_index": 1,
+          "timestamp_ms": 1783161715505,
+          "mode": "collector_cold_startup",
+          "startup_total_time_ms": 697,
+          "prewarm_latency_us": 0
+        },
+        {
+          "sample_index": 2,
+          "timestamp_ms": 1783161719412,
+          "mode": "collector_cold_startup",
+          "startup_total_time_ms": 703,
+          "prewarm_latency_us": 0
+        },
+        {
+          "sample_index": 3,
+          "timestamp_ms": 1783161723333,
+          "mode": "collector_cold_startup",
+          "startup_total_time_ms": 717,
+          "prewarm_latency_us": 0
+        },
+        {
+          "sample_index": 4,
+          "timestamp_ms": 1783161727283,
+          "mode": "collector_cold_startup",
+          "startup_total_time_ms": 698,
+          "prewarm_latency_us": 0
+        },
+        {
+          "sample_index": 5,
+          "timestamp_ms": 1783161731196,
+          "mode": "collector_cold_startup",
+          "startup_total_time_ms": 702,
+          "prewarm_latency_us": 0
+        },
+        {
+          "sample_index": 6,
+          "timestamp_ms": 1783161735086,
+          "mode": "collector_cold_startup",
+          "startup_total_time_ms": 697,
+          "prewarm_latency_us": 0
+        },
+        {
+          "sample_index": 7,
+          "timestamp_ms": 1783161738990,
+          "mode": "collector_cold_startup",
+          "startup_total_time_ms": 702,
+          "prewarm_latency_us": 0
+        },
+        {
+          "sample_index": 8,
+          "timestamp_ms": 1783161742920,
+          "mode": "collector_cold_startup",
+          "startup_total_time_ms": 707,
+          "prewarm_latency_us": 0
+        },
+        {
+          "sample_index": 9,
+          "timestamp_ms": 1783161746841,
+          "mode": "collector_cold_startup",
+          "startup_total_time_ms": 711,
+          "prewarm_latency_us": 0
+        },
+        {
+          "sample_index": 10,
+          "timestamp_ms": 1783161750754,
+          "mode": "collector_cold_startup",
+          "startup_total_time_ms": 708,
+          "prewarm_latency_us": 0
+        },
+        {
+          "sample_index": 11,
+          "timestamp_ms": 1783161754675,
+          "mode": "collector_cold_startup",
+          "startup_total_time_ms": 699,
+          "prewarm_latency_us": 0
+        },
+        {
+          "sample_index": 12,
+          "timestamp_ms": 1783161758608,
+          "mode": "collector_cold_startup",
+          "startup_total_time_ms": 712,
+          "prewarm_latency_us": 0
+        },
+        {
+          "sample_index": 13,
+          "timestamp_ms": 1783161762526,
+          "mode": "collector_cold_startup",
+          "startup_total_time_ms": 710,
+          "prewarm_latency_us": 0
+        },
+        {
+          "sample_index": 14,
+          "timestamp_ms": 1783161766460,
+          "mode": "collector_cold_startup",
+          "startup_total_time_ms": 721,
+          "prewarm_latency_us": 0
+        },
+        {
+          "sample_index": 15,
+          "timestamp_ms": 1783161770388,
+          "mode": "collector_cold_startup",
+          "startup_total_time_ms": 738,
+          "prewarm_latency_us": 0
+        },
+        {
+          "sample_index": 16,
+          "timestamp_ms": 1783161774323,
+          "mode": "collector_cold_startup",
+          "startup_total_time_ms": 733,
+          "prewarm_latency_us": 0
+        },
+        {
+          "sample_index": 17,
+          "timestamp_ms": 1783161778214,
+          "mode": "collector_cold_startup",
+          "startup_total_time_ms": 719,
+          "prewarm_latency_us": 0
+        },
+        {
+          "sample_index": 18,
+          "timestamp_ms": 1783161782142,
+          "mode": "collector_cold_startup",
+          "startup_total_time_ms": 725,
+          "prewarm_latency_us": 0
+        },
+        {
+          "sample_index": 19,
+          "timestamp_ms": 1783161786062,
+          "mode": "collector_cold_startup",
+          "startup_total_time_ms": 725,
+          "prewarm_latency_us": 0
+        }
+      ],
+      "summary": {
+        "n": 20,
+        "mean_startup_total_time_ms": 710.75,
+        "p95_startup_total_time_ms": 733.0,
+        "mean_prewarm_latency_us": 0.0
+      }
+    },
+    {
+      "mode": "collector_prewarm_hit_startup",
+      "samples": [
+        {
+          "sample_index": 0,
+          "timestamp_ms": 1783161795582,
+          "mode": "collector_prewarm_hit_startup",
+          "startup_total_time_ms": 182,
+          "prewarm_latency_us": 9166
+        },
+        {
+          "sample_index": 1,
+          "timestamp_ms": 1783161805119,
+          "mode": "collector_prewarm_hit_startup",
+          "startup_total_time_ms": 190,
+          "prewarm_latency_us": 8233
+        },
+        {
+          "sample_index": 2,
+          "timestamp_ms": 1783161814672,
+          "mode": "collector_prewarm_hit_startup",
+          "startup_total_time_ms": 201,
+          "prewarm_latency_us": 7807
+        },
+        {
+          "sample_index": 3,
+          "timestamp_ms": 1783161824175,
+          "mode": "collector_prewarm_hit_startup",
+          "startup_total_time_ms": 203,
+          "prewarm_latency_us": 8394
+        },
+        {
+          "sample_index": 4,
+          "timestamp_ms": 1783161833678,
+          "mode": "collector_prewarm_hit_startup",
+          "startup_total_time_ms": 199,
+          "prewarm_latency_us": 8200
+        },
+        {
+          "sample_index": 5,
+          "timestamp_ms": 1783161843230,
+          "mode": "collector_prewarm_hit_startup",
+          "startup_total_time_ms": 205,
+          "prewarm_latency_us": 9238
+        },
+        {
+          "sample_index": 6,
+          "timestamp_ms": 1783161852783,
+          "mode": "collector_prewarm_hit_startup",
+          "startup_total_time_ms": 213,
+          "prewarm_latency_us": 8162
+        },
+        {
+          "sample_index": 7,
+          "timestamp_ms": 1783161862351,
+          "mode": "collector_prewarm_hit_startup",
+          "startup_total_time_ms": 219,
+          "prewarm_latency_us": 8343
+        },
+        {
+          "sample_index": 8,
+          "timestamp_ms": 1783161871889,
+          "mode": "collector_prewarm_hit_startup",
+          "startup_total_time_ms": 195,
+          "prewarm_latency_us": 8838
+        },
+        {
+          "sample_index": 9,
+          "timestamp_ms": 1783161881458,
+          "mode": "collector_prewarm_hit_startup",
+          "startup_total_time_ms": 200,
+          "prewarm_latency_us": 7857
+        },
+        {
+          "sample_index": 10,
+          "timestamp_ms": 1783161891029,
+          "mode": "collector_prewarm_hit_startup",
+          "startup_total_time_ms": 210,
+          "prewarm_latency_us": 8213
+        },
+        {
+          "sample_index": 11,
+          "timestamp_ms": 1783161900564,
+          "mode": "collector_prewarm_hit_startup",
+          "startup_total_time_ms": 197,
+          "prewarm_latency_us": 8599
+        },
+        {
+          "sample_index": 12,
+          "timestamp_ms": 1783161910082,
+          "mode": "collector_prewarm_hit_startup",
+          "startup_total_time_ms": 199,
+          "prewarm_latency_us": 8545
+        },
+        {
+          "sample_index": 13,
+          "timestamp_ms": 1783161919648,
+          "mode": "collector_prewarm_hit_startup",
+          "startup_total_time_ms": 200,
+          "prewarm_latency_us": 8437
+        },
+        {
+          "sample_index": 14,
+          "timestamp_ms": 1783161929168,
+          "mode": "collector_prewarm_hit_startup",
+          "startup_total_time_ms": 199,
+          "prewarm_latency_us": 8182
+        },
+        {
+          "sample_index": 15,
+          "timestamp_ms": 1783161938775,
+          "mode": "collector_prewarm_hit_startup",
+          "startup_total_time_ms": 196,
+          "prewarm_latency_us": 8678
+        },
+        {
+          "sample_index": 16,
+          "timestamp_ms": 1783161948342,
+          "mode": "collector_prewarm_hit_startup",
+          "startup_total_time_ms": 205,
+          "prewarm_latency_us": 7761
+        },
+        {
+          "sample_index": 17,
+          "timestamp_ms": 1783161957880,
+          "mode": "collector_prewarm_hit_startup",
+          "startup_total_time_ms": 212,
+          "prewarm_latency_us": 8509
+        },
+        {
+          "sample_index": 18,
+          "timestamp_ms": 1783161967435,
+          "mode": "collector_prewarm_hit_startup",
+          "startup_total_time_ms": 207,
+          "prewarm_latency_us": 8239
+        },
+        {
+          "sample_index": 19,
+          "timestamp_ms": 1783161976975,
+          "mode": "collector_prewarm_hit_startup",
+          "startup_total_time_ms": 199,
+          "prewarm_latency_us": 8478
+        }
+      ],
+      "summary": {
+        "n": 20,
+        "mean_startup_total_time_ms": 201.55,
+        "p95_startup_total_time_ms": 213.0,
+        "mean_prewarm_latency_us": 8393.95
+      }
+    },
+    {
+      "mode": "settings_cold_startup",
+      "samples": [
+        {
+          "sample_index": 0,
+          "timestamp_ms": 1783161980416,
+          "mode": "settings_cold_startup",
+          "startup_total_time_ms": 180,
+          "prewarm_latency_us": 0
+        },
+        {
+          "sample_index": 1,
+          "timestamp_ms": 1783161983900,
+          "mode": "settings_cold_startup",
+          "startup_total_time_ms": 154,
+          "prewarm_latency_us": 0
+        },
+        {
+          "sample_index": 2,
+          "timestamp_ms": 1783161987341,
+          "mode": "settings_cold_startup",
+          "startup_total_time_ms": 160,
+          "prewarm_latency_us": 0
+        },
+        {
+          "sample_index": 3,
+          "timestamp_ms": 1783161990713,
+          "mode": "settings_cold_startup",
+          "startup_total_time_ms": 161,
+          "prewarm_latency_us": 0
+        },
+        {
+          "sample_index": 4,
+          "timestamp_ms": 1783161994151,
+          "mode": "settings_cold_startup",
+          "startup_total_time_ms": 158,
+          "prewarm_latency_us": 0
+        },
+        {
+          "sample_index": 5,
+          "timestamp_ms": 1783161997574,
+          "mode": "settings_cold_startup",
+          "startup_total_time_ms": 161,
+          "prewarm_latency_us": 0
+        },
+        {
+          "sample_index": 6,
+          "timestamp_ms": 1783162001008,
+          "mode": "settings_cold_startup",
+          "startup_total_time_ms": 164,
+          "prewarm_latency_us": 0
+        },
+        {
+          "sample_index": 7,
+          "timestamp_ms": 1783162004426,
+          "mode": "settings_cold_startup",
+          "startup_total_time_ms": 166,
+          "prewarm_latency_us": 0
+        },
+        {
+          "sample_index": 8,
+          "timestamp_ms": 1783162007833,
+          "mode": "settings_cold_startup",
+          "startup_total_time_ms": 158,
+          "prewarm_latency_us": 0
+        },
+        {
+          "sample_index": 9,
+          "timestamp_ms": 1783162011189,
+          "mode": "settings_cold_startup",
+          "startup_total_time_ms": 160,
+          "prewarm_latency_us": 0
+        },
+        {
+          "sample_index": 10,
+          "timestamp_ms": 1783162014616,
+          "mode": "settings_cold_startup",
+          "startup_total_time_ms": 158,
+          "prewarm_latency_us": 0
+        },
+        {
+          "sample_index": 11,
+          "timestamp_ms": 1783162018053,
+          "mode": "settings_cold_startup",
+          "startup_total_time_ms": 163,
+          "prewarm_latency_us": 0
+        },
+        {
+          "sample_index": 12,
+          "timestamp_ms": 1783162021493,
+          "mode": "settings_cold_startup",
+          "startup_total_time_ms": 173,
+          "prewarm_latency_us": 0
+        },
+        {
+          "sample_index": 13,
+          "timestamp_ms": 1783162024943,
+          "mode": "settings_cold_startup",
+          "startup_total_time_ms": 162,
+          "prewarm_latency_us": 0
+        },
+        {
+          "sample_index": 14,
+          "timestamp_ms": 1783162028375,
+          "mode": "settings_cold_startup",
+          "startup_total_time_ms": 177,
+          "prewarm_latency_us": 0
+        },
+        {
+          "sample_index": 15,
+          "timestamp_ms": 1783162031807,
+          "mode": "settings_cold_startup",
+          "startup_total_time_ms": 170,
+          "prewarm_latency_us": 0
+        },
+        {
+          "sample_index": 16,
+          "timestamp_ms": 1783162035203,
+          "mode": "settings_cold_startup",
+          "startup_total_time_ms": 161,
+          "prewarm_latency_us": 0
+        },
+        {
+          "sample_index": 17,
+          "timestamp_ms": 1783162038655,
+          "mode": "settings_cold_startup",
+          "startup_total_time_ms": 163,
+          "prewarm_latency_us": 0
+        },
+        {
+          "sample_index": 18,
+          "timestamp_ms": 1783162042040,
+          "mode": "settings_cold_startup",
+          "startup_total_time_ms": 164,
+          "prewarm_latency_us": 0
+        },
+        {
+          "sample_index": 19,
+          "timestamp_ms": 1783162045478,
+          "mode": "settings_cold_startup",
+          "startup_total_time_ms": 160,
+          "prewarm_latency_us": 0
+        }
+      ],
+      "summary": {
+        "n": 20,
+        "mean_startup_total_time_ms": 163.65,
+        "p95_startup_total_time_ms": 177.0,
+        "mean_prewarm_latency_us": 0.0
+      }
+    },
+    {
+      "mode": "settings_after_wrong_prewarm_startup",
+      "samples": [
+        {
+          "sample_index": 0,
+          "timestamp_ms": 1783162055112,
+          "mode": "settings_after_wrong_prewarm_startup",
+          "startup_total_time_ms": 165,
+          "prewarm_latency_us": 7477
+        },
+        {
+          "sample_index": 1,
+          "timestamp_ms": 1783162064723,
+          "mode": "settings_after_wrong_prewarm_startup",
+          "startup_total_time_ms": 158,
+          "prewarm_latency_us": 8351
+        },
+        {
+          "sample_index": 2,
+          "timestamp_ms": 1783162074329,
+          "mode": "settings_after_wrong_prewarm_startup",
+          "startup_total_time_ms": 161,
+          "prewarm_latency_us": 8142
+        },
+        {
+          "sample_index": 3,
+          "timestamp_ms": 1783162083971,
+          "mode": "settings_after_wrong_prewarm_startup",
+          "startup_total_time_ms": 169,
+          "prewarm_latency_us": 8062
+        },
+        {
+          "sample_index": 4,
+          "timestamp_ms": 1783162093621,
+          "mode": "settings_after_wrong_prewarm_startup",
+          "startup_total_time_ms": 172,
+          "prewarm_latency_us": 8936
+        },
+        {
+          "sample_index": 5,
+          "timestamp_ms": 1783162103286,
+          "mode": "settings_after_wrong_prewarm_startup",
+          "startup_total_time_ms": 170,
+          "prewarm_latency_us": 7760
+        },
+        {
+          "sample_index": 6,
+          "timestamp_ms": 1783162112933,
+          "mode": "settings_after_wrong_prewarm_startup",
+          "startup_total_time_ms": 162,
+          "prewarm_latency_us": 8462
+        },
+        {
+          "sample_index": 7,
+          "timestamp_ms": 1783162122594,
+          "mode": "settings_after_wrong_prewarm_startup",
+          "startup_total_time_ms": 161,
+          "prewarm_latency_us": 8719
+        },
+        {
+          "sample_index": 8,
+          "timestamp_ms": 1783162132217,
+          "mode": "settings_after_wrong_prewarm_startup",
+          "startup_total_time_ms": 165,
+          "prewarm_latency_us": 8589
+        },
+        {
+          "sample_index": 9,
+          "timestamp_ms": 1783162141805,
+          "mode": "settings_after_wrong_prewarm_startup",
+          "startup_total_time_ms": 160,
+          "prewarm_latency_us": 8754
+        },
+        {
+          "sample_index": 10,
+          "timestamp_ms": 1783162151413,
+          "mode": "settings_after_wrong_prewarm_startup",
+          "startup_total_time_ms": 167,
+          "prewarm_latency_us": 8110
+        },
+        {
+          "sample_index": 11,
+          "timestamp_ms": 1783162161039,
+          "mode": "settings_after_wrong_prewarm_startup",
+          "startup_total_time_ms": 156,
+          "prewarm_latency_us": 10546
+        },
+        {
+          "sample_index": 12,
+          "timestamp_ms": 1783162170670,
+          "mode": "settings_after_wrong_prewarm_startup",
+          "startup_total_time_ms": 162,
+          "prewarm_latency_us": 7626
+        },
+        {
+          "sample_index": 13,
+          "timestamp_ms": 1783162180328,
+          "mode": "settings_after_wrong_prewarm_startup",
+          "startup_total_time_ms": 155,
+          "prewarm_latency_us": 8125
+        },
+        {
+          "sample_index": 14,
+          "timestamp_ms": 1783162189933,
+          "mode": "settings_after_wrong_prewarm_startup",
+          "startup_total_time_ms": 160,
+          "prewarm_latency_us": 8290
+        },
+        {
+          "sample_index": 15,
+          "timestamp_ms": 1783162199600,
+          "mode": "settings_after_wrong_prewarm_startup",
+          "startup_total_time_ms": 171,
+          "prewarm_latency_us": 7642
+        },
+        {
+          "sample_index": 16,
+          "timestamp_ms": 1783162209218,
+          "mode": "settings_after_wrong_prewarm_startup",
+          "startup_total_time_ms": 169,
+          "prewarm_latency_us": 8270
+        },
+        {
+          "sample_index": 17,
+          "timestamp_ms": 1783162218830,
+          "mode": "settings_after_wrong_prewarm_startup",
+          "startup_total_time_ms": 162,
+          "prewarm_latency_us": 8146
+        },
+        {
+          "sample_index": 18,
+          "timestamp_ms": 1783162228442,
+          "mode": "settings_after_wrong_prewarm_startup",
+          "startup_total_time_ms": 168,
+          "prewarm_latency_us": 8597
+        },
+        {
+          "sample_index": 19,
+          "timestamp_ms": 1783162238043,
+          "mode": "settings_after_wrong_prewarm_startup",
+          "startup_total_time_ms": 170,
+          "prewarm_latency_us": 9402
+        }
+      ],
+      "summary": {
+        "n": 20,
+        "mean_startup_total_time_ms": 164.15,
+        "p95_startup_total_time_ms": 171.0,
+        "mean_prewarm_latency_us": 8400.3
+      }
+    }
+  ],
+  "measured_inputs": {
+    "source": "measured_device",
+    "hit_saved_ms": 509.2,
+    "miss_startup_delta_ms": 0.5,
+    "mean_prewarm_latency_ms": 8.394,
+    "miss_action_cost_ms": 0.5,
+    "control_plane_ms": 8.394
+  },
+  "net_benefit": {
+    "source": "measured_device",
+    "examples": 272519,
+    "action_budget": "top1_one_prewarm_per_lsapp_test_example",
+    "dipecs_ensemble": {
+      "source": "measured_device",
+      "hit_rate_at_1_pct": 56.442,
+      "gross_saved_ms": 78322686.591,
+      "gross_wasted_ms": 59351.913,
+      "control_plane_cost_ms": 2287524.486,
+      "net_benefit_ms": 75975810.192
+    },
+    "strong_predictive": {
+      "source": "measured_device",
+      "hit_rate_at_1_pct": 53.784,
+      "gross_saved_ms": 74634268.374,
+      "gross_wasted_ms": 62973.691,
+      "control_plane_cost_ms": 2287524.486,
+      "net_benefit_ms": 72283770.198
+    },
+    "dipecs_minus_strong_net_benefit_ms": 3692039.994
+  },
+  "conclusion": {
+    "accepted": true,
+    "n_at_least_20_per_mode": true,
+    "net_benefit_positive": true,
+    "dipecs_beats_strong_predictive": true
+  }
+}

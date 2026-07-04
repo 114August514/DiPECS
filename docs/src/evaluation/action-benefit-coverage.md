@@ -11,9 +11,10 @@
 `AndroidAdapter` 真机派发）5 种动作全部完整。问题不在动作面，而在**收益证明的
 覆盖度**：4 个真机动作只测了 2 个，且只有 `PreWarmProcess` 收益显著。
 
-因此当前实验能支撑的最强表述只是「预测准 + 预热确实快」，还不足以支撑本项目的
-核心创新叙事——「在强预测也能驱动动作的前提下，DiPECS 的治理闭环带来可测的
-净收益 / 更低的错误动作代价」。补齐路径见本文末。
+因此当前实验已经能支撑 `PreWarmProcess own:*` 的标准 LSApp split 净收益结论：
+在强预测也能驱动动作的前提下，DiPECS ensemble 的 `net_benefit_ms` 为正且高于
+`StrongPredictiveActionBaseline`。这个结论仍只覆盖 Android-safe 自有资源预热，
+不能外推为普通 Android app 可静默预热第三方应用；其他动作的真实收益还需单独补齐。
 
 ## 真实场景证据分级
 
@@ -21,6 +22,7 @@
 把代码链完整度、动作可发度与最终用户收益混为一谈。数据来源为
 `data/evaluation/value-metrics-20260701.md`、`data/evaluation/ux-metrics-emulator-*.md`、
 `data/evaluation/ux-metrics/ux-metrics-real-device-20260704-172048.*`、
+`data/evaluation/next-app/prewarm-net-benefit-real-device-20260704-184148.*`、
 `data/evaluation/action-latency/action-latency-real-device-20260704-172936.*`、
 `data/evaluation/resource-overhead/resource-overhead-real-device-20260704-172617.*`
 以及主分支上的 CI 离线回归。
@@ -31,18 +33,24 @@
    DiPECS 后 0 泄漏、prompt 645 B。这是不依赖动作收益、独立成立的硬价值。
 2. **本地优先路由的延迟优势真实。** RuleBased/LocalEvaluator 亚毫秒级决策，
    真实 DeepSeek API 往返 6–14 s，相差 4–5 个数量级。
-3. **PreWarm 在 Android 模拟器上确实加速启动。** 最新 committed run
+3. **PreWarm 在 Android 模拟器和 Pixel 6a 上确实加速启动。** 最新 committed run
    `ux-metrics-emulator-20260703-171457` 使用 cold/prewarm 启动样本合计 n=20，
    `am start -W TotalTime` 均值从 884.1 ms 降到 489.3 ms，p95 从 932.0 ms
    降到 512.0 ms，快 44.7%。2026-07-04 Pixel 6a 真机 smoke run 复现同方向结果：
    cold startup n=5 均值 600.4 ms、p95 620.0 ms；prewarm startup n=5 均值
-   142.6 ms、p95 168.0 ms，快 457.8 ms / 76.2%。该真机 run 样本量不足 #90
-   gate，只能作为正向证据，不能单独关闭端到端 net-benefit 缺口。
-4. **动作链路真实闭环。** 4 类可转发动作在 Android 模拟器/真机上均被设备确认并回执
+   142.6 ms、p95 168.0 ms，快 457.8 ms / 76.2%。
+4. **PreWarm 标准 LSApp split 的净收益为正并超过强基线。** Pixel 6a n=20/mode
+   net-benefit run `prewarm-net-benefit-real-device-20260704-184148` 中，collector
+   cold mean/p95 为 710.75/733 ms，PreWarm hit 后为 201.55/213 ms；wrong-prewarm
+   后启动 Settings 的 miss delta 为 0.5 ms，PreWarm dispatch/control cost 为
+   8.394 ms/action。接入 LSApp standard hit@1 后，DiPECS ensemble
+   `net_benefit_ms=75,975,810.192`，强基线为 `72,283,770.198`，DiPECS 高
+   `3,692,039.994 ms`。该结论只覆盖 Android-safe `own:*` 预热证据。
+5. **动作链路真实闭环。** 4 类可转发动作在 Android 模拟器/真机上均被设备确认并回执
    (`EXECUTED`)，不只是代码里能调用。Pixel 6a 真机 action bridge 回执延迟为
    841-1964 us：`PreWarmProcess own:warmup` 841 us、`KeepAlive` 973 us、
    `ReleaseMemory` 971 us、`PrefetchFile` 1964 us。
-5. **系统开销够低、可常驻。** replay 1600+ 事件峰值 RSS 约 11 MB、wall time 128 ms；
+6. **系统开销够低、可常驻。** replay 1600+ 事件峰值 RSS 约 11 MB、wall time 128 ms；
    长跑 4 分钟未现显著内存增长。Pixel 6a 短窗口 resource-overhead smoke run 中，
    observe-only PSS 均值 38.946 MB，action-loop PSS 均值 40.726 MB，`top`
    CPU 读数低于该采样方法精度；这只能证明控制面开销量级较低，不能当作精确 CPU 结论。
@@ -60,19 +68,20 @@
 
 1. **PrefetchFile / KeepAlive 的真实收益。** 只证明"能发出去并被确认"，没证明
    "发出去后系统变好了"。
-2. **DiPECS 相对强基线的净收益。** `StrongPredictiveActionBaseline` 已开始接入
-   LSApp 评估，但还没有在同设备同预算下执行动作并测量净收益。
+2. **ReleaseMemory 真内存压力收益。** idle 场景下结论已降级，仍缺 n>=20 真内存
+   压力场景复测。
 3. **真实长期用户体验。** 无真实用户、无 field study，无法支撑"用了 DiPECS 后
    电池/流畅度/启动延迟整体改善"。
-4. **预测→动作→收益的端到端链。** LSApp 真实数据只到预测准确率；ux-metrics 只到
-   "预热就快"；合成 action-value 是硬编码常量回测。
+4. **第三方应用静默预热收益。** 普通 Android 安全语义下 `pkg:*`/`notif:*` 不能被
+   当作静默后台启动第三方 app；#90 当前关闭的是 `own:*` 自有资源预热闭环。
 
 ### 对外表述建议
 
 当前最诚实的说法是：
 
 > DiPECS 是一个能保护隐私、治理风险、低开销地把本地信号转成真实 Android 动作的
-> 框架；其中 PreWarm 在模拟器上显著加速启动，其余动作的真实收益尚需端到端验证。
+> 框架；其中 Android-safe PreWarm 已在标准 LSApp split 上证明正净收益并超过强预测基线，
+> 其余动作的真实收益尚需端到端验证。
 
 不能支撑的说法是：
 
@@ -86,7 +95,7 @@
 
 | ActionType | 语义 | 代码链 | 真机派发 | 收益实验 | 结论 |
 | --- | --- | --- | --- | --- | --- |
-| `PreWarmProcess` | 预热应用进程 | 齐 | 转发到设备 | 已测：模拟器 n=20 +44.7% 启动（489.3 vs 884.1 ms，p95 512.0 vs 932.0 ms）；Pixel 6a smoke n=5 +76.2%（142.6 vs 600.4 ms，p95 168.0 vs 620.0 ms） | 真闪光点，但 #90 net-benefit 仍未闭环 |
+| `PreWarmProcess` | 预热应用进程 | 齐 | 转发到设备 | 已测：模拟器 n=20 +44.7% 启动（489.3 vs 884.1 ms，p95 512.0 vs 932.0 ms）；Pixel 6a net-benefit n=20/mode，hit saved 509.2 ms，miss action cost 0.5 ms，dispatch/control 8.394 ms/action；DiPECS net benefit 75,975,810 ms > strong baseline 72,283,770 ms | #90 标准 split / `own:*` PreWarm gate 已闭环 |
 | `ReleaseMemory` | 释放非关键内存 | 齐 | 转发到设备 | 已测但不稳定：旧 run jank -3.67 pp，新 run idle 场景 0.0 pp、PSS -0.462 MB；Pixel 6a idle jank 0.0 pp、PSS -20.418 MB，最新结论为 neutral | 收益微弱，踩「伪需求」线，暂不作卖点 |
 | `PrefetchFile` | 预加载热点文件到页缓存 | 齐 | 带 `url:`/`uri:` 时转发 | 无 | 能发≠有用，收益待证 |
 | `KeepAlive` | 保活当前前台进程 | 齐 | 无条件转发 | 无 | 能发≠有用，收益待证 |
@@ -94,10 +103,11 @@
 
 数据来源：`data/evaluation/ux-metrics-emulator-20260703-171457.md`、
 `data/evaluation/ux-metrics/ux-metrics-real-device-20260704-172048.md`、
+`data/evaluation/next-app/prewarm-net-benefit-real-device-20260704-184148.md`、
 `data/evaluation/action-latency/action-latency-real-device-20260704-172936.md`、
 `data/evaluation/resource-overhead/resource-overhead-real-device-20260704-172617.md`。
 
-## 当前实验的三个断层
+## 当前实验的剩余断层
 
 按 [强 Baseline 与动作收益评估准则](strong-baseline-action-value.md) 定义的
 「真价值 vs 伪需求」核对，核心链是：
@@ -106,7 +116,8 @@
 高质量预测 -> 及时动作 -> 设备侧终态 -> 系统指标改善
 ```
 
-三环目前各自成立，却**从未在同一条 trace、同一台设备上端到端串起来**。
+`PreWarmProcess own:*` 已在标准 LSApp split 上把预测命中率、设备侧 hit/miss
+测量和强基线对照串起来；以下是仍不能外推的缺口。
 
 1. **合成 action-value 是伪收益。**
    `main` 当前不包含 `crates/aios-cli/src/benchmark_next_app/action_value.rs`，也不默认输出
@@ -114,45 +125,44 @@
    `net_benefit_ms = 命中数 × 硬编码 120 ms − 浪费数 × 12 ms`，这类收益值不是测量结果，
    是把预测命中率乘一个假设常量再改名。若未来重新引入 action-value，必须导入真实测量数据，
    或在报告中显式标注为「合成回测常量，非真实设备测量」。
-2. **LSApp 评估停在 Top-k 准确率，不发动作。**
-   命中率很高（standard 集 ensemble hit@1 = 56.442%），但按准则「只证明 Top-k 准、
-   不执行动作」属伪需求。它证明的是预测质量，不是系统收益。
-3. **PreWarm 收益是「预热了就快」，接近同义反复。**
+2. **LSApp 评估本身仍停在 Top-k 准确率。**
+   `lsapp-standard.report.json` 证明的是预测质量；系统收益必须由
+   `prewarm-net-benefit-real-device-20260704-184148` 这类导入真实设备测量的
+   action-value artifact 承接，不能把纯预测报告直接当收益。
+3. **PreWarm 的结论范围是 Android-safe `own:*`。**
    `ux-metrics` 实验已经补到 cold/prewarm 启动样本合计 n=20，并报告均值 + p95；
    Pixel 6a 真机 smoke run 也复现了同方向启动收益，并补了 action bridge latency
-   和短窗口控制面开销；standard split 已把真实预测命中率接入 gross-saved gate。
-   但它仍没有测误预热成本，也没有在同一 trace/action budget 下把强基线与 DiPECS
-   都接到真实动作执行，因此不能把 placeholder net benefit 当作完整净收益。
-
-此外，最关键的缺口是**没有与强基线在同设备同预算下对打**：准则要求主对照是
-`StrongPredictiveActionBaseline`（强预测也来驱动动作），而不是 native no-action。
+   和短窗口控制面开销；Pixel 6a n=20 net-benefit run 又补齐 miss startup delta
+   与 dispatch/control cost。它不证明普通 Android 安装能静默后台启动第三方 app。
 
 截至 `feat/strong-predictive-baseline` 的当前实验，强预测基线已能写入
 `lsapp-standard.report.json` / `lsapp-coldstart.report.json`。当前 standard split 上
 DiPECS ensemble 已超过强基线：hit@1 为 56.442% vs 53.784%，hit@3 为
-76.104% vs 72.563%，hit@5 为 84.241% vs 80.428%；因此可以启用
-「预测命中率 × 实测 PreWarm 加速」的 gross-saved 先决 gate。cold-start 仍不能作为
+76.104% vs 72.563%，hit@5 为 84.241% vs 80.428%。Pixel 6a n=20 net-benefit
+artifact 将 standard split 的 hit@1 接入同一套实测 PreWarm hit/miss/control 成本，
+并断言 DiPECS `net_benefit_ms > 0` 且高于强基线。cold-start split 仍不能作为
 DiPECS ensemble 胜出证据：hit@1 为 21.196% vs 48.050%。
 
-这只解决 #90/#91 的预测质量和已测启动收益连接问题，并为 #90/#94 补充了真机
-smoke evidence；完整 action-level net benefit 仍必须补齐真实动作预算、误预热成本、
-控制面开销和治理收益后再计算。
+这解决 #90 在 standard split / Android-safe `own:*` PreWarm 范围内的 gate；其他动作、
+第三方静默预热和长期用户体验仍必须单独评估。
 
 ## PR #108 的 issue 归属
 
-PR #108 (`real-device-action-evidence`) 应被理解为**证据收敛 PR**,而不是完整收益
-闭环 PR:
+PR #108 (`real-device-action-evidence`) 应被理解为**证据收敛 PR**，其中
+`PreWarmProcess own:*` 的标准 LSApp split gate 已闭环，ReleaseMemory 的真内存
+压力复测仍未闭环:
 
-- 对 #90:仅补充 Pixel 6a 真机 smoke evidence、action bridge latency 和短窗口
-  控制面开销。它不满足 #90 的 n>=20、误预热成本、同 trace/同预算强基线对照和
-  `net_benefit_ms > 0` 要求,因此不能关闭 #90。
+- 对 #90:补充 Pixel 6a n=20/mode PreWarm hit/miss startup 测量、dispatch/control
+  cost，并把 LSApp standard hit@1 接入 net-benefit gate。`next_app_net_benefit_test`
+  会重新计算并断言 DiPECS `net_benefit_ms > 0` 且高于
+  `StrongPredictiveActionBaseline`，因此关闭 #90。边界是 Android-safe `own:*`
+  自有资源预热，不声称普通 Android app 可静默预热第三方应用。
 - 对 #94:补充 ReleaseMemory 在真机 idle 短窗口下 jank 仍为 0.0 pp 改善的证据,
   并把 value-metrics / coverage 文档统一为「中性/弱证据/待真内存压力复测」,
   从而关闭“把 ReleaseMemory 当作稳定正收益”的数据质量问题。更严格的真内存
   压力 n>=20 复测仍由 #99 跟踪。
 
-因此该分支关闭 #94 的结论降级问题,并为 #90 提供前置实测证据;最终 net-benefit
-闭环和 ReleaseMemory 压力场景复测仍应落在后续专门实验分支。
+因此该分支关闭 #90 和 #94；ReleaseMemory 压力场景复测仍应落在 #99 的后续专门实验分支。
 
 ## 补齐路径：分动作 net-benefit 实验
 

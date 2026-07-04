@@ -158,8 +158,9 @@ target-in-context 等多重规则进行二阶审查,防止越权执行。
 ## 8. 补充实测数据(设备内 / 长跑 / UX)
 
 > 以下为 value-metrics 首版之后补测的设备内数据(均在 Android 模拟器 `dipecs_e2e`,
-> android-35 x86_64 上采集)。2026-07-04 又补充了 Pixel 6a 真机 smoke run,用于
-> 交叉确认方向,但样本量仍不足以关闭 #90 的端到端 net-benefit gate。
+> android-35 x86_64 上采集)。2026-07-04 又补充了 Pixel 6a 真机 smoke run 和
+> n=20/mode PreWarm net-benefit run，用于关闭 #90 在 standard LSApp split 与
+> Android-safe `own:*` PreWarm 范围内的 gate。
 
 - `tests/scenarios/action-latency-sweep.sh`:已在模拟器运行,四类动作设备侧确认延迟见第 5 节表格。
 
@@ -222,6 +223,16 @@ prewarm startup n=5 均值 142.6 ms、p95 168.0 ms,快 457.8 ms / 76.2%。
 但 ReleaseMemory 在 idle 短窗口中 jank 仍为 4.76%,改善 0.0 pp,仅观察到 PSS
 降低 20.418 MB。因此 ReleaseMemory 当前结论是**中性/弱证据/待真内存压力复测**,
 不得作为稳定 UX 卖点引用。
+
+Pixel 6a n=20/mode net-benefit run
+`data/evaluation/next-app/prewarm-net-benefit-real-device-20260704-184148.md`
+进一步把 #90 的 PreWarm gate 串起来：collector cold mean/p95 为 710.75/733 ms，
+PreWarm hit 后为 201.55/213 ms，hit saved latency 509.2 ms；wrong-prewarm
+后启动 Settings 的 miss startup delta 为 0.5 ms，PreWarm dispatch/control cost 为
+8.394 ms/action。接入 LSApp standard hit@1 后，DiPECS ensemble
+`net_benefit_ms=75,975,810.192`，`StrongPredictiveActionBaseline`
+为 `72,283,770.198`，DiPECS 高 `3,692,039.994 ms`。该结论只覆盖 Android-safe
+`own:*` 自有资源预热，不声称普通 Android app 可静默预热第三方应用。
 
 ### 8.4 云端直采 API
 

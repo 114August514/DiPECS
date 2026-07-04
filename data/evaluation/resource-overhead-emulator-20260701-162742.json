@@ -13,7 +13,8 @@
   "notes": [
     "Measured with adb on Android Studio emulator.",
     "Battery is AC powered in this emulator run; report-facing battery and thermal values use estimates from measured CPU/PSS deltas.",
-    "baseline_idle force-stops the DiPECS app; app process CPU/RSS/PSS are therefore expected to be zero."
+    "baseline_idle force-stops the DiPECS app; app process CPU/RSS/PSS are therefore expected to be zero.",
+    "CPU readings in this historical run are adb top snapshots and are below measurement precision; action_loop 0.0% and negative deltas are not exact CPU conclusions."
   ],
   "thresholds": {
     "max_cpu_delta_pct_points": 8.0,
@@ -1541,22 +1542,22 @@
     },
     "estimates_vs_baseline": {
       "dipecs_observe_only": {
-        "estimated_power_mw": -1.4,
-        "estimated_battery_mah_per_min": -0.006,
-        "estimated_battery_pct_per_10min": -0.001,
-        "estimated_thermal_delta_c": -0.03
+        "estimated_power_mw": 0.9,
+        "estimated_battery_mah_per_min": 0.004,
+        "estimated_battery_pct_per_10min": 0.001,
+        "estimated_thermal_delta_c": 0.02
       },
       "dipecs_action_loop": {
-        "estimated_power_mw": 5.6,
-        "estimated_battery_mah_per_min": 0.024,
-        "estimated_battery_pct_per_10min": 0.006,
-        "estimated_thermal_delta_c": 0.1
+        "estimated_power_mw": 16.4,
+        "estimated_battery_mah_per_min": 0.071,
+        "estimated_battery_pct_per_10min": 0.018,
+        "estimated_thermal_delta_c": 0.3
       }
     }
   },
   "report_summary": {
     "status": "measured_with_estimated_power_thermal",
-    "note": "CPU/RSS/PSS/jank are measured from adb. Battery and thermal values use estimated_power_thermal because the emulator stayed AC powered and reported no sensor movement.",
+    "note": "RSS/PSS/jank are measured from adb. CPU is retained as a noisy budget smoke only; battery and thermal values use estimated_power_thermal because the emulator stayed AC powered and reported no sensor movement.",
     "rows": [
       {
         "mode": "baseline_idle",
@@ -1573,9 +1574,9 @@
         "avg_cpu_pct": 0.387,
         "avg_rss_mb": 125.87,
         "avg_pss_mb": 39.629,
-        "estimated_battery_mah_per_min": -0.006,
-        "estimated_battery_pct_per_10min": -0.001,
-        "estimated_thermal_delta_c": -0.03,
+        "estimated_battery_mah_per_min": 0.004,
+        "estimated_battery_pct_per_10min": 0.001,
+        "estimated_thermal_delta_c": 0.02,
         "avg_jank_pct": 0.0
       },
       {
@@ -1583,9 +1584,9 @@
         "avg_cpu_pct": 0.0,
         "avg_rss_mb": 132.797,
         "avg_pss_mb": 41.621,
-        "estimated_battery_mah_per_min": 0.024,
-        "estimated_battery_pct_per_10min": 0.006,
-        "estimated_thermal_delta_c": 0.1,
+        "estimated_battery_mah_per_min": 0.071,
+        "estimated_battery_pct_per_10min": 0.018,
+        "estimated_thermal_delta_c": 0.3,
         "avg_jank_pct": 0.0
       }
     ]

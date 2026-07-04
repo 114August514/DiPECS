@@ -174,8 +174,9 @@ target-in-context 等多重规则进行二阶审查,防止越权执行。
 | dipecs_action_loop | 0.0% | 132.80 MB | 41.62 MB | 0.0% |
 
 **读法(诚实)**:模拟器上 CPU 占用落在测量噪声内(两次运行分别测得约 1.15% 与约 0.4%/0,
-甚至出现"观测 < 基线"的负差),不宜作精确 CPU 结论;**稳定可报的是 RSS 每叠一层约 +7–8 MB**
-(采集 +7.6 MB,动作回路再 +6.9 MB),jank 全 0。电量/温度为 AC 供电下的换算估算,非燃料计实测。
+甚至出现"观测 < 基线"的负差),`dipecs_action_loop = 0.0%` 不能单独引用为精确 CPU 结论;
+**稳定可报的是 RSS 每叠一层约 +7–8 MB**(采集 +7.6 MB,动作回路再 +6.9 MB),
+jank 全 0。电量/温度为 AC 供电下的换算估算,非燃料计实测。
 
 ### 8.2 运行稳定性(长跑无内存泄漏)
 
@@ -205,7 +206,8 @@ target-in-context 等多重规则进行二阶审查,防止越权执行。
 | ReleaseMemory jank 改善 | 3.67 pp | 0.0 pp |
 
 **读法(诚实)**:**PreWarm 两轮一致显著**(启动快 44–55%),是最硬的 UX 收益证据;
-**ReleaseMemory 降 jank 两轮不一致**(run1 有、run2 无),只能作弱证据,建议补几轮取分布再下结论。
+**ReleaseMemory 降 jank 两轮不一致**(run1 有、run2 无),最新 idle run 记为
+`release_memory_effective=false` / neutral,只能作弱证据,需真内存压力复测后再下结论。
 
 ### 8.4 云端直采 API
 

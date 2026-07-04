@@ -35,6 +35,16 @@ fn report_schema_and_counts_are_correct() {
 
     assert_eq!(report.schema_version, "dipecs.next_app_benchmark.v2");
     assert_eq!(report.dataset_id, "synthetic-next-app-v1");
+    assert_eq!(report.source, "synthetic");
+    assert_eq!(report.evaluation_source, "synthetic_trace");
+    assert_eq!(
+        report.action_value_source,
+        "synthetic_model_prediction_only"
+    );
+    assert_eq!(
+        report.benefit_claim_policy,
+        "no_measured_action_benefit_claim"
+    );
     assert_eq!(report.total_windows, 946);
     assert_eq!(report.eligible_windows, 178);
     assert_eq!(report.scenarios.len(), 3);
@@ -75,6 +85,28 @@ fn report_schema_and_counts_are_correct() {
                 scenario.scenario
             );
         }
+    }
+}
+
+#[test]
+fn report_serializes_prediction_only_provenance() {
+    let report = run_benchmark(&default_config()).expect("benchmark should run");
+    assert!(report
+        .limitations
+        .iter()
+        .any(|line| line.contains("must not be cited as measured device benefit")));
+
+    let value = serde_json::to_value(&report).expect("report should serialize");
+    for field in [
+        "net_benefit_ms",
+        "saved_latency_ms",
+        "wasted_action_cost_ms",
+        "control_plane_cost_ms",
+    ] {
+        assert!(
+            !json_contains_key(&value, field),
+            "prediction-only benchmark must not serialize {field}"
+        );
     }
 }
 
@@ -235,5 +267,15 @@ fn synthetic_context(current_app: &str, candidates: &[&str]) -> StructuredContex
             latest_system_status: None,
             source_tier: SourceTier::PublicApi,
         },
+    }
+}
+
+fn json_contains_key(value: &serde_json::Value, key: &str) -> bool {
+    match value {
+        serde_json::Value::Object(map) => {
+            map.contains_key(key) || map.values().any(|v| json_contains_key(v, key))
+        },
+        serde_json::Value::Array(items) => items.iter().any(|v| json_contains_key(v, key)),
+        _ => false,
     }
 }

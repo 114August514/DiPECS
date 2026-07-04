@@ -400,6 +400,7 @@
   "conclusion": {
     "accepted": true,
     "prewarm_effective": true,
-    "release_memory_effective": true
+    "release_memory_effective": false,
+    "release_memory_status": "neutral_idle_no_jank_improvement"
   }
 }

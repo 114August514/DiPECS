@@ -3,8 +3,8 @@
 
 This script blocks low-quality data from being treated as evidence of system
 benefit. It is intentionally strict: if a report claims action-level
-`net_benefit` or `saved_latency` without a `source` annotation that proves it
-came from real device measurements, the PR is rejected.
+`net_benefit` or `saved_latency` without provenance showing either real device
+measurement or an explicit synthetic backtest, the PR is rejected.
 
 Enforcement targets:
 - Any committed evaluation JSON that contains action-value benefit fields
@@ -30,9 +30,13 @@ import json
 import sys
 from pathlib import Path
 
-ALLOWED_SYNTHETIC_SOURCES = {
+ALLOWED_SCHEMA_SOURCES = {
     "synthetic_constant_backtest",
     "synthetic_model_prediction_only",
+}
+
+ALLOWED_SYNTHETIC_BENEFIT_SOURCES = {
+    "synthetic_constant_backtest",
 }
 
 REQUIRED_MEASURED_SOURCES = {
@@ -50,44 +54,86 @@ BENEFIT_FIELDS = (
     "control_plane_cost_ms",
 )
 
+PROVENANCE_FIELDS = (
+    "action_value_source",
+    "source",
+)
+
 
 def fail(message: str) -> None:
     print(f"FAIL: {message}", file=sys.stderr)
     sys.exit(1)
 
 
-def _annotation_of(node: dict, inherited: str | None) -> str | None:
-    """Resolve the source annotation for a node, inheriting from ancestors."""
-    return node.get("source") or node.get("action_value_source") or inherited
+def provenance(value: dict) -> str | None:
+    for field in PROVENANCE_FIELDS:
+        found = value.get(field)
+        if isinstance(found, str) and found.strip():
+            return found
+    return None
 
 
-def _walk_benefit_nodes(path: Path, node, inherited: str | None, trail: str) -> None:
-    """Recursively verify every object carrying benefit fields is annotated.
+def is_measured_source(source: str | None) -> bool:
+    return source in REQUIRED_MEASURED_SOURCES
 
-    A node anywhere in the tree that contains any BENEFIT_FIELDS must resolve
-    (via itself or an ancestor) to an allowed synthetic tag or a measured
-    source. Unannotated benefit numbers fail the guard at any depth.
-    """
-    if isinstance(node, dict):
-        source = _annotation_of(node, inherited)
-        if any(field in node for field in BENEFIT_FIELDS):
-            if source in ALLOWED_SYNTHETIC_SOURCES:
+
+def is_synthetic_benefit_source(source: str | None) -> bool:
+    return source in ALLOWED_SYNTHETIC_BENEFIT_SOURCES
+
+
+def is_schema_source(source: str | None) -> bool:
+    return is_measured_source(source) or source in ALLOWED_SCHEMA_SOURCES
+
+
+def scan_benefit_claims(
+    value,
+    path: str,
+    inherited_source: str | None,
+    inherited_allowed: bool,
+) -> int:
+    """Return the number of synthetic benefit warnings emitted."""
+    warnings = 0
+    if isinstance(value, dict):
+        local_source = provenance(value)
+        active_source = local_source or (inherited_source if inherited_allowed else None)
+        has_benefit = any(field in value for field in BENEFIT_FIELDS)
+
+        if has_benefit:
+            if is_synthetic_benefit_source(active_source):
                 print(
-                    f"WARN: {path}:{trail or '<root>'} has synthetic action-value "
-                    f"claims (source={source}); MUST NOT be cited as measured."
+                    f"WARN: {path} contains synthetic action-value claims "
+                    f"(source={active_source}); these MUST NOT be cited as "
+                    f"measured system benefits."
                 )
-            elif source not in REQUIRED_MEASURED_SOURCES:
+                warnings += 1
+            elif not is_measured_source(active_source):
                 fail(
-                    f"{path}:{trail or '<root>'} contains action-value benefit "
-                    f"fields but source='{source}' is neither a measured source "
-                    f"{sorted(REQUIRED_MEASURED_SOURCES)} nor an allowed synthetic "
-                    f"tag {sorted(ALLOWED_SYNTHETIC_SOURCES)}. Annotate it."
+                    f"{path} contains benefit fields but source="
+                    f"'{active_source}' is not permitted. Use a measured source "
+                    f"({sorted(REQUIRED_MEASURED_SOURCES)}) or explicitly tag a "
+                    f"synthetic backtest with source=synthetic_constant_backtest."
                 )
-        for key, value in node.items():
-            _walk_benefit_nodes(path, value, source, f"{trail}.{key}" if trail else key)
-    elif isinstance(node, list):
-        for idx, item in enumerate(node):
-            _walk_benefit_nodes(path, item, inherited, f"{trail}[{idx}]")
+
+        child_inherited_source = active_source
+        child_inherited_allowed = inherited_allowed or is_schema_source(active_source)
+        for key, child in value.items():
+            warnings += scan_benefit_claims(
+                child,
+                f"{path}.{key}",
+                child_inherited_source,
+                child_inherited_allowed,
+            )
+        return warnings
+
+    if isinstance(value, list):
+        for idx, child in enumerate(value):
+            warnings += scan_benefit_claims(
+                child,
+                f"{path}[{idx}]",
+                inherited_source,
+                inherited_allowed,
+            )
+    return warnings
 
 
 def check_report(path: Path) -> None:
@@ -102,30 +148,39 @@ def check_report(path: Path) -> None:
     except json.JSONDecodeError as exc:
         fail(f"{path} is not valid JSON: {exc}")
 
+    # Top-level provenance can be inherited by nested benefit records, but only
+    # when it is itself a known measured or synthetic source.
+    top_source = provenance(data) if isinstance(data, dict) else None
     schema = data.get("schema_version") if isinstance(data, dict) else None
 
-    # Recursive scan: any object carrying benefit fields at any depth must be
-    # annotated (via itself or an ancestor). This catches nested metrics blocks
-    # that a top-level-only check would miss.
-    _walk_benefit_nodes(path, data, None, "")
+    warnings = scan_benefit_claims(
+        data,
+        str(path),
+        top_source,
+        is_schema_source(top_source),
+    )
 
     # Schema-specific guard for the known synthetic next-app benchmark report.
     if schema == "dipecs.next_app_benchmark.v2":
-        # This schema historically emitted net_benefit from hard-coded constants.
-        # We allow it to exist only if every benefit value is tagged synthetic.
+        # This schema is generated from deterministic synthetic traces. It is
+        # allowed only with explicit action-value provenance, even when it emits
+        # no benefit fields.
         synthetic_tag = data.get("action_value_source")
-        if synthetic_tag not in ALLOWED_SYNTHETIC_SOURCES:
+        if synthetic_tag not in ALLOWED_SCHEMA_SOURCES:
             fail(
-                f"{path} uses schema {schema} which is known to derive "
-                f"net_benefit from hard-coded constants. Either set "
-                f"action_value_source to one of {ALLOWED_SYNTHETIC_SOURCES} or "
-                f"migrate to measured device data."
+                f"{path} uses schema {schema}, which is synthetic. Set "
+                f"action_value_source to one of {sorted(ALLOWED_SCHEMA_SOURCES)} "
+                f"or migrate to measured device data."
             )
         print(
             f"OK: {path} is correctly tagged as synthetic "
             f"(action_value_source={synthetic_tag}); will not be treated as "
             f"measured benefit."
         )
+        return
+
+    if warnings:
+        print(f"OK: {path} passes with {warnings} synthetic benefit warning(s)")
         return
 
     print(f"OK: {path} passes action-value quality guard")

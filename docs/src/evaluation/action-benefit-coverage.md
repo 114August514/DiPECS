@@ -39,8 +39,8 @@
 
 ### 部分证实（有正面数据但不足以下结论）
 
-1. **ReleaseMemory 降 jank。** run1 降 3.67 pp，run2 完全无变化，且测试在 idle
-   模拟器而非真内存压力场景。只能算弱证据，需真压力复测。
+1. **ReleaseMemory 降 jank。** run1 降 3.67 pp，run2 完全无变化，最新 idle
+   fixture 记为 `release_memory_effective=false`。由于测试不是真内存压力场景，只能算弱证据，需真压力复测。
 2. **云端复杂语义决策。** live DeepSeek 4 个场景全部成功产出 intent，但样本仅 4 个，
    不能说明泛化性。
 
@@ -75,7 +75,7 @@
 | ActionType | 语义 | 代码链 | 真机派发 | 收益实验 | 结论 |
 | --- | --- | --- | --- | --- | --- |
 | `PreWarmProcess` | 预热应用进程 | 齐 | 转发到设备 | 已测：+44.7% 启动（489.3 vs 884.1 ms，`am start -W TotalTime`，p95 512.0 vs 932.0 ms） | 真闪光点 |
-| `ReleaseMemory` | 释放非关键内存 | 齐 | 转发到设备 | 已测但不稳定：旧 run jank -3.67 pp，新 run idle 场景 0.0 pp、PSS -0.462 MB | 收益微弱，踩「伪需求」线，暂不作卖点 |
+| `ReleaseMemory` | 释放非关键内存 | 齐 | 转发到设备 | 已测但不稳定：旧 run jank -3.67 pp，新 run idle 场景 0.0 pp、PSS -0.462 MB，最新结论为 neutral | 收益微弱，踩「伪需求」线，暂不作卖点 |
 | `PrefetchFile` | 预加载热点文件到页缓存 | 齐 | 带 `url:`/`uri:` 时转发 | 无 | 能发≠有用，收益待证 |
 | `KeepAlive` | 保活当前前台进程 | 齐 | 无条件转发 | 无 | 能发≠有用，收益待证 |
 | `NoOp` | 不执行操作 | — | — | — | — |
@@ -94,10 +94,11 @@
 三环目前各自成立，却**从未在同一条 trace、同一台设备上端到端串起来**。
 
 1. **合成 action-value 是伪收益。**
-   `crates/aios-cli/src/benchmark_next_app/action_value.rs`（feat/synthetic 分支）里
-   `net_benefit_ms = 命中数 × 硬编码 120 ms − 浪费数 × 12 ms`。报告中的收益值不是
-   测量结果，是把预测命中率乘一个假设常量再改名。引用时必须标注为「合成回测常量，
-   非真实设备测量」。
+   `main` 当前不包含 `crates/aios-cli/src/benchmark_next_app/action_value.rs`，也不默认输出
+   `net_benefit_ms`。历史合成分支曾用
+   `net_benefit_ms = 命中数 × 硬编码 120 ms − 浪费数 × 12 ms`，这类收益值不是测量结果，
+   是把预测命中率乘一个假设常量再改名。若未来重新引入 action-value，必须导入真实测量数据，
+   或在报告中显式标注为「合成回测常量，非真实设备测量」。
 2. **LSApp 评估停在 Top-k 准确率，不发动作。**
    命中率很高（standard 集 ensemble hit@1 = 56.442%），但按准则「只证明 Top-k 准、
    不执行动作」属伪需求。它证明的是预测质量，不是系统收益。
@@ -121,8 +122,10 @@ DiPECS ensemble 胜出证据：hit@1 为 21.196% vs 48.050%。
 
 ## 补齐路径：分动作 net-benefit 实验
 
-总原则：每个动作单独定义收益机制、测量手段、浪费代价、对照组，禁止硬编码常量，
-禁止合并成单一笼统的 net_benefit。同一设备、同一 trace、同一动作预算。
+总原则：每个动作单独定义收益机制、测量手段、浪费代价、对照组，禁止无来源硬编码常量，
+禁止合并成单一笼统的 net_benefit。同一设备、同一 trace、同一动作预算。当前
+`synthetic-next-app-v1.report.json` 是预测回归报告，只能验证「预测→动作候选」映射；
+默认不包含 `net_benefit_ms`，也不能作为真实设备收益引用。
 
 通用骨架：
 

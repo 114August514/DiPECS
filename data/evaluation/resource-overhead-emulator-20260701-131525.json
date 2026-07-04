@@ -13,7 +13,8 @@
     "notes":  [
                   "Measured with adb on Android Studio emulator.",
                   "Battery is AC powered in this emulator run; battery_pct_delta is reported, but mAh drain is not meaningful.",
-                  "baseline_idle force-stops the DiPECS app; app process CPU/RSS/PSS are therefore expected to be zero."
+                  "baseline_idle force-stops the DiPECS app; app process CPU/RSS/PSS are therefore expected to be zero.",
+                  "CPU readings in this historical run are adb top snapshots and are below measurement precision; use them only as a budget smoke, not exact CPU conclusions."
               ],
     "thresholds":  {
                        "max_cpu_delta_pct_points":  8,
@@ -596,7 +597,7 @@
                                 },
     "report_summary":  {
                            "status":  "measured_with_estimated_power_thermal",
-                           "note":  "CPU/RSS/PSS/jank are measured from adb. Battery and thermal values use estimated_power_thermal because the emulator stayed AC powered and reported no sensor movement.",
+                           "note":  "RSS/PSS/jank are measured from adb. CPU is retained as a noisy budget smoke only; battery and thermal values use estimated_power_thermal because the emulator stayed AC powered and reported no sensor movement.",
                            "rows":  [
                                         {
                                             "mode":  "baseline_idle",

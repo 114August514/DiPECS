@@ -198,6 +198,9 @@ pub fn run_benchmark(config: &BenchmarkRunConfig) -> Result<BenchmarkReport> {
             .map(|l| l.dataset_id.clone())
             .unwrap_or_default(),
         source: "synthetic".into(),
+        evaluation_source: "synthetic_trace".into(),
+        action_value_source: "synthetic_model_prediction_only".into(),
+        benefit_claim_policy: "no_measured_action_benefit_claim".into(),
         config: BenchmarkConfig {
             window_secs: config.window_secs,
             horizon_secs,
@@ -219,6 +222,7 @@ pub fn run_benchmark(config: &BenchmarkRunConfig) -> Result<BenchmarkReport> {
             "Accuracy is reported only for context-supported switches; coverage reports how selective that cohort is.".into(),
             "Latency is measured during this run and is not byte-deterministic across machines.".into(),
             "Statistical baselines are trained on the per-scenario train split and evaluated on the held-out test split.".into(),
+            "This synthetic benchmark validates prediction-to-action mapping only; it does not import measured action-value data and must not be cited as measured device benefit.".into(),
         ],
     })
 }

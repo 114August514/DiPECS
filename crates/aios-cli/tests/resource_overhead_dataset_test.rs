@@ -8,6 +8,8 @@ use serde_json::Value;
 
 const DATA: &str =
     include_str!("../../../data/evaluation/resource-overhead-emulator-20260701-131525.json");
+const LATEST_RESOURCE_DATA: &str =
+    include_str!("../../../data/evaluation/resource-overhead-emulator-20260701-162742.json");
 const EPSILON: f64 = 0.011;
 
 #[derive(Debug, Clone)]
@@ -24,6 +26,13 @@ struct RunMetrics {
 fn fixture() -> Value {
     let raw = DATA.strip_prefix('\u{FEFF}').unwrap_or(DATA);
     serde_json::from_str(raw).expect("resource overhead JSON fixture must parse")
+}
+
+fn latest_fixture() -> Value {
+    let raw = LATEST_RESOURCE_DATA
+        .strip_prefix('\u{FEFF}')
+        .unwrap_or(LATEST_RESOURCE_DATA);
+    serde_json::from_str(raw).expect("latest resource overhead JSON fixture must parse")
 }
 
 fn sample_count(data: &Value) -> usize {
@@ -340,5 +349,41 @@ fn report_summary_merges_measured_and_estimated_values() {
     assert!(
         number(action_loop, "estimated_thermal_delta_c") > 0.0,
         "report should not present action-loop thermal as zero"
+    );
+}
+
+#[test]
+fn latest_resource_overhead_marks_cpu_as_noisy_budget_smoke() {
+    let data = latest_fixture();
+    let notes = data["notes"]
+        .as_array()
+        .expect("notes must be an array")
+        .iter()
+        .map(|note| note.as_str().expect("note must be a string"))
+        .collect::<Vec<_>>()
+        .join(" ");
+    assert!(
+        notes.contains("below measurement precision"),
+        "latest resource-overhead fixture must not present 0.0% CPU as exact"
+    );
+
+    let report_note = data["report_summary"]["note"]
+        .as_str()
+        .expect("report summary note must be a string");
+    assert!(
+        report_note.contains("noisy budget smoke"),
+        "report summary must describe CPU as a noisy budget smoke"
+    );
+
+    let action_loop = data["report_summary"]["rows"]
+        .as_array()
+        .expect("report rows")
+        .iter()
+        .find(|row| row["mode"] == "dipecs_action_loop")
+        .expect("action-loop row");
+    assert_eq!(
+        number(action_loop, "avg_cpu_pct"),
+        0.0,
+        "this regression fixture covers the historical 0.0% CPU reading"
     );
 }

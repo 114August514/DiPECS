@@ -380,6 +380,7 @@ data = {
         "Startup latency measured via am start -W (TotalTime).",
         "Jank measured via dumpsys gfxinfo.",
         "PreWarm and ReleaseMemory actions sent through the bridge socket (adb forward).",
+        "ReleaseMemory is marked effective only when jank improves; idle no-change runs are neutral pending memory-pressure retest.",
     ],
     "thresholds": {
         "min_prewarm_pct_faster": 20.0,
@@ -408,7 +409,8 @@ data = {
     "conclusion": {
         "accepted": True,
         "prewarm_effective": prewarm_delta["startup_total_time_ms_reduction"] >= 100,
-        "release_memory_effective": release_delta["avg_jank_pct_points_reduction"] >= 0,
+        "release_memory_effective": release_delta["avg_jank_pct_points_reduction"] > 0,
+        "release_memory_status": "positive_jank_reduction" if release_delta["avg_jank_pct_points_reduction"] > 0 else "neutral_idle_no_jank_improvement",
     },
 }
 
@@ -447,10 +449,13 @@ md = f"""# DiPECS Emulator UX Metrics Measurement
 
 **ReleaseMemory effect:** jank {release_delta['avg_jank_pct_points_reduction']} pp, PSS {release_delta['avg_pss_mb_reduction']} MB
 
+**ReleaseMemory interpretation:** {data['conclusion']['release_memory_status']}
+
 ## Conclusion
 
 - PreWarm effective: {data['conclusion']['prewarm_effective']}
 - ReleaseMemory effective: {data['conclusion']['release_memory_effective']}
+- ReleaseMemory status: {data['conclusion']['release_memory_status']}
 """
 with open(md_path, "w", encoding="utf-8") as f:
     f.write(md)

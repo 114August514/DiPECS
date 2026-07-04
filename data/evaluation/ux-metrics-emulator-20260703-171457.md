@@ -23,7 +23,10 @@
 
 **ReleaseMemory effect:** jank 0.0 pp, PSS -0.462 MB
 
+**ReleaseMemory interpretation:** neutral in this idle emulator run; not cited as a positive benefit until memory-pressure retest.
+
 ## Conclusion
 
 - PreWarm effective: True
-- ReleaseMemory effective: True
+- ReleaseMemory effective: False
+- ReleaseMemory status: neutral_idle_no_jank_improvement

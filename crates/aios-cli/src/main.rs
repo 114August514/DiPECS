@@ -6,7 +6,10 @@ use std::path::PathBuf;
 
 use aios_cli::android_bridge;
 use aios_cli::benchmark_next_app::{self, BenchmarkRunConfig};
-use aios_cli::next_app::{self, NextAppDataset, NextAppSplit};
+use aios_cli::next_app::{
+    self, build_prewarm_net_benefit_fixture, MeasuredValue, MeasurementSource, NetBenefitTrace,
+    NextAppDataset, NextAppSplit, PrewarmFixtureBuildInputs,
+};
 use aios_cli::replay::{self, Stage};
 use anyhow::{bail, Context, Result};
 use clap::{Parser, Subcommand};
@@ -170,6 +173,52 @@ enum Command {
         /// Window length in seconds; must match the labels.
         #[arg(long, default_value_t = 10)]
         window_secs: u64,
+    },
+    /// Generate a PreWarmProcess action-level net-benefit fixture from offline measurements.
+    GeneratePrewarmNetBenefitFixture {
+        /// LSApp next-app report containing split/test_examples and hit-rate metrics.
+        #[arg(long)]
+        report: PathBuf,
+
+        /// UX metrics JSON containing ux_deltas.prewarm_vs_cold.startup_total_time_ms_reduction.
+        #[arg(long)]
+        ux_metrics: PathBuf,
+
+        /// Output fixture JSON path.
+        #[arg(long)]
+        output: PathBuf,
+
+        /// Dataset id to write into the generated fixture.
+        #[arg(long, default_value = "prewarm-offline-generated")]
+        dataset_id: String,
+
+        /// Measured missed/wasted PreWarmProcess cost in milliseconds.
+        #[arg(long)]
+        wasted_prewarm_ms: f64,
+
+        /// Number of samples behind wasted-prewarm measurement.
+        #[arg(long, default_value_t = 1)]
+        wasted_prewarm_samples: usize,
+
+        /// Optional p95 for wasted-prewarm cost.
+        #[arg(long)]
+        wasted_prewarm_p95_ms: Option<f64>,
+
+        /// DiPECS control-plane overhead per prediction in milliseconds.
+        #[arg(long)]
+        dipecs_control_plane_ms: f64,
+
+        /// Number of samples behind DiPECS control-plane measurement.
+        #[arg(long, default_value_t = 1)]
+        dipecs_control_plane_samples: usize,
+
+        /// Strong baseline control-plane overhead per prediction in milliseconds.
+        #[arg(long, default_value_t = 0.0)]
+        strong_control_plane_ms: f64,
+
+        /// Number of samples behind strong baseline control-plane measurement.
+        #[arg(long, default_value_t = 1)]
+        strong_control_plane_samples: usize,
     },
 }
 
@@ -354,5 +403,169 @@ fn main() -> Result<()> {
             );
             Ok(())
         },
+        Command::GeneratePrewarmNetBenefitFixture {
+            report,
+            ux_metrics,
+            output,
+            dataset_id,
+            wasted_prewarm_ms,
+            wasted_prewarm_samples,
+            wasted_prewarm_p95_ms,
+            dipecs_control_plane_ms,
+            dipecs_control_plane_samples,
+            strong_control_plane_ms,
+            strong_control_plane_samples,
+        } => {
+            let fixture = generate_prewarm_net_benefit_fixture(
+                &report,
+                &ux_metrics,
+                dataset_id,
+                wasted_prewarm_ms,
+                wasted_prewarm_samples,
+                wasted_prewarm_p95_ms,
+                dipecs_control_plane_ms,
+                dipecs_control_plane_samples,
+                strong_control_plane_ms,
+                strong_control_plane_samples,
+            )?;
+            if let Some(parent) = output.parent() {
+                if !parent.as_os_str().is_empty() {
+                    std::fs::create_dir_all(parent)
+                        .with_context(|| format!("creating output dir {}", parent.display()))?;
+                }
+            }
+            let file = File::create(&output)
+                .with_context(|| format!("creating fixture {}", output.display()))?;
+            serde_json::to_writer_pretty(BufWriter::new(file), &fixture)
+                .with_context(|| format!("writing fixture {}", output.display()))?;
+            eprintln!(
+                "generated PreWarm net-benefit fixture {} -> {}",
+                fixture.dataset_id,
+                output.display()
+            );
+            Ok(())
+        },
     }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn generate_prewarm_net_benefit_fixture(
+    report_path: &PathBuf,
+    ux_metrics_path: &PathBuf,
+    dataset_id: String,
+    wasted_prewarm_ms: f64,
+    wasted_prewarm_samples: usize,
+    wasted_prewarm_p95_ms: Option<f64>,
+    dipecs_control_plane_ms: f64,
+    dipecs_control_plane_samples: usize,
+    strong_control_plane_ms: f64,
+    strong_control_plane_samples: usize,
+) -> Result<next_app::PrewarmNetBenefitFixture> {
+    let report: serde_json::Value = serde_json::from_reader(BufReader::new(
+        File::open(report_path)
+            .with_context(|| format!("opening report {}", report_path.display()))?,
+    ))
+    .with_context(|| format!("parsing report {}", report_path.display()))?;
+    let ux: serde_json::Value = serde_json::from_reader(BufReader::new(
+        File::open(ux_metrics_path)
+            .with_context(|| format!("opening UX metrics {}", ux_metrics_path.display()))?,
+    ))
+    .with_context(|| format!("parsing UX metrics {}", ux_metrics_path.display()))?;
+
+    let split = report
+        .get("split")
+        .and_then(|v| v.as_str())
+        .context("report.split missing")?
+        .to_string();
+    let examples = report
+        .get("test_examples")
+        .and_then(|v| v.as_u64())
+        .context("report.test_examples missing")? as usize;
+    let saved_ms = ux
+        .get("ux_deltas")
+        .and_then(|d| d.get("prewarm_vs_cold"))
+        .and_then(|p| p.get("startup_total_time_ms_reduction"))
+        .and_then(|v| v.as_f64())
+        .context("ux_deltas.prewarm_vs_cold.startup_total_time_ms_reduction missing")?;
+    let saved_samples = startup_samples(&ux).unwrap_or(1);
+    let saved_p95 = startup_p95_delta(&ux);
+
+    build_prewarm_net_benefit_fixture(PrewarmFixtureBuildInputs {
+        dataset_id,
+        status: "generated_from_offline_measurements".into(),
+        trace: NetBenefitTrace {
+            source: report_path.to_string_lossy().into_owned(),
+            split,
+            examples,
+        },
+        prewarm_saved: MeasuredValue {
+            mean_ms: saved_ms,
+            p95_ms: saved_p95,
+            samples: saved_samples,
+            source: MeasurementSource {
+                kind: "measured_android_emulator_total_time".into(),
+                path: ux_metrics_path.to_string_lossy().into_owned(),
+                field: Some("ux_deltas.prewarm_vs_cold.startup_total_time_ms_reduction".into()),
+                note: Some("Loaded from committed UX metrics fixture".into()),
+            },
+        },
+        wasted_prewarm: MeasuredValue {
+            mean_ms: wasted_prewarm_ms,
+            p95_ms: wasted_prewarm_p95_ms,
+            samples: wasted_prewarm_samples,
+            source: MeasurementSource {
+                kind: "offline_measured_wasted_prewarm_cost".into(),
+                path: report_path.to_string_lossy().into_owned(),
+                field: Some("cli.--wasted-prewarm-ms".into()),
+                note: Some("Provided explicitly to offline fixture generator".into()),
+            },
+        },
+        dipecs_control_plane: MeasuredValue {
+            mean_ms: dipecs_control_plane_ms,
+            p95_ms: None,
+            samples: dipecs_control_plane_samples,
+            source: MeasurementSource {
+                kind: "offline_measured_control_plane_cost".into(),
+                path: report_path.to_string_lossy().into_owned(),
+                field: Some("cli.--dipecs-control-plane-ms".into()),
+                note: Some("Provided explicitly to offline fixture generator".into()),
+            },
+        },
+        strong_control_plane: MeasuredValue {
+            mean_ms: strong_control_plane_ms,
+            p95_ms: None,
+            samples: strong_control_plane_samples,
+            source: MeasurementSource {
+                kind: "offline_measured_or_favorable_baseline_control_plane_cost".into(),
+                path: report_path.to_string_lossy().into_owned(),
+                field: Some("cli.--strong-control-plane-ms".into()),
+                note: Some("Provided explicitly to offline fixture generator".into()),
+            },
+        },
+    })
+    .map_err(anyhow::Error::msg)
+}
+
+fn startup_samples(ux: &serde_json::Value) -> Option<usize> {
+    let runs = ux.get("runs")?.as_array()?;
+    let mut samples = 0usize;
+    for mode in ["cold_startup", "prewarm_startup"] {
+        let run = runs
+            .iter()
+            .find(|run| run.get("mode").and_then(|v| v.as_str()) == Some(mode))?;
+        samples += run.get("samples")?.as_array()?.len();
+    }
+    Some(samples)
+}
+
+fn startup_p95_delta(ux: &serde_json::Value) -> Option<f64> {
+    let runs = ux.get("runs")?.as_array()?;
+    let p95 = |mode: &str| {
+        runs.iter()
+            .find(|run| run.get("mode").and_then(|v| v.as_str()) == Some(mode))?
+            .get("summary")?
+            .get("p95_startup_total_time_ms")?
+            .as_f64()
+    };
+    Some((p95("cold_startup")? - p95("prewarm_startup")?).max(0.0))
 }

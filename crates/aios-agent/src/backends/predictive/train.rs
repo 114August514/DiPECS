@@ -59,6 +59,9 @@ pub(super) fn train_base_artifact(
     let mut global_transitions: BTreeMap<String, BTreeMap<String, u32>> = BTreeMap::new();
     let mut user_transitions: BTreeMap<String, BTreeMap<String, u32>> = BTreeMap::new();
     let mut global_transitions_order2: BTreeMap<String, BTreeMap<String, u32>> = BTreeMap::new();
+    // Temporal Markov transitions: keyed by "{current}\t{hour}" or
+    // "{current}\t{weekday}" for context-aware next-app prediction.
+    let mut temporal_transitions: BTreeMap<String, BTreeMap<String, u32>> = BTreeMap::new();
     // Per-user app-usage frequency (MFU): counts each observed next app per
     // user, unconditional on the current app.
     let mut user_frequency_counts: BTreeMap<String, BTreeMap<String, u32>> = BTreeMap::new();
@@ -115,6 +118,20 @@ pub(super) fn train_base_artifact(
                 .entry(example.label_app.clone())
                 .or_default() += 1;
         }
+
+        // Temporal transitions keyed by hour and weekday.
+        let hour_key = format!("{}\t{}", example.current_app, example.hour_bucket);
+        *temporal_transitions
+            .entry(hour_key)
+            .or_default()
+            .entry(example.label_app.clone())
+            .or_default() += 1;
+        let weekday_key = format!("{}\t{}", example.current_app, example.weekday);
+        *temporal_transitions
+            .entry(weekday_key)
+            .or_default()
+            .entry(example.label_app.clone())
+            .or_default() += 1;
     }
 
     let global_popularity = counts_to_scores(&class_counts, &app_vocab);
@@ -176,6 +193,7 @@ pub(super) fn train_base_artifact(
         },
         user_frequency: transition_scores(user_frequency_counts),
         user_recency,
+        markov_context: transition_scores(temporal_transitions),
         ensemble_combiner: EnsembleCombiner::default(),
         ensemble_logistic: LogisticRerankerModel::default(),
         training_summary: TrainingSummary {

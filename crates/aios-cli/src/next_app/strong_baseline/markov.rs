@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use aios_agent::NextAppTrainingExample;
 
-pub(super) fn previous_app(example: &NextAppTrainingExample) -> Option<&str> {
+pub(crate) fn previous_app(example: &NextAppTrainingExample) -> Option<&str> {
     example
         .history
         .iter()
@@ -26,7 +26,7 @@ pub(super) fn context_features(example: &NextAppTrainingExample) -> Vec<String> 
     features
 }
 
-pub(super) fn rank_counts(counts: HashMap<String, u32>) -> Vec<String> {
+pub(crate) fn rank_counts(counts: HashMap<String, u32>) -> Vec<String> {
     let mut ranked: Vec<(String, u32)> = counts.into_iter().collect();
     ranked.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
     ranked.into_iter().map(|(app, _)| app).collect()

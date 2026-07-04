@@ -102,3 +102,11 @@ lab4/data/models/*.pth
 # llama.cpp 作为 submodule 指针提交，构建产物不提交。
 lab4/third_party/llama.cpp/build*/
 lab4/third_party/llama.cpp/.cache/
+
+# External dataset working copies and generated large evaluation sets
+third_party/LSApp_download/
+third_party/MobileRec/
+third_party/battery-usage/
+third_party/mobile-usage/
+data/evaluation/cloud-llm-accuracy-cases.*.json
+!data/evaluation/cloud-llm-accuracy-cases.json

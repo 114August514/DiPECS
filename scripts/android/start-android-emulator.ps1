@@ -115,7 +115,7 @@ if (-not (Test-Path -LiteralPath $SdkManager)) {
     $SdkManager = Join-Path $SdkRoot "tools\bin\sdkmanager.bat"
 }
 $SdkManager = Require-File $SdkManager "sdkmanager.bat"
-$Gradle = Require-File (Join-Path $PSScriptRoot "..\apps\android-collector\gradlew.bat") "gradlew.bat"
+$Gradle = Require-File (Join-Path $PSScriptRoot "..\..\apps\android-collector\gradlew.bat") "gradlew.bat"
 
 Write-Host "  ANDROID_SDK_ROOT=$SdkRoot"
 Write-Host "  Current adb devices:"
@@ -186,7 +186,7 @@ Invoke-Adb $Adb $serial @("shell", "pm", "list", "packages") | Out-Null
 
 Write-Step "4. Install debug APK"
 if (-not $SkipApkInstall) {
-    Push-Location (Join-Path $PSScriptRoot "..\apps\android-collector")
+    Push-Location (Join-Path $PSScriptRoot "..\..\apps\android-collector")
     try {
         & $Gradle ":app:installDebug" "--stacktrace"
         if ($LASTEXITCODE -ne 0) { Fail "Gradle installDebug failed with exit code $LASTEXITCODE." }

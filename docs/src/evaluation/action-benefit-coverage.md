@@ -74,6 +74,10 @@
    电池/流畅度/启动延迟整体改善"。
 4. **第三方应用静默预热收益。** 普通 Android 安全语义下 `pkg:*`/`notif:*` 不能被
    当作静默后台启动第三方 app；#90 当前关闭的是 `own:*` 自有资源预热闭环。
+5. **离线 emulator fixture 的外推边界。** `action-net-benefit` fixture 能作为
+   schema / CLI / CI 辅助 gate，但其中 wrong-target prewarm 成本来自既有动作确认延迟
+   的保守近似，不是新的同设备多样本错预热实验；#90 的主关闭依据应以 Pixel 6a
+   n=20/mode measured-device artifact 为准。
 
 ### 对外表述建议
 
@@ -145,6 +149,15 @@ DiPECS ensemble 胜出证据：hit@1 为 21.196% vs 48.050%。
 
 这解决 #90 在 standard split / Android-safe `own:*` PreWarm 范围内的 gate；其他动作、
 第三方静默预热和长期用户体验仍必须单独评估。
+
+`origin/main` 还包含 `data/evaluation/action-net-benefit/prewarm-emulator-20260704-measured-v1.json`
+这一离线 measured fixture。它把 LSApp standard hit@1、emulator TotalTime saved latency、
+设备确认延迟和离线 replay 控制面开销接入同一公式，并通过
+`aios-cli generate-prewarm-net-benefit-fixture` / `compute_measured_net_benefit`
+覆盖 schema、provenance 和坏数据校验。这个 fixture 适合作为 CI/schema 辅助，
+但其 `wasted_prewarm_ms=31.231 ms` 来自 PreWarmProcess 设备确认延迟的保守近似，
+不是 Pixel 6a wrong-target startup delta 的多样本实测，因此不替代上面的 real-device
+#90 gate。
 
 ## PR #108 的 issue 归属
 

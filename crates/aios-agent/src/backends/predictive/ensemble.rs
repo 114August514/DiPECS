@@ -254,6 +254,7 @@ fn fit_rrf_combiner(cached: &[CachedExample]) -> EnsembleCombiner {
         .map(|name| match *name {
             "markov_order2" => 1.2,
             "markov" => 0.8,
+            "markov_context" => 0.5,
             "recency" => 0.45,
             "naive_bayes" => 0.6,
             "feature_lift" => 0.3,
@@ -448,6 +449,10 @@ fn ensemble_components() -> &'static [EnsembleComponent] {
         EnsembleComponent {
             name: "markov",
             rank: NextAppPredictor::rank_markov,
+        },
+        EnsembleComponent {
+            name: "markov_context",
+            rank: NextAppPredictor::rank_markov_context,
         },
         EnsembleComponent {
             name: "feature_lift",

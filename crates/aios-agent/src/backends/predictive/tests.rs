@@ -282,6 +282,7 @@ fn fallback_does_not_reintroduce_current_app_after_filtering() {
         },
         user_frequency: std::collections::BTreeMap::new(),
         user_recency: std::collections::BTreeMap::new(),
+        markov_context: std::collections::BTreeMap::new(),
         ensemble_combiner: super::EnsembleCombiner::default(),
         ensemble_logistic: super::LogisticRerankerModel::default(),
         training_summary: TrainingSummary {
@@ -419,6 +420,7 @@ fn ensemble_considers_candidates_beyond_each_component_top_10() {
         },
         user_frequency: std::collections::BTreeMap::new(),
         user_recency: std::collections::BTreeMap::new(),
+        markov_context: std::collections::BTreeMap::new(),
         ensemble_combiner: super::EnsembleCombiner::default(),
         ensemble_logistic: super::LogisticRerankerModel::default(),
         training_summary: TrainingSummary {
@@ -467,6 +469,121 @@ fn backend_emits_prewarm_for_in_context_prediction() {
     assert_eq!(
         first.suggested_actions[0].target.as_deref(),
         Some("pkg:com.mail")
+    );
+}
+
+#[test]
+fn markov_context_ranker_prefers_hour_specific_app() {
+    // u1: chat -> mail at hour 8, chat -> browser at hour 21
+    let mut train = Vec::new();
+    for _ in 0..10 {
+        train.push(NextAppTrainingExample {
+            user_id: "u1".into(),
+            current_app: "com.chat".into(),
+            history: vec![],
+            hour_bucket: 8,
+            weekday: 1,
+            event_type: "foreground".into(),
+            label_app: "com.mail".into(),
+        });
+        train.push(NextAppTrainingExample {
+            user_id: "u1".into(),
+            current_app: "com.chat".into(),
+            history: vec![],
+            hour_bucket: 21,
+            weekday: 1,
+            event_type: "foreground".into(),
+            label_app: "com.browser".into(),
+        });
+    }
+    let artifact = train_next_app_artifact("unit", NextAppModelConfig::default(), &train)
+        .expect("training should succeed");
+    let predictor = NextAppPredictor::new(artifact).expect("artifact should validate");
+
+    let ranked = predictor.rank(
+        &PredictionFeatures {
+            current_app: Some("com.chat".into()),
+            hour_bucket: Some(8),
+            ..PredictionFeatures::default()
+        },
+        NextAppAlgorithm::Ensemble,
+        3,
+    );
+    assert!(
+        ranked.iter().any(|s| s.app == "com.mail"),
+        "hour=8 should boost com.mail: {ranked:?}"
+    );
+}
+
+#[test]
+fn markov_context_ranker_falls_back_to_global_when_no_temporal_data() {
+    let artifact = train_next_app_artifact("unit", NextAppModelConfig::default(), &examples())
+        .expect("training should succeed");
+    let predictor = NextAppPredictor::new(artifact).expect("artifact should validate");
+    let features = PredictionFeatures {
+        current_app: Some("com.chat".into()),
+        ..PredictionFeatures::default()
+    };
+
+    // markov_context returns empty when no hour/weekday provided
+    let rankings = predictor.component_rankings(&features);
+    let (_, ctx_scores) = rankings
+        .iter()
+        .find(|(name, _)| *name == "markov_context")
+        .expect("markov_context component should exist");
+    assert!(
+        ctx_scores.is_empty(),
+        "markov_context should return empty without temporal features"
+    );
+}
+
+#[test]
+fn markov_context_component_appears_in_ensemble_components() {
+    let artifact = train_next_app_artifact("unit", NextAppModelConfig::default(), &examples())
+        .expect("training should succeed");
+    let predictor = NextAppPredictor::new(artifact).expect("artifact should validate");
+    let features = PredictionFeatures {
+        current_app: Some("com.chat".into()),
+        ..PredictionFeatures::default()
+    };
+
+    let names: Vec<&str> = predictor
+        .component_rankings(&features)
+        .into_iter()
+        .map(|(name, _)| name)
+        .collect();
+    assert!(
+        names.contains(&"markov_context"),
+        "markov_context must be registered in ensemble components: {names:?}"
+    );
+}
+
+#[test]
+fn trained_artifact_has_markov_context_transitions() {
+    let mut train = Vec::new();
+    for i in 0..10 {
+        train.push(NextAppTrainingExample {
+            user_id: format!("u{}", i % 3),
+            current_app: "com.chat".into(),
+            history: vec![],
+            hour_bucket: 8,
+            weekday: 1,
+            event_type: "foreground".into(),
+            label_app: "com.mail".into(),
+        });
+    }
+    let artifact = train_next_app_artifact("unit", NextAppModelConfig::default(), &train)
+        .expect("training should succeed");
+
+    let hour_key = "com.chat\t8";
+    assert!(
+        artifact.markov_context.contains_key(hour_key),
+        "markov_context should contain hour-keyed transitions for {hour_key}"
+    );
+    let weekday_key = "com.chat\t1";
+    assert!(
+        artifact.markov_context.contains_key(weekday_key),
+        "markov_context should contain weekday-keyed transitions for {weekday_key}"
     );
 }
 

@@ -40,6 +40,7 @@ fn base_artifact() -> NextAppModelArtifact {
         },
         user_frequency: BTreeMap::new(),
         user_recency: BTreeMap::new(),
+        markov_context: BTreeMap::new(),
         ensemble_combiner: EnsembleCombiner::default(),
         ensemble_logistic: LogisticRerankerModel::default(),
         training_summary: TrainingSummary {

@@ -78,6 +78,8 @@ fn lsapp_path() -> PathBuf {
 #[derive(Clone, Copy)]
 struct Metrics {
     hit1: f64,
+    hit3: f64,
+    hit5: f64,
     mrr5: f64,
 }
 
@@ -87,6 +89,12 @@ fn metrics_of(report: &Value, ranker: &str) -> Metrics {
         hit1: node["hit_rate_at_1_pct"]
             .as_f64()
             .unwrap_or_else(|| panic!("report missing hit_rate_at_1_pct for `{ranker}`")),
+        hit3: node["hit_rate_at_3_pct"]
+            .as_f64()
+            .unwrap_or_else(|| panic!("report missing hit_rate_at_3_pct for `{ranker}`")),
+        hit5: node["hit_rate_at_5_pct"]
+            .as_f64()
+            .unwrap_or_else(|| panic!("report missing hit_rate_at_5_pct for `{ranker}`")),
         mrr5: node["mean_reciprocal_rank_at_5"]
             .as_f64()
             .unwrap_or_else(|| panic!("report missing mean_reciprocal_rank_at_5 for `{ranker}`")),
@@ -165,7 +173,7 @@ fn run_split(input: &Path, split: NextAppSplit, dir: &Path, tag: &str) -> Value 
 
 fn print_table(split_label: &str, report: &Value) {
     eprintln!(
-        "\n=== {split_label} — hit@1% / MRR@5 (test_examples={}) ===",
+        "\n=== {split_label} — hit@1/3/5% / MRR@5 (test_examples={}) ===",
         report["test_examples"]
     );
     for ranker in [
@@ -176,11 +184,13 @@ fn print_table(split_label: &str, report: &Value) {
         "markov",
         "xgboost",
         "ensemble",
+        "strong_predictive",
+        "adaptive_predictive",
     ] {
         let m = metrics_of(report, ranker);
         eprintln!(
-            "  {ranker:<18} hit@1 {:>6.3}%   MRR@5 {:.3}",
-            m.hit1, m.mrr5
+            "  {ranker:<20} hit@1 {:>6.3}%  hit@3 {:>6.3}%  hit@5 {:>6.3}%  MRR@5 {:.3}",
+            m.hit1, m.hit3, m.hit5, m.mrr5
         );
     }
 }
@@ -237,27 +247,45 @@ fn personalized_models_beat_popularity_on_lsapp() {
     print_table("standard split", &standard);
     assert_beats_all(&standard, "ensemble", POPULARITY_BASELINES, "standard");
     assert_beats_all(&standard, "markov", POPULARITY_BASELINES, "standard");
+    assert_beats_all(
+        &standard,
+        "strong_predictive",
+        POPULARITY_BASELINES,
+        "standard",
+    );
+    assert_beats_all(
+        &standard,
+        "adaptive_predictive",
+        POPULARITY_BASELINES,
+        "standard",
+    );
 
     // ---------------------------------------------------------------------
-    // Cold-start split (held-out users): assert the BEST of {markov, xgboost}
-    // strictly beats BOTH popularity baselines on hit@1 and MRR@5. We do NOT
-    // require `ensemble` or `naive_bayes` here — both collapse below popularity
-    // on unseen users, and asserting on them would be dishonest.
+    // Cold-start split (held-out users): assert the BEST of {markov, xgboost,
+    // strong_predictive, adaptive_predictive} strictly beats BOTH popularity
+    // baselines on hit@1 and MRR@5. We do NOT require `ensemble` or
+    // `naive_bayes` here — both collapse below popularity on unseen users.
     // ---------------------------------------------------------------------
     let cold = run_split(&input, NextAppSplit::ColdStart, &dir, "cold-start");
     print_table("cold-start split", &cold);
 
-    let cold_candidates = ["markov", "xgboost"];
+    let cold_candidates = [
+        "markov",
+        "xgboost",
+        "strong_predictive",
+        "adaptive_predictive",
+    ];
     let cold_winners: Vec<&str> = cold_candidates
         .into_iter()
         .filter(|model| beats_all(&cold, model, POPULARITY_BASELINES))
         .collect();
     assert!(
         !cold_winners.is_empty(),
-        "[cold-start] neither markov nor xgboost beat BOTH popularity baselines by margin \
-         (hit@1 > +{HIT1_MARGIN_PP} pp AND MRR@5 > +{MRR5_MARGIN}). measured: \
+        "[cold-start] none of markov/xgboost/strong_predictive/adaptive_predictive beat BOTH \
+         popularity baselines by margin (hit@1 > +{HIT1_MARGIN_PP} pp AND MRR@5 > +{MRR5_MARGIN}). measured: \
          global_popularity hit@1 {:.3} MRR@5 {:.3}; mfu hit@1 {:.3} MRR@5 {:.3}; \
-         markov hit@1 {:.3} MRR@5 {:.3}; xgboost hit@1 {:.3} MRR@5 {:.3}",
+         markov hit@1 {:.3} MRR@5 {:.3}; xgboost hit@1 {:.3} MRR@5 {:.3}; \
+         strong_predictive hit@1 {:.3} MRR@5 {:.3}; adaptive_predictive hit@1 {:.3} MRR@5 {:.3}",
         metrics_of(&cold, "global_popularity").hit1,
         metrics_of(&cold, "global_popularity").mrr5,
         metrics_of(&cold, "mfu").hit1,
@@ -266,6 +294,10 @@ fn personalized_models_beat_popularity_on_lsapp() {
         metrics_of(&cold, "markov").mrr5,
         metrics_of(&cold, "xgboost").hit1,
         metrics_of(&cold, "xgboost").mrr5,
+        metrics_of(&cold, "strong_predictive").hit1,
+        metrics_of(&cold, "strong_predictive").mrr5,
+        metrics_of(&cold, "adaptive_predictive").hit1,
+        metrics_of(&cold, "adaptive_predictive").mrr5,
     );
     eprintln!(
         "\ncold-start personalized winners over popularity: {}",

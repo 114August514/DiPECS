@@ -196,9 +196,14 @@ struct ChatCompletionResponse {
 
 impl ChatCompletionResponse {
     fn first_text(&self) -> Option<String> {
-        self.choices
-            .first()
-            .and_then(|choice| choice.message.content.clone())
+        self.choices.first().and_then(|choice| {
+            choice
+                .message
+                .content
+                .clone()
+                .filter(|content| !content.trim().is_empty())
+                .or_else(|| choice.message.reasoning_content.clone())
+        })
     }
 }
 
@@ -210,6 +215,7 @@ struct ChatChoice {
 #[derive(Debug, Deserialize)]
 struct ChatMessageResponse {
     content: Option<String>,
+    reasoning_content: Option<String>,
 }
 
 #[cfg(test)]

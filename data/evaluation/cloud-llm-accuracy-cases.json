@@ -1,0 +1,298 @@
+{
+  "schema_version": "dipecs.cloud_llm_accuracy_cases.v1",
+  "description": "Labeled sanitized-context cases for live DeepSeek decision accuracy evaluation. Cases intentionally contain no raw notification text.",
+  "cases": [
+    {
+      "id": "student_class_doc_01",
+      "persona": "college student, opens course files after class chat notifications",
+      "scenario": "class group posts a document while the user is in chat",
+      "foreground_apps": ["com.example.chat"],
+      "notified_apps": ["com.example.chat"],
+      "semantic_hints": ["FileMention"],
+      "file_activity": [["Document", 1]],
+      "expected": [{"intent_type": "HandleFile", "extension_category": "Document", "action_type": "PrefetchFile"}]
+    },
+    {
+      "id": "student_study_link_02",
+      "persona": "college student, checks shared reading links during study sessions",
+      "scenario": "study group notification contains a reading link",
+      "foreground_apps": ["com.example.notes"],
+      "notified_apps": ["com.example.chat"],
+      "semantic_hints": ["LinkAttachment"],
+      "expected": [{"intent_type": "CheckNotification", "target": "com.example.chat", "action_type": "PreWarmProcess"}]
+    },
+    {
+      "id": "office_meeting_doc_03",
+      "persona": "office worker, prepares office documents after work chat notifications",
+      "scenario": "work chat sends a meeting document",
+      "foreground_apps": ["com.example.mail"],
+      "notified_apps": ["com.example.workchat"],
+      "semantic_hints": ["FileMention", "CalendarInvitation"],
+      "file_activity": [["Document", 1]],
+      "expected": [{"intent_type": "HandleFile", "extension_category": "Document", "action_type": "PrefetchFile"}]
+    },
+    {
+      "id": "office_calendar_04",
+      "persona": "office worker, switches to calendar for meeting invitations",
+      "scenario": "calendar invite appears during email triage",
+      "foreground_apps": ["com.example.mail"],
+      "notified_apps": ["com.example.calendar"],
+      "semantic_hints": ["CalendarInvitation"],
+      "expected": [{"intent_type": "CheckNotification", "target": "com.example.calendar", "action_type": "PreWarmProcess"}]
+    },
+    {
+      "id": "designer_image_05",
+      "persona": "designer, opens image references from team chat",
+      "scenario": "design team posts an image attachment",
+      "foreground_apps": ["com.example.design"],
+      "notified_apps": ["com.example.chat"],
+      "semantic_hints": ["ImageMention", "FileMention"],
+      "file_activity": [["Image", 1]],
+      "expected": [{"intent_type": "HandleFile", "extension_category": "Image", "action_type": "PrefetchFile"}]
+    },
+    {
+      "id": "developer_code_archive_06",
+      "persona": "software developer, checks code archives and release artifacts",
+      "scenario": "build system notification mentions a code archive",
+      "foreground_apps": ["com.example.ide"],
+      "notified_apps": ["com.example.devops"],
+      "semantic_hints": ["FileMention"],
+      "file_activity": [["Code", 1], ["Archive", 1]],
+      "expected": [
+        {"intent_type": "HandleFile", "extension_category": "Code", "action_type": "PrefetchFile"},
+        {"intent_type": "HandleFile", "extension_category": "Archive", "action_type": "PrefetchFile"}
+      ]
+    },
+    {
+      "id": "finance_sensitive_07",
+      "persona": "finance analyst, reviews financial notifications carefully",
+      "scenario": "finance app posts a sensitive payment or budget alert",
+      "foreground_apps": ["com.example.sheet"],
+      "notified_apps": ["com.example.finance"],
+      "semantic_hints": ["FinancialContext"],
+      "expected": [{"intent_type": "CheckNotification", "target": "com.example.finance", "action_type": "PreWarmProcess"}]
+    },
+    {
+      "id": "verification_code_08",
+      "persona": "security-conscious user, checks verification codes manually",
+      "scenario": "authenticator or sms app posts a verification code notification",
+      "foreground_apps": ["com.example.browser"],
+      "notified_apps": ["com.example.sms"],
+      "semantic_hints": ["VerificationCode"],
+      "expected": [{"intent_type": "CheckNotification", "target": "com.example.sms", "action_type": "PreWarmProcess"}]
+    },
+    {
+      "id": "low_battery_09",
+      "persona": "commuter, conserves battery when phone is low",
+      "scenario": "battery is critically low while background cache exists",
+      "foreground_apps": ["com.example.maps"],
+      "notified_apps": [],
+      "semantic_hints": [],
+      "system_status": {"battery_pct": 8, "is_charging": false, "network": "Cellular", "ringer_mode": "Vibrate", "location_type": "Commute"},
+      "expected": [{"intent_type": "Idle", "action_type": "ReleaseMemory"}]
+    },
+    {
+      "id": "charging_wifi_10",
+      "persona": "power user, allows maintenance when charging on wifi",
+      "scenario": "device is charging on wifi with no urgent user intent",
+      "foreground_apps": ["com.example.reader"],
+      "notified_apps": [],
+      "semantic_hints": [],
+      "system_status": {"battery_pct": 82, "is_charging": true, "network": "Wifi", "ringer_mode": "Normal", "location_type": "Home"},
+      "expected": [{"intent_type": "Idle", "action_type": "KeepAlive"}]
+    },
+    {
+      "id": "music_audio_11",
+      "persona": "music listener, checks audio messages after chat pings",
+      "scenario": "chat notification contains an audio message",
+      "foreground_apps": ["com.example.music"],
+      "notified_apps": ["com.example.chat"],
+      "semantic_hints": ["AudioMessage"],
+      "file_activity": [["Audio", 1]],
+      "expected": [{"intent_type": "HandleFile", "extension_category": "Audio", "action_type": "PrefetchFile"}]
+    },
+    {
+      "id": "photographer_image_12",
+      "persona": "photographer, opens image attachments from gallery-related notifications",
+      "scenario": "photo sharing app posts image attachment",
+      "foreground_apps": ["com.example.gallery"],
+      "notified_apps": ["com.example.photoshare"],
+      "semantic_hints": ["ImageMention"],
+      "file_activity": [["Image", 1]],
+      "expected": [{"intent_type": "HandleFile", "extension_category": "Image", "action_type": "PrefetchFile"}]
+    },
+    {
+      "id": "traveler_map_13",
+      "persona": "traveler, switches to maps around commute context",
+      "scenario": "navigation app has a visible notification while commuting",
+      "foreground_apps": ["com.example.chat"],
+      "notified_apps": ["com.example.maps"],
+      "semantic_hints": ["LinkAttachment"],
+      "system_status": {"battery_pct": 55, "is_charging": false, "network": "Cellular", "ringer_mode": "Normal", "location_type": "Commute"},
+      "expected": [{"intent_type": "CheckNotification", "target": "com.example.maps", "action_type": "PreWarmProcess"}]
+    },
+    {
+      "id": "doctor_calendar_14",
+      "persona": "doctor, checks schedule notifications before appointments",
+      "scenario": "calendar app posts an appointment reminder",
+      "foreground_apps": ["com.example.notes"],
+      "notified_apps": ["com.example.calendar"],
+      "semantic_hints": ["CalendarInvitation"],
+      "expected": [{"intent_type": "CheckNotification", "target": "com.example.calendar", "action_type": "PreWarmProcess"}]
+    },
+    {
+      "id": "sales_crm_15",
+      "persona": "salesperson, opens CRM when client mentions arrive",
+      "scenario": "CRM app notification mentions a user/contact",
+      "foreground_apps": ["com.example.mail"],
+      "notified_apps": ["com.example.crm"],
+      "semantic_hints": ["UserMentioned"],
+      "expected": [{"intent_type": "CheckNotification", "target": "com.example.crm", "action_type": "PreWarmProcess"}]
+    },
+    {
+      "id": "parent_school_16",
+      "persona": "parent, checks school group documents and notices",
+      "scenario": "school chat posts a document notice",
+      "foreground_apps": ["com.example.chat"],
+      "notified_apps": ["com.example.school"],
+      "semantic_hints": ["FileMention"],
+      "file_activity": [["Document", 1]],
+      "expected": [{"intent_type": "HandleFile", "extension_category": "Document", "action_type": "PrefetchFile"}]
+    },
+    {
+      "id": "gamer_idle_17",
+      "persona": "gamer, ignores low-value notifications while gaming",
+      "scenario": "foreground game with unrelated notification and no strong semantic hint",
+      "foreground_apps": ["com.example.game"],
+      "notified_apps": ["com.example.news"],
+      "semantic_hints": [],
+      "expected": [{"intent_type": "Idle", "action_type": "NoOp"}]
+    },
+    {
+      "id": "reader_news_link_18",
+      "persona": "reader, opens article links from news notifications",
+      "scenario": "news app posts a link while reader app is foreground",
+      "foreground_apps": ["com.example.reader"],
+      "notified_apps": ["com.example.news"],
+      "semantic_hints": ["LinkAttachment"],
+      "expected": [{"intent_type": "CheckNotification", "target": "com.example.news", "action_type": "PreWarmProcess"}]
+    },
+    {
+      "id": "manager_multi_hint_19",
+      "persona": "manager, prioritizes meeting docs from team chat",
+      "scenario": "work chat has document, user mention, and calendar hints",
+      "foreground_apps": ["com.example.mail"],
+      "notified_apps": ["com.example.workchat"],
+      "semantic_hints": ["FileMention", "UserMentioned", "CalendarInvitation"],
+      "file_activity": [["Document", 1]],
+      "expected": [{"intent_type": "HandleFile", "extension_category": "Document", "action_type": "PrefetchFile"}]
+    },
+    {
+      "id": "privacy_sensitive_20",
+      "persona": "privacy-sensitive user, avoids automatic action on financial verification alerts",
+      "scenario": "finance app posts a verification-code related alert",
+      "foreground_apps": ["com.example.browser"],
+      "notified_apps": ["com.example.bank"],
+      "semantic_hints": ["FinancialContext", "VerificationCode"],
+      "expected": [{"intent_type": "CheckNotification", "target": "com.example.bank", "action_type": "PreWarmProcess"}]
+    },
+    {
+      "id": "archive_download_21",
+      "persona": "engineer, prepares archives from build notifications",
+      "scenario": "devops notification references an archive artifact",
+      "foreground_apps": ["com.example.ide"],
+      "notified_apps": ["com.example.devops"],
+      "semantic_hints": ["FileMention"],
+      "file_activity": [["Archive", 1]],
+      "expected": [{"intent_type": "HandleFile", "extension_category": "Archive", "action_type": "PrefetchFile"}]
+    },
+    {
+      "id": "video_creator_22",
+      "persona": "video creator, checks shared video assets",
+      "scenario": "team chat posts a video file",
+      "foreground_apps": ["com.example.editor"],
+      "notified_apps": ["com.example.chat"],
+      "semantic_hints": ["FileMention"],
+      "file_activity": [["Video", 1]],
+      "expected": [{"intent_type": "HandleFile", "extension_category": "Video", "action_type": "PrefetchFile"}]
+    },
+    {
+      "id": "silent_mode_idle_23",
+      "persona": "meeting attendee, avoids disruptive actions in silent mode",
+      "scenario": "silent mode with no actionable semantic signal",
+      "foreground_apps": ["com.example.slides"],
+      "notified_apps": ["com.example.news"],
+      "semantic_hints": [],
+      "system_status": {"battery_pct": 64, "is_charging": false, "network": "Wifi", "ringer_mode": "Silent", "location_type": "Work"},
+      "expected": [{"intent_type": "Idle", "action_type": "NoOp"}]
+    },
+    {
+      "id": "foreground_keepalive_24",
+      "persona": "remote worker, keeps active conferencing session healthy",
+      "scenario": "video meeting app is foreground with no other task",
+      "foreground_apps": ["com.example.meet"],
+      "notified_apps": [],
+      "semantic_hints": [],
+      "system_status": {"battery_pct": 71, "is_charging": true, "network": "Wifi", "ringer_mode": "Normal", "location_type": "Work"},
+      "expected": [{"intent_type": "Idle", "action_type": "KeepAlive"}]
+    },
+    {
+      "id": "chat_user_mention_25",
+      "persona": "team lead, responds when directly mentioned",
+      "scenario": "team chat notification includes a mention",
+      "foreground_apps": ["com.example.docs"],
+      "notified_apps": ["com.example.workchat"],
+      "semantic_hints": ["UserMentioned"],
+      "expected": [{"intent_type": "CheckNotification", "target": "com.example.workchat", "action_type": "PreWarmProcess"}]
+    },
+    {
+      "id": "mixed_file_link_26",
+      "persona": "researcher, opens linked research documents",
+      "scenario": "research group posts a document link",
+      "foreground_apps": ["com.example.browser"],
+      "notified_apps": ["com.example.chat"],
+      "semantic_hints": ["FileMention", "LinkAttachment"],
+      "file_activity": [["Document", 1]],
+      "expected": [{"intent_type": "HandleFile", "extension_category": "Document", "action_type": "PrefetchFile"}]
+    },
+    {
+      "id": "offline_idle_27",
+      "persona": "traveler with poor network, avoids network-heavy prefetch when offline",
+      "scenario": "offline state with a generic link notification",
+      "foreground_apps": ["com.example.maps"],
+      "notified_apps": ["com.example.news"],
+      "semantic_hints": ["LinkAttachment"],
+      "system_status": {"battery_pct": 44, "is_charging": false, "network": "Offline", "ringer_mode": "Normal", "location_type": "Commute"},
+      "expected": [{"intent_type": "Idle", "action_type": "NoOp"}]
+    },
+    {
+      "id": "healthy_idle_28",
+      "persona": "general user, no strong signal means observe only",
+      "scenario": "ordinary foreground app with no notifications",
+      "foreground_apps": ["com.example.home"],
+      "notified_apps": [],
+      "semantic_hints": [],
+      "expected": [{"intent_type": "Idle", "action_type": "NoOp"}]
+    },
+    {
+      "id": "mail_document_29",
+      "persona": "accountant, opens invoice documents from mail",
+      "scenario": "mail notification indicates a document attachment",
+      "foreground_apps": ["com.example.sheet"],
+      "notified_apps": ["com.example.mail"],
+      "semantic_hints": ["FileMention", "FinancialContext"],
+      "file_activity": [["Document", 1]],
+      "expected": [{"intent_type": "HandleFile", "extension_category": "Document", "action_type": "PrefetchFile"}]
+    },
+    {
+      "id": "image_social_30",
+      "persona": "social media manager, opens image posts from social notifications",
+      "scenario": "social app posts image-related notification",
+      "foreground_apps": ["com.example.social"],
+      "notified_apps": ["com.example.social"],
+      "semantic_hints": ["ImageMention"],
+      "file_activity": [["Image", 1]],
+      "expected": [{"intent_type": "HandleFile", "extension_category": "Image", "action_type": "PrefetchFile"}]
+    }
+  ]
+}

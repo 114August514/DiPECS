@@ -2,15 +2,35 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
+use super::ensemble::fit_ensemble_models;
 use super::predictor::feature_keys;
 use super::{
-    prediction_features_for_example, score_order, AppScore, FeatureLiftModel, FeatureLiftTree,
-    MarkovModel, NaiveBayesModel, NextAppModelArtifact, NextAppModelConfig, NextAppTrainingExample,
-    TrainingSummary, MAX_TRAINED_FEATURES, MODEL_NAME, SCHEMA_VERSION,
+    prediction_features_for_example, score_order, AppScore, EnsembleCombiner, FeatureLiftModel,
+    FeatureLiftTree, LogisticRerankerModel, MarkovModel, NaiveBayesModel, NextAppModelArtifact,
+    NextAppModelConfig, NextAppTrainingExample, TrainingSummary, MAX_TRAINED_FEATURES, MODEL_NAME,
+    SCHEMA_VERSION,
 };
 
 pub fn train_next_app_artifact(
     dataset_id: impl Into<String>,
+    config: NextAppModelConfig,
+    examples: &[NextAppTrainingExample],
+) -> Result<NextAppModelArtifact, String> {
+    let dataset_id = dataset_id.into();
+    // Train the base model (Naive Bayes, Markov, feature-lift) on all examples,
+    // then fit the learned ensemble combiner on a held-out validation slice.
+    let mut artifact = train_base_artifact(&dataset_id, config.clone(), examples)?;
+    let ensemble_models = fit_ensemble_models(&dataset_id, &config, examples);
+    artifact.ensemble_combiner = ensemble_models.rrf;
+    artifact.ensemble_logistic = ensemble_models.logistic;
+    Ok(artifact)
+}
+
+/// Train only the base component models (no ensemble combiner fit). Used both
+/// for the final artifact's base and for the combiner's fit-slice model, so the
+/// combiner fit never recurses into itself.
+pub(super) fn train_base_artifact(
+    dataset_id: &str,
     config: NextAppModelConfig,
     examples: &[NextAppTrainingExample],
 ) -> Result<NextAppModelArtifact, String> {
@@ -38,12 +58,30 @@ pub fn train_next_app_artifact(
     let mut feature_frequency: BTreeMap<String, u32> = BTreeMap::new();
     let mut global_transitions: BTreeMap<String, BTreeMap<String, u32>> = BTreeMap::new();
     let mut user_transitions: BTreeMap<String, BTreeMap<String, u32>> = BTreeMap::new();
+    let mut global_transitions_order2: BTreeMap<String, BTreeMap<String, u32>> = BTreeMap::new();
+    // Per-user app-usage frequency (MFU): counts each observed next app per
+    // user, unconditional on the current app.
+    let mut user_frequency_counts: BTreeMap<String, BTreeMap<String, u32>> = BTreeMap::new();
+    // Hard recency pointer: last observed next app per (user, current), in
+    // example order (last write wins). Examples are chronological per user.
+    let mut user_recency: BTreeMap<String, String> = BTreeMap::new();
 
     for example in examples {
         let label_idx = *app_index
             .get(&example.label_app)
             .ok_or_else(|| format!("label not in vocab: {}", example.label_app))?;
         class_counts[label_idx] += 1;
+
+        *user_frequency_counts
+            .entry(example.user_id.clone())
+            .or_default()
+            .entry(example.label_app.clone())
+            .or_default() += 1;
+
+        user_recency.insert(
+            user_transition_key(&example.user_id, &example.current_app),
+            example.label_app.clone(),
+        );
 
         let features = training_features(example);
         for feature in features {
@@ -64,6 +102,19 @@ pub fn train_next_app_artifact(
             .or_default()
             .entry(example.label_app.clone())
             .or_default() += 1;
+
+        // Order-2 transitions keyed (prev, current). The "previous app" is the
+        // most recent history entry that is not the current app itself, so that
+        // repeated current-app foreground records do not collapse the key into
+        // (current, current). This matches how the strong baseline derives its
+        // order-2 previous app and how `prev=` is intended to behave.
+        if let Some(prev) = previous_app(example) {
+            *global_transitions_order2
+                .entry(order2_key(prev, &example.current_app))
+                .or_default()
+                .entry(example.label_app.clone())
+                .or_default() += 1;
+        }
     }
 
     let global_popularity = counts_to_scores(&class_counts, &app_vocab);
@@ -104,7 +155,7 @@ pub fn train_next_app_artifact(
     Ok(NextAppModelArtifact {
         schema_version: SCHEMA_VERSION.into(),
         model_id: MODEL_NAME.into(),
-        dataset_id: dataset_id.into(),
+        dataset_id: dataset_id.to_string(),
         trained_at_ms: 0,
         config,
         app_vocab,
@@ -117,11 +168,16 @@ pub fn train_next_app_artifact(
         markov: MarkovModel {
             global_transitions: transition_scores(global_transitions),
             user_transitions: transition_scores(user_transitions),
+            global_transitions_order2: transition_scores(global_transitions_order2),
         },
         feature_lift: FeatureLiftModel {
             base_scores: class_log_priors,
             trees,
         },
+        user_frequency: transition_scores(user_frequency_counts),
+        user_recency,
+        ensemble_combiner: EnsembleCombiner::default(),
+        ensemble_logistic: LogisticRerankerModel::default(),
         training_summary: TrainingSummary {
             examples: examples.len(),
             users: user_set.len(),
@@ -197,4 +253,20 @@ fn transition_scores(
 
 pub(crate) fn user_transition_key(user_id: &str, current_app: &str) -> String {
     format!("{user_id}\t{current_app}")
+}
+
+pub(crate) fn order2_key(prev_app: &str, current_app: &str) -> String {
+    format!("{prev_app}\t{current_app}")
+}
+
+/// The most recent history entry that is not the current app itself. Skipping
+/// repeated current-app records prevents the order-2 key from collapsing into
+/// `(current, current)`.
+pub(crate) fn previous_app(example: &NextAppTrainingExample) -> Option<&str> {
+    example
+        .history
+        .iter()
+        .rev()
+        .find(|app| app.as_str() != example.current_app)
+        .map(String::as_str)
 }

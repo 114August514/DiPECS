@@ -8,6 +8,11 @@ on:
       - '**.rs'
       - '**/Cargo.toml'
       - '.github/workflows/bench.yml'
+      # Evidence-only changes must still run the data-quality and baseline
+      # guards, otherwise committed reports/fixtures could regress silently.
+      - 'data/evaluation/**'
+      - 'scripts/ci/**'
+      - 'docs/**'
 
 env:
   CARGO_TERM_COLOR: always
@@ -32,8 +37,9 @@ jobs:
 
       - name: Block hard-coded action-value claims
         run: |
-          python3 scripts/ci/check_action_value_quality.py \
-            data/evaluation/synthetic-next-app-v1.report.json
+          # Scan every committed evaluation JSON, not just the synthetic report:
+          # any benefit field at any depth must carry a source annotation.
+          python3 scripts/ci/check_action_value_quality.py --dir data/evaluation
           echo "Action-value data quality check passed."
 
   # 1. Android 二进制膨胀审计 (Target-Specific Anti-Bloat)
@@ -160,9 +166,10 @@ jobs:
             -- personalization_contribution_on_lsapp \
             --release --nocapture
 
-      # C. 强基线集成 smoke（一旦 #91 完成，改为必须绿）
-      # 当前占位：确保 StrongPredictiveActionBaseline 代码可编译。
-      - name: StrongPredictiveActionBaseline Compile Guard
+      # C. 强基线集成 smoke：默认 CI 不跑完整 LSApp 训练，但必须确认
+      # StrongPredictiveActionBaseline 代码和 committed LSApp report 接线没有回退。
+      - name: StrongPredictiveActionBaseline Report Guard
         run: |
-          echo "TODO(#91): run StrongPredictiveActionBaseline comparison here"
-          cargo check -p aios-cli || true
+          cargo test -p aios-cli --lib next_app::strong_baseline -- --nocapture
+          cargo test -p aios-cli --lib next_app::net_benefit -- --nocapture
+          cargo test -p aios-cli --test next_app_net_benefit_test -- --nocapture

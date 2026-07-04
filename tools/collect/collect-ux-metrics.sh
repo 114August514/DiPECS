@@ -299,7 +299,7 @@ python3 - \
   "$tmpdir/baseline_jank.jsonl" "$tmpdir/post_release.jsonl" \
   "$json_path" "$md_path" "$timestamp" \
   "$SAMPLE_INTERVAL_SECS" "$SAMPLES_PER_MODE" "$PACKAGE" "$adb_serial" <<'PY'
-import json, sys, pathlib, datetime
+import json, sys, pathlib, datetime, math
 
 sys_p, cold_p, prewarm_p, base_jank_p, release_jank_p, json_path, md_path, timestamp, interval, samples_per, package, adb_serial = sys.argv[1:]
 
@@ -314,10 +314,18 @@ def load_run(path, mode):
     def maximum(key):
         return round(max(float(s.get(key) or 0) for s in samples), 3)
 
+    def percentile(key, pct):
+        values = sorted(float(s[key]) for s in samples if key in s)
+        if not values:
+            return None
+        rank = int(math.ceil(pct / 100.0 * len(values)))
+        return round(values[max(0, min(rank - 1, len(values) - 1))], 3)
+
     startup_keys = any("startup_total_time_ms" in s for s in samples)
     system_keys = any("system_free_ram_kb" in s for s in samples)
     summary = {
         "avg_startup_total_time_ms": avg("startup_total_time_ms") if startup_keys else None,
+        "p95_startup_total_time_ms": percentile("startup_total_time_ms", 95.0) if startup_keys else None,
         "avg_system_free_ram_kb": avg("system_free_ram_kb") if system_keys else None,
         "avg_cpu_pct": avg("cpu_pct"),
         "avg_rss_mb": avg("rss_mb"),
@@ -369,7 +377,7 @@ data = {
     },
     "notes": [
         "Measured with adb on Android Studio emulator.",
-        "Startup latency measured via am start -W (WaitTime).",
+        "Startup latency measured via am start -W (TotalTime).",
         "Jank measured via dumpsys gfxinfo.",
         "PreWarm and ReleaseMemory actions sent through the bridge socket (adb forward).",
     ],
@@ -421,12 +429,12 @@ md = f"""# DiPECS Emulator UX Metrics Measurement
 - Sample interval: {interval} seconds
 - Samples per mode: {samples_per}
 
-## Startup Latency (am start -W WaitTime)
+## Startup Latency (am start -W TotalTime)
 
-| Mode | TotalTime avg | RSS avg | PSS avg |
-| --- | ---: | ---: | ---: |
-| warm_startup | {cd['avg_startup_total_time_ms']} ms | {cd['avg_rss_mb']} MB | {cd['avg_pss_mb']} MB |
-| prewarm_startup | {pd['avg_startup_total_time_ms']} ms | {pd['avg_rss_mb']} MB | {pd['avg_pss_mb']} MB |
+| Mode | TotalTime avg | TotalTime p95 | RSS avg | PSS avg |
+| --- | ---: | ---: | ---: | ---: |
+| cold_startup | {cd['avg_startup_total_time_ms']} ms | {cd['p95_startup_total_time_ms']} ms | {cd['avg_rss_mb']} MB | {cd['avg_pss_mb']} MB |
+| prewarm_startup | {pd['avg_startup_total_time_ms']} ms | {pd['p95_startup_total_time_ms']} ms | {pd['avg_rss_mb']} MB | {pd['avg_pss_mb']} MB |
 
 **PreWarm effect:** {prewarm_delta['startup_total_time_ms_reduction']} ms faster ({prewarm_delta['pct_faster']}%)
 

@@ -65,6 +65,133 @@ fn malformed_artifact_is_rejected() {
 }
 
 #[test]
+fn training_builds_order2_markov_table() {
+    // Two examples share the (prev=com.home, current=com.chat) context but lead
+    // to different next apps; order-2 must record the (prev,current) key.
+    let examples = vec![
+        example("u1", "com.chat", &["com.home"], "com.mail"),
+        example("u1", "com.chat", &["com.home"], "com.mail"),
+        example("u2", "com.chat", &["com.music"], "com.browser"),
+    ];
+    let artifact = train_next_app_artifact("unit", NextAppModelConfig::default(), &examples)
+        .expect("training should succeed");
+
+    // The order-2 table is keyed "prev\tcurrent".
+    let key = "com.home\tcom.chat";
+    let scores = artifact
+        .markov
+        .global_transitions_order2
+        .get(key)
+        .expect("order-2 key should exist");
+    assert_eq!(scores[0].app, "com.mail");
+}
+
+#[test]
+fn order2_runtime_skips_repeated_current_app_history_entry() {
+    // Training derives the order-2 key from the latest history app that is not
+    // the current app. Runtime lookup must use the same rule, otherwise a
+    // repeated foreground record at the end of history misses the learned key.
+    let examples = vec![
+        example("u1", "com.chat", &["com.home", "com.chat"], "com.mail"),
+        example("u2", "com.chat", &["com.home", "com.chat"], "com.mail"),
+    ];
+    let artifact = train_next_app_artifact("unit", NextAppModelConfig::default(), &examples)
+        .expect("training should succeed");
+    let predictor = NextAppPredictor::new(artifact).expect("artifact should validate");
+    let features = PredictionFeatures {
+        current_app: Some("com.chat".into()),
+        history: vec!["com.home".into(), "com.chat".into()],
+        ..PredictionFeatures::default()
+    };
+
+    let rankings = predictor.component_rankings(&features);
+    let (_, order2) = rankings
+        .iter()
+        .find(|(name, _)| *name == "markov_order2")
+        .expect("order-2 component should exist");
+
+    assert_eq!(
+        order2.first().map(|score| score.app.as_str()),
+        Some("com.mail"),
+        "order-2 runtime lookup should match training's previous-app rule"
+    );
+}
+
+#[test]
+fn trained_artifact_has_nonempty_learned_combiner() {
+    // With enough examples to carve a validation slice, the trainer should fit
+    // and lock a non-empty combiner over the documented component set.
+    let mut examples = Vec::new();
+    for i in 0..60 {
+        let user = format!("u{}", i % 5);
+        examples.push(example(&user, "com.chat", &["com.home"], "com.mail"));
+        examples.push(example(&user, "com.mail", &["com.chat"], "com.browser"));
+    }
+    let artifact = train_next_app_artifact("unit", NextAppModelConfig::default(), &examples)
+        .expect("training should succeed");
+
+    assert!(
+        !artifact.ensemble_combiner.is_empty(),
+        "combiner should be fit when validation slice is non-empty"
+    );
+    assert_eq!(
+        artifact.ensemble_combiner.components.len(),
+        artifact.ensemble_combiner.weights.len(),
+        "components and weights must stay parallel"
+    );
+    // The combiner must be usable by the ensemble path without panicking.
+    let predictor = NextAppPredictor::new(artifact).expect("artifact should validate");
+    let features = PredictionFeatures {
+        user_id: Some("u0".into()),
+        current_app: Some("com.chat".into()),
+        history: vec!["com.home".into()],
+        ..PredictionFeatures::default()
+    };
+    let ranked = predictor.rank(&features, NextAppAlgorithm::Ensemble, 3);
+    assert!(!ranked.is_empty(), "ensemble should produce predictions");
+}
+
+#[test]
+fn trained_artifact_has_logistic_reranker_for_hard_user_recency() {
+    // The strong baseline's advantage comes from a hard "last transition"
+    // pointer. The ensemble should learn that same signal as a candidate
+    // feature instead of only treating per-user Markov as a diffuse count table.
+    let mut examples = Vec::new();
+    for i in 0..80 {
+        let user = format!("u{}", i % 8);
+        examples.push(example(&user, "com.chat", &["com.home"], "com.mail"));
+        examples.push(example(&user, "com.chat", &["com.home"], "com.browser"));
+        examples.push(example(&user, "com.chat", &["com.home"], "com.calendar"));
+        examples.push(example(&user, "com.mail", &["com.chat"], "com.docs"));
+    }
+    examples.push(example("target", "com.chat", &["com.home"], "com.browser"));
+    examples.push(example("target", "com.chat", &["com.home"], "com.calendar"));
+    examples.push(example("target", "com.chat", &["com.home"], "com.mail"));
+
+    let artifact = train_next_app_artifact("unit", NextAppModelConfig::default(), &examples)
+        .expect("training should succeed");
+    assert!(
+        !artifact.ensemble_logistic.is_empty(),
+        "trainer should fit a non-empty logistic reranker when validation data exists"
+    );
+
+    let predictor = NextAppPredictor::new(artifact).expect("artifact should validate");
+    let features = PredictionFeatures {
+        user_id: Some("target".into()),
+        current_app: Some("com.chat".into()),
+        history: vec!["com.home".into()],
+        ..PredictionFeatures::default()
+    };
+
+    let ranked = predictor.rank(&features, NextAppAlgorithm::Ensemble, 3);
+
+    assert_eq!(
+        ranked[0].app, "com.mail",
+        "logistic reranker should learn to trust the hard last-transition pointer"
+    );
+}
+
+#[test]
 fn trained_artifact_uses_deterministic_timestamp() {
     let artifact = train_next_app_artifact("unit", NextAppModelConfig::default(), &examples())
         .expect("training should succeed");
@@ -108,6 +235,16 @@ fn artifact_validation_rejects_duplicate_or_unknown_app_scores() {
         "duplicate transition score apps must be rejected"
     );
 
+    let mut malformed_logistic = artifact.clone();
+    malformed_logistic.ensemble_logistic = super::LogisticRerankerModel {
+        feature_names: vec!["unknown:rank_rr".into()],
+        weights: vec![],
+    };
+    assert!(
+        NextAppPredictor::new(malformed_logistic).is_err(),
+        "malformed logistic reranker weights must be rejected"
+    );
+
     let mut unknown_tree = artifact;
     unknown_tree.feature_lift.trees[0].yes_scores[0].app = "com.unknown".into();
     assert!(
@@ -137,11 +274,16 @@ fn fallback_does_not_reintroduce_current_app_after_filtering() {
         markov: MarkovModel {
             global_transitions: std::collections::BTreeMap::new(),
             user_transitions: std::collections::BTreeMap::new(),
+            global_transitions_order2: std::collections::BTreeMap::new(),
         },
         feature_lift: FeatureLiftModel {
             base_scores: vec![0.0],
             trees: vec![],
         },
+        user_frequency: std::collections::BTreeMap::new(),
+        user_recency: std::collections::BTreeMap::new(),
+        ensemble_combiner: super::EnsembleCombiner::default(),
+        ensemble_logistic: super::LogisticRerankerModel::default(),
         training_summary: TrainingSummary {
             examples: 1,
             users: 1,
@@ -269,11 +411,16 @@ fn ensemble_considers_candidates_beyond_each_component_top_10() {
                 component_scores,
             )]),
             user_transitions: std::collections::BTreeMap::new(),
+            global_transitions_order2: std::collections::BTreeMap::new(),
         },
         feature_lift: FeatureLiftModel {
             base_scores: vec![0.0; app_vocab.len()],
             trees: vec![],
         },
+        user_frequency: std::collections::BTreeMap::new(),
+        user_recency: std::collections::BTreeMap::new(),
+        ensemble_combiner: super::EnsembleCombiner::default(),
+        ensemble_logistic: super::LogisticRerankerModel::default(),
         training_summary: TrainingSummary {
             examples: 1,
             users: 1,

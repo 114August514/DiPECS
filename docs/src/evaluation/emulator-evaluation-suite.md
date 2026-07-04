@@ -99,16 +99,16 @@ cargo test -p aios-agent --lib mock_cloud_e2e_tests
 | `baseline_jank` | 正常运行中帧率 |
 | `post_release_jank` | ReleaseMemory 后帧率 |
 
-### 结果 (5 采样 × 3s 间隔)
+### 结果 (10 采样 × 10s 间隔)
 
-**系统基线 (无 DiPECS)：** 空闲内存 2568 MB
+**系统基线 (无 DiPECS)：** 空闲内存 1286 MB
 
 **启动耗时：**
 
-| 场景 | TotalTime | Jank | vs 无 DiPECS |
-|------|----------:|-----:|------------:|
-| cold_startup (无 DiPECS) | 1552 ms | 80% | — |
-| prewarm_startup (DiPECS) | 873 ms | 80% | **44% 更快** |
+| 场景 | TotalTime avg | TotalTime p95 | Jank | vs 无 DiPECS |
+|------|----------:|----------:|-----:|------------:|
+| cold_startup (无 DiPECS) | 884.1 ms | 932.0 ms | 80.0% | — |
+| prewarm_startup (DiPECS) | 489.3 ms | 512.0 ms | 90.0% | **44.7% 更快** |
 
 > 冷启动 Jank 高是正常的（首帧渲染），PreWarm 不影响首帧复杂度。
 
@@ -116,13 +116,13 @@ cargo test -p aios-agent --lib mock_cloud_e2e_tests
 
 | 模式 | 平均 Jank | PSS |
 |------|----------:|----:|
-| baseline_jank | 19.05% | 44 MB |
-| post_release_jank | 15.38% | 44 MB |
-| **改善** | **−3.67 pp** | — |
+| baseline_jank | 23.81% | 53.501 MB |
+| post_release_jank | 23.81% | 53.963 MB |
+| **改善** | **0.0 pp** | -0.462 MB |
 
-> **结论：PreWarm 启动加速 44%，ReleaseMemory 卡顿降低 3.7pp。**
+> **结论：PreWarm 启动加速 44.7%，ReleaseMemory 在该 idle 场景保持中性。**
 
-### 测试 (6 个，CI 自动)
+### 测试 (8 个，CI 自动)
 
 | 测试 | 验证 |
 |------|------|
@@ -132,6 +132,8 @@ cargo test -p aios-agent --lib mock_cloud_e2e_tests
 | `release_memory_does_not_increase_jank` | 卡顿不增加 (≤ 20pp) |
 | `conclusion_matches_deltas` | prewarm_effective / release_memory_effective 与数据一致 |
 | `stays_within_budget` | RSS / PSS 在阈值内 |
+| `reports_startup_sample_size_and_p95` | cold/prewarm 启动样本合计 n≥20，p95 与 raw samples 一致 |
+| `script_labels_startup_metric_as_total_time` | 采集脚本和 Markdown 报告明确标注 `am start -W TotalTime` |
 
 ---
 

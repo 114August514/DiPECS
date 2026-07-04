@@ -7,7 +7,8 @@
 use serde_json::Value;
 
 const DATA: &str =
-    include_str!("../../../data/evaluation/ux-metrics-emulator-20260701-151856.json");
+    include_str!("../../../data/evaluation/ux-metrics-emulator-20260703-171457.json");
+const COLLECT_UX_SCRIPT: &str = include_str!("../../../tools/collect/collect-ux-metrics.sh");
 const EPSILON: f64 = 0.011;
 
 #[derive(Debug, Clone)]
@@ -47,6 +48,17 @@ fn avg(values: &[f64]) -> f64 {
         return 0.0;
     }
     values.iter().sum::<f64>() / values.len() as f64
+}
+
+fn percentile_ceil(values: &[f64], percentile: f64) -> f64 {
+    assert!(
+        !values.is_empty(),
+        "percentile requires at least one sample"
+    );
+    let mut sorted = values.to_vec();
+    sorted.sort_by(|a, b| a.total_cmp(b));
+    let rank = (percentile / 100.0 * sorted.len() as f64).ceil() as usize;
+    sorted[rank.saturating_sub(1).min(sorted.len() - 1)]
 }
 
 fn recompute_run(run: &Value, expected_sample_count: usize) -> RunMetrics {
@@ -221,6 +233,51 @@ fn ux_metrics_prewarm_shows_no_regression() {
 }
 
 #[test]
+fn ux_metrics_reports_startup_sample_size_and_p95() {
+    let data = fixture();
+    let runs = data["runs"].as_array().expect("runs");
+    let startup_runs: Vec<&Value> = runs
+        .iter()
+        .filter(|run| {
+            matches!(
+                run["mode"].as_str(),
+                Some("cold_startup" | "prewarm_startup")
+            )
+        })
+        .collect();
+    assert_eq!(
+        startup_runs.len(),
+        2,
+        "fixture must include cold and prewarm startup runs"
+    );
+
+    let total_startup_samples: usize = startup_runs
+        .iter()
+        .map(|run| run["samples"].as_array().expect("samples").len())
+        .sum();
+    assert!(
+        total_startup_samples >= 20,
+        "PreWarm comparison must have at least 20 startup samples; got {total_startup_samples}"
+    );
+
+    for run in startup_runs {
+        let mode = run["mode"].as_str().expect("mode");
+        let samples = run["samples"].as_array().expect("samples");
+        let startup_times: Vec<f64> = samples
+            .iter()
+            .map(|sample| number(sample, "startup_total_time_ms"))
+            .collect();
+        let expected_p95 = percentile_ceil(&startup_times, 95.0);
+        let actual_p95 = number(&run["summary"], "p95_startup_total_time_ms");
+        assert_close(
+            actual_p95,
+            expected_p95,
+            &format!("{mode} p95_startup_total_time_ms"),
+        );
+    }
+}
+
+#[test]
 fn ux_metrics_release_memory_does_not_increase_jank() {
     let data = fixture();
     let deltas = &data["ux_deltas"]["release_vs_baseline"];
@@ -277,4 +334,20 @@ fn ux_metrics_stays_within_budget() {
             run.avg_pss_mb
         );
     }
+}
+
+#[test]
+fn ux_metrics_script_labels_startup_metric_as_total_time() {
+    assert!(
+        COLLECT_UX_SCRIPT.contains("Startup latency measured via am start -W (TotalTime)."),
+        "script notes must name the parsed am start -W field"
+    );
+    assert!(
+        COLLECT_UX_SCRIPT.contains("## Startup Latency (am start -W TotalTime)"),
+        "markdown report title must name the parsed am start -W field"
+    );
+    assert!(
+        !COLLECT_UX_SCRIPT.contains("am start -W WaitTime"),
+        "script parses TotalTime, so it must not label the metric as WaitTime"
+    );
 }

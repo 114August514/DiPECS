@@ -11,72 +11,82 @@
     "ensemble": {
       "examples": 272519,
       "predicted": 272519,
-      "hit_rate_at_1_pct": 41.39,
-      "hit_rate_at_3_pct": 69.43,
-      "hit_rate_at_5_pct": 80.386,
-      "mean_reciprocal_rank_at_5": 0.562,
+      "hit_rate_at_1_pct": 56.442,
+      "hit_rate_at_3_pct": 76.104,
+      "hit_rate_at_5_pct": 84.241,
+      "mean_reciprocal_rank_at_5": 0.67,
       "prediction_coverage_pct": 100.0,
-      "macro_hit_rate_at_1_pct": 37.917
+      "macro_hit_rate_at_1_pct": 52.963
     },
     "global_popularity": {
       "examples": 272519,
       "predicted": 272519,
-      "hit_rate_at_1_pct": 13.66,
-      "hit_rate_at_3_pct": 32.631,
-      "hit_rate_at_5_pct": 46.046,
+      "hit_rate_at_1_pct": 13.585,
+      "hit_rate_at_3_pct": 32.538,
+      "hit_rate_at_5_pct": 45.892,
       "mean_reciprocal_rank_at_5": 0.248,
       "prediction_coverage_pct": 100.0,
-      "macro_hit_rate_at_1_pct": 18.097
+      "macro_hit_rate_at_1_pct": 18.036
     },
     "markov": {
       "examples": 272519,
       "predicted": 272519,
-      "hit_rate_at_1_pct": 39.332,
-      "hit_rate_at_3_pct": 66.17,
-      "hit_rate_at_5_pct": 77.025,
-      "mean_reciprocal_rank_at_5": 0.536,
+      "hit_rate_at_1_pct": 39.624,
+      "hit_rate_at_3_pct": 66.318,
+      "hit_rate_at_5_pct": 77.154,
+      "mean_reciprocal_rank_at_5": 0.538,
       "prediction_coverage_pct": 100.0,
-      "macro_hit_rate_at_1_pct": 39.189
+      "macro_hit_rate_at_1_pct": 39.323
     },
     "mfu": {
       "examples": 272519,
       "predicted": 272519,
-      "hit_rate_at_1_pct": 28.042,
-      "hit_rate_at_3_pct": 58.485,
-      "hit_rate_at_5_pct": 73.739,
-      "mean_reciprocal_rank_at_5": 0.446,
+      "hit_rate_at_1_pct": 28.041,
+      "hit_rate_at_3_pct": 58.654,
+      "hit_rate_at_5_pct": 73.821,
+      "mean_reciprocal_rank_at_5": 0.447,
       "prediction_coverage_pct": 100.0,
-      "macro_hit_rate_at_1_pct": 27.003
+      "macro_hit_rate_at_1_pct": 26.834
     },
     "mru": {
       "examples": 272519,
       "predicted": 272519,
-      "hit_rate_at_1_pct": 23.558,
-      "hit_rate_at_3_pct": 23.558,
-      "hit_rate_at_5_pct": 23.558,
-      "mean_reciprocal_rank_at_5": 0.236,
+      "hit_rate_at_1_pct": 23.524,
+      "hit_rate_at_3_pct": 23.524,
+      "hit_rate_at_5_pct": 23.524,
+      "mean_reciprocal_rank_at_5": 0.235,
       "prediction_coverage_pct": 100.0,
-      "macro_hit_rate_at_1_pct": 18.244
+      "macro_hit_rate_at_1_pct": 18.265
     },
     "naive_bayes": {
       "examples": 272519,
       "predicted": 272519,
-      "hit_rate_at_1_pct": 37.905,
-      "hit_rate_at_3_pct": 57.425,
-      "hit_rate_at_5_pct": 66.621,
-      "mean_reciprocal_rank_at_5": 0.486,
+      "hit_rate_at_1_pct": 38.007,
+      "hit_rate_at_3_pct": 57.528,
+      "hit_rate_at_5_pct": 66.896,
+      "mean_reciprocal_rank_at_5": 0.487,
       "prediction_coverage_pct": 100.0,
-      "macro_hit_rate_at_1_pct": 27.422
+      "macro_hit_rate_at_1_pct": 27.531
+    },
+    "strong_predictive": {
+      "examples": 272519,
+      "predicted": 272519,
+      "hit_rate_at_1_pct": 53.784,
+      "hit_rate_at_3_pct": 72.563,
+      "hit_rate_at_5_pct": 80.428,
+      "mean_reciprocal_rank_at_5": 0.638,
+      "prediction_coverage_pct": 100.0,
+      "macro_hit_rate_at_1_pct": 49.696
     },
     "xgboost": {
       "examples": 272519,
       "predicted": 272519,
-      "hit_rate_at_1_pct": 33.44,
-      "hit_rate_at_3_pct": 51.779,
-      "hit_rate_at_5_pct": 60.521,
+      "hit_rate_at_1_pct": 33.441,
+      "hit_rate_at_3_pct": 51.712,
+      "hit_rate_at_5_pct": 60.711,
       "mean_reciprocal_rank_at_5": 0.435,
       "prediction_coverage_pct": 100.0,
-      "macro_hit_rate_at_1_pct": 28.685
+      "macro_hit_rate_at_1_pct": 28.76
     }
   }
 }

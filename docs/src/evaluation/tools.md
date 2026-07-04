@@ -90,14 +90,19 @@
 - `data/evaluation/ux-metrics-emulator-<ts>.json`
 - `data/evaluation/ux-metrics-emulator-<ts>.md`
 
+Startup summary 同时报告 `avg_startup_total_time_ms` 和
+`p95_startup_total_time_ms`；committed regression fixture 至少覆盖
+cold/prewarm 启动样本合计 n=20。
+
 ### 对应 CI 测试
 
 `crates/aios-cli/tests/ux_metrics_dataset_test.rs`
 
 阈值：
 
-- PreWarm 加速 ≥ 20% 或 ≥ 100 ms
+- PreWarm 加速 ≥ 20% 且 ≥ 100 ms
 - ReleaseMemory jank 增加 ≤ 20 个百分点
+- startup p95 必须能从 raw samples 重算，避免均值掩盖尾部退化
 
 ## 稳定性：`collect-stability.sh`
 

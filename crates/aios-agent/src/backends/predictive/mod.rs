@@ -5,19 +5,22 @@
 //! feature ensemble, then emits low-risk app intent candidates.
 
 mod backend;
+mod ensemble;
 mod predictor;
 mod train;
 mod types;
 
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod validation_tests;
 
 pub use backend::PredictiveLocalBackend;
 pub use train::train_next_app_artifact;
 pub use types::{
-    AppScore, FeatureLiftModel, FeatureLiftTree, MarkovModel, NaiveBayesModel, NextAppAlgorithm,
-    NextAppModelArtifact, NextAppModelConfig, NextAppTrainingExample, PredictionFeatures,
-    TrainingSummary,
+    AppScore, EnsembleCombiner, FeatureLiftModel, FeatureLiftTree, LogisticRerankerModel,
+    MarkovModel, NaiveBayesModel, NextAppAlgorithm, NextAppModelArtifact, NextAppModelConfig,
+    NextAppTrainingExample, PredictionFeatures, TrainingSummary,
 };
 
 pub struct NextAppPredictor {

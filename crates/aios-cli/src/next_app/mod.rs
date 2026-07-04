@@ -16,12 +16,17 @@ use serde::Serialize;
 mod baselines;
 mod loader;
 mod metrics;
+mod net_benefit;
 mod split;
+mod strong_baseline;
+
+pub use net_benefit::{compute_net_benefit, NetBenefitInputs, NetBenefitReport};
 
 use baselines::BaselineTables;
 use loader::load_examples;
 use metrics::evaluate_ranker;
 use split::split_examples;
+use strong_baseline::StrongPredictiveActionBaseline;
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, ValueEnum)]
 pub enum NextAppDataset {
@@ -130,6 +135,7 @@ pub fn evaluate(opts: EvalOptions) -> Result<()> {
         bail!("split produced zero test examples");
     }
     let baseline = BaselineTables::from_training(&train_examples);
+    let strong_baseline = StrongPredictiveActionBaseline::from_training(&train_examples);
 
     let mut metrics = BTreeMap::new();
     metrics.insert(
@@ -173,6 +179,12 @@ pub fn evaluate(opts: EvalOptions) -> Result<()> {
             }),
         );
     }
+    metrics.insert(
+        "strong_predictive".into(),
+        evaluate_ranker(&test_examples, |example| {
+            strong_baseline.predict_for_example(example, 5)
+        }),
+    );
 
     let report = EvalReport {
         schema_version: "dipecs.next_app_eval.v1".into(),

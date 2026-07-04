@@ -1,8 +1,9 @@
 //! Next-app predictor and ranking algorithms.
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeSet;
 
-use super::train::user_transition_key;
+use super::ensemble::{ensemble_component_names, logistic_feature_names};
+use super::train::{order2_key, user_transition_key};
 use super::{
     score_order, AppScore, NextAppAlgorithm, NextAppModelArtifact, NextAppPredictor,
     PredictionFeatures, SCHEMA_VERSION,
@@ -60,7 +61,7 @@ impl NextAppPredictor {
         scores
     }
 
-    fn rank_naive_bayes(&self, features: &PredictionFeatures) -> Vec<AppScore> {
+    pub(super) fn rank_naive_bayes(&self, features: &PredictionFeatures) -> Vec<AppScore> {
         let mut scores = self.artifact.naive_bayes.class_log_priors.clone();
         for feature_key in feature_keys(features) {
             if let Some(log_probs) = self
@@ -80,7 +81,7 @@ impl NextAppPredictor {
         rank_from_logits(&self.artifact.app_vocab, &scores)
     }
 
-    fn rank_markov(&self, features: &PredictionFeatures) -> Vec<AppScore> {
+    pub(super) fn rank_markov(&self, features: &PredictionFeatures) -> Vec<AppScore> {
         if let (Some(user), Some(current)) = (&features.user_id, &features.current_app) {
             let key = user_transition_key(user, current);
             if let Some(scores) = self.artifact.markov.user_transitions.get(&key) {
@@ -100,7 +101,71 @@ impl NextAppPredictor {
         self.artifact.global_popularity.clone()
     }
 
-    fn rank_feature_lift(&self, features: &PredictionFeatures) -> Vec<AppScore> {
+    /// Global order-2 Markov ranking keyed on `(prev, current)`. Returns an
+    /// empty list when the order-2 pair was never observed, so the combiner can
+    /// simply contribute nothing rather than falling back to a weaker signal.
+    pub(super) fn rank_markov_order2(&self, features: &PredictionFeatures) -> Vec<AppScore> {
+        if let Some(current) = &features.current_app {
+            let Some(prev) = previous_feature_app(&features.history, current) else {
+                return Vec::new();
+            };
+            let key = order2_key(prev, current);
+            if let Some(scores) = self.artifact.markov.global_transitions_order2.get(&key) {
+                return scores.clone();
+            }
+        }
+        Vec::new()
+    }
+
+    /// Per-user order-1 Markov ranking (recency proxy). Uses the most recent
+    /// `(user, current)` transition distribution; empty when unseen so the
+    /// combiner contributes nothing rather than a weaker global signal.
+    pub(super) fn rank_recency(&self, features: &PredictionFeatures) -> Vec<AppScore> {
+        if let (Some(user), Some(current)) = (&features.user_id, &features.current_app) {
+            let key = user_transition_key(user, current);
+            if let Some(scores) = self.artifact.markov.user_transitions.get(&key) {
+                return scores.clone();
+            }
+        }
+        Vec::new()
+    }
+
+    /// Per-user app-usage frequency (MFU) ranking, unconditional on the current
+    /// app. Empty when the user was unseen in training, so the combiner
+    /// contributes nothing rather than a weaker global signal.
+    pub(super) fn rank_user_frequency(&self, features: &PredictionFeatures) -> Vec<AppScore> {
+        if let Some(user) = &features.user_id {
+            if let Some(scores) = self.artifact.user_frequency.get(user) {
+                return scores.clone();
+            }
+        }
+        Vec::new()
+    }
+
+    /// Hard recency pointer: the single most recent next-app this user opened
+    /// from the current app. Returns a one-element list (score 1.0) so the
+    /// combiner gives it a peaked top-1 contribution, mirroring the strong
+    /// baseline's flat recency boost. Empty when the `(user, current)` pair was
+    /// never seen.
+    pub(super) fn rank_user_recency(&self, features: &PredictionFeatures) -> Vec<AppScore> {
+        if let (Some(user), Some(current)) = (&features.user_id, &features.current_app) {
+            let key = user_transition_key(user, current);
+            if let Some(app) = self.artifact.user_recency.get(&key) {
+                return vec![AppScore {
+                    app: app.clone(),
+                    score: 1.0,
+                }];
+            }
+        }
+        Vec::new()
+    }
+
+    /// Global popularity ranking, used as the combiner's fallback component.
+    pub(super) fn rank_popularity(&self, _features: &PredictionFeatures) -> Vec<AppScore> {
+        self.artifact.global_popularity.clone()
+    }
+
+    pub(super) fn rank_feature_lift(&self, features: &PredictionFeatures) -> Vec<AppScore> {
         let active: BTreeSet<String> = feature_keys(features).into_iter().collect();
         let mut scores = self.artifact.feature_lift.base_scores.clone();
         for tree in &self.artifact.feature_lift.trees {
@@ -113,25 +178,6 @@ impl NextAppPredictor {
             }
         }
         rank_from_logits(&self.artifact.app_vocab, &scores)
-    }
-
-    fn rank_ensemble(&self, features: &PredictionFeatures) -> Vec<AppScore> {
-        let mut combined: BTreeMap<String, f32> = BTreeMap::new();
-        for (weight, scores) in [
-            (0.30, self.rank_naive_bayes(features)),
-            (0.40, self.rank_markov(features)),
-            (0.30, self.rank_feature_lift(features)),
-        ] {
-            for score in scores {
-                *combined.entry(score.app).or_default() += weight * score.score;
-            }
-        }
-        let mut ranked: Vec<AppScore> = combined
-            .into_iter()
-            .map(|(app, score)| AppScore { app, score })
-            .collect();
-        ranked.sort_by(|a, b| score_order(a.score, b.score).then_with(|| a.app.cmp(&b.app)));
-        ranked
     }
 }
 
@@ -210,6 +256,24 @@ fn validate_artifact(artifact: &NextAppModelArtifact) -> Result<(), String> {
             false,
         )?;
     }
+    for (key, scores) in &artifact.markov.global_transitions_order2 {
+        let Some((_, current_app)) = key.rsplit_once('\t') else {
+            return Err(format!(
+                "artifact markov order2 key `{key}` is not prev_app<TAB>current_app"
+            ));
+        };
+        if !app_vocab.contains(current_app) {
+            return Err(format!(
+                "artifact markov order2 current app `{current_app}` is not in app_vocab"
+            ));
+        }
+        validate_score_list(
+            &format!("markov.global_transitions_order2[{key}]"),
+            scores,
+            &app_vocab,
+            false,
+        )?;
+    }
     for tree in &artifact.feature_lift.trees {
         validate_score_list(
             &format!("feature_lift.tree[{}].yes_scores", tree.feature_key),
@@ -217,6 +281,91 @@ fn validate_artifact(artifact: &NextAppModelArtifact) -> Result<(), String> {
             &app_vocab,
             true,
         )?;
+    }
+    for (user_id, scores) in &artifact.user_frequency {
+        validate_score_list(
+            &format!("user_frequency[{user_id}]"),
+            scores,
+            &app_vocab,
+            false,
+        )?;
+    }
+    for (key, app) in &artifact.user_recency {
+        let Some((_, current_app)) = key.rsplit_once('\t') else {
+            return Err(format!(
+                "artifact user_recency key `{key}` is not user_id<TAB>current_app"
+            ));
+        };
+        if !app_vocab.contains(current_app) {
+            return Err(format!(
+                "artifact user_recency current app `{current_app}` is not in app_vocab"
+            ));
+        }
+        if !app_vocab.contains(app.as_str()) {
+            return Err(format!(
+                "artifact user_recency target app `{app}` is not in app_vocab"
+            ));
+        }
+    }
+    validate_combiner(&artifact.ensemble_combiner)?;
+    if !(artifact.ensemble_logistic.feature_names.is_empty()
+        && artifact.ensemble_logistic.weights.is_empty())
+    {
+        let expected = logistic_feature_names();
+        if artifact.ensemble_logistic.feature_names.is_empty()
+            || artifact.ensemble_logistic.weights.is_empty()
+            || artifact.ensemble_logistic.feature_names.len()
+                != artifact.ensemble_logistic.weights.len()
+        {
+            return Err(
+                "artifact ensemble_logistic feature_names and weights must be non-empty parallel vectors"
+                    .into(),
+            );
+        }
+        if artifact.ensemble_logistic.feature_names != expected {
+            return Err(
+                "artifact ensemble_logistic feature_names do not match runtime features".into(),
+            );
+        }
+        if artifact.ensemble_logistic.weights.len() != expected.len() {
+            return Err(
+                "artifact ensemble_logistic weights length does not match feature_names".into(),
+            );
+        }
+    }
+    Ok(())
+}
+
+fn validate_combiner(combiner: &super::EnsembleCombiner) -> Result<(), String> {
+    if combiner.components.is_empty() && combiner.weights.is_empty() {
+        return Ok(());
+    }
+    if combiner.components.is_empty()
+        || combiner.weights.is_empty()
+        || combiner.components.len() != combiner.weights.len()
+    {
+        return Err(
+            "artifact ensemble_combiner components and weights must be parallel vectors".into(),
+        );
+    }
+    let known: BTreeSet<&str> = ensemble_component_names().into_iter().collect();
+    let mut seen = BTreeSet::new();
+    for (component, weight) in combiner.components.iter().zip(combiner.weights.iter()) {
+        if !known.contains(component.as_str()) {
+            return Err(format!(
+                "artifact ensemble_combiner component `{component}` is unknown"
+            ));
+        }
+        if !seen.insert(component.as_str()) {
+            return Err(format!(
+                "artifact ensemble_combiner contains duplicate component `{component}`"
+            ));
+        }
+        if !weight.is_finite() || *weight < 0.0 {
+            return Err(format!(
+                "artifact ensemble_combiner weight for `{component}` must be finite and non-negative"
+            ));
+        }
     }
     Ok(())
 }
@@ -252,6 +401,14 @@ fn validate_score_list(
 
 fn filter_current_app(scores: &mut Vec<AppScore>, current: &str) {
     scores.retain(|score| score.app != current);
+}
+
+fn previous_feature_app<'a>(history: &'a [String], current_app: &str) -> Option<&'a str> {
+    history
+        .iter()
+        .rev()
+        .find(|app| app.as_str() != current_app)
+        .map(String::as_str)
 }
 
 pub(crate) fn feature_keys(features: &PredictionFeatures) -> Vec<String> {

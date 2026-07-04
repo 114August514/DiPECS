@@ -28,8 +28,10 @@
    DiPECS 后 0 泄漏、prompt 645 B。这是不依赖动作收益、独立成立的硬价值。
 2. **本地优先路由的延迟优势真实。** RuleBased/LocalEvaluator 亚毫秒级决策，
    真实 DeepSeek API 往返 6–14 s，相差 4–5 个数量级。
-3. **PreWarm 在真设备上确实加速启动。** 两次独立 run（`ux-metrics-emulator-20260701-150110`
-   与 `-151856`）分别快 54.8% 与 43.8%。
+3. **PreWarm 在 Android 模拟器上确实加速启动。** 最新 committed run
+   `ux-metrics-emulator-20260703-171457` 使用 cold/prewarm 启动样本合计 n=20，
+   `am start -W TotalTime` 均值从 884.1 ms 降到 489.3 ms，p95 从 932.0 ms
+   降到 512.0 ms，快 44.7%。
 4. **动作链路真实闭环。** 4 类可转发动作在 Android 模拟器/真机上均被设备确认并回执
    (`EXECUTED`)，不只是代码里能调用。
 5. **系统开销够低、可常驻。** replay 1600+ 事件峰值 RSS 约 11 MB、wall time 128 ms；
@@ -46,8 +48,8 @@
 
 1. **PrefetchFile / KeepAlive 的真实收益。** 只证明"能发出去并被确认"，没证明
    "发出去后系统变好了"。
-2. **DiPECS 相对强基线的净收益。** 没有在同设备同预算下与
-   `StrongPredictiveActionBaseline` 对打。
+2. **DiPECS 相对强基线的净收益。** `StrongPredictiveActionBaseline` 已开始接入
+   LSApp 评估，但还没有在同设备同预算下执行动作并测量净收益。
 3. **真实长期用户体验。** 无真实用户、无 field study，无法支撑"用了 DiPECS 后
    电池/流畅度/启动延迟整体改善"。
 4. **预测→动作→收益的端到端链。** LSApp 真实数据只到预测准确率；ux-metrics 只到
@@ -64,11 +66,6 @@
 
 > DiPECS 在真实场景下显著改善用户体验。
 
-> 注：本文引用的《强 Baseline 与动作收益评估准则》
-> （`docs/src/evaluation/strong-baseline-action-value.md`）目前位于
-> `feat/synthetic-baseline-action-value` 分支，尚未合入 main；待其合入后
-> 相关链接生效。
-
 ## 动作面核对表
 
 `ActionType` 定义见 `crates/aios-spec/src/intent.rs`。派发见
@@ -77,13 +74,13 @@
 
 | ActionType | 语义 | 代码链 | 真机派发 | 收益实验 | 结论 |
 | --- | --- | --- | --- | --- | --- |
-| `PreWarmProcess` | 预热应用进程 | 齐 | 转发到设备 | 已测：+54.8% 启动（664 vs 1470 ms，`am start -W`） | 真闪光点 |
-| `ReleaseMemory` | 释放非关键内存 | 齐 | 转发到设备 | 已测但微弱：jank -3.67 pp、PSS -0.31 MB，n=5 | 收益微弱，踩「伪需求」线，暂不作卖点 |
+| `PreWarmProcess` | 预热应用进程 | 齐 | 转发到设备 | 已测：+44.7% 启动（489.3 vs 884.1 ms，`am start -W TotalTime`，p95 512.0 vs 932.0 ms） | 真闪光点 |
+| `ReleaseMemory` | 释放非关键内存 | 齐 | 转发到设备 | 已测但不稳定：旧 run jank -3.67 pp，新 run idle 场景 0.0 pp、PSS -0.462 MB | 收益微弱，踩「伪需求」线，暂不作卖点 |
 | `PrefetchFile` | 预加载热点文件到页缓存 | 齐 | 带 `url:`/`uri:` 时转发 | 无 | 能发≠有用，收益待证 |
 | `KeepAlive` | 保活当前前台进程 | 齐 | 无条件转发 | 无 | 能发≠有用，收益待证 |
 | `NoOp` | 不执行操作 | — | — | — | — |
 
-数据来源：`data/evaluation/ux-metrics-emulator-20260701-150110.md`。
+数据来源：`data/evaluation/ux-metrics-emulator-20260703-171457.md`。
 
 ## 当前实验的三个断层
 
@@ -102,15 +99,25 @@
    测量结果，是把预测命中率乘一个假设常量再改名。引用时必须标注为「合成回测常量，
    非真实设备测量」。
 2. **LSApp 评估停在 Top-k 准确率，不发动作。**
-   命中率很高（standard 集 ensemble hit@1 ≈ 41%），但按准则「只证明 Top-k 准、
+   命中率很高（standard 集 ensemble hit@1 = 56.442%），但按准则「只证明 Top-k 准、
    不执行动作」属伪需求。它证明的是预测质量，不是系统收益。
 3. **PreWarm 收益是「预热了就快」，接近同义反复。**
-   `ux-metrics` 实验没有接入真实预测命中率（DiPECS 实测命中率约 24%~41%，意味着
-   大量预热是浪费），也没有算「省下延迟 − 浪费预热开销 − 控制面开销」的净值；
-   且 n=5，统计上单薄。
+   `ux-metrics` 实验已经补到 cold/prewarm 启动样本合计 n=20，并报告均值 + p95；
+   standard split 已把真实预测命中率接入 gross-saved gate；但它仍没有测
+   误预热成本和控制面开销，因此不能把 placeholder net benefit 当作完整净收益。
 
 此外，最关键的缺口是**没有与强基线在同设备同预算下对打**：准则要求主对照是
 `StrongPredictiveActionBaseline`（强预测也来驱动动作），而不是 native no-action。
+
+截至 `feat/strong-predictive-baseline` 的当前实验，强预测基线已能写入
+`lsapp-standard.report.json` / `lsapp-coldstart.report.json`。当前 standard split 上
+DiPECS ensemble 已超过强基线：hit@1 为 56.442% vs 53.784%，hit@3 为
+76.104% vs 72.563%，hit@5 为 84.241% vs 80.428%；因此可以启用
+「预测命中率 × 实测 PreWarm 加速」的 gross-saved 先决 gate。cold-start 仍不能作为
+DiPECS ensemble 胜出证据：hit@1 为 21.196% vs 48.050%。
+
+这只解决 #90/#91 的预测质量和已测启动收益连接问题；完整 action-level net benefit
+仍必须补齐真实动作预算、误预热成本、控制面开销和治理收益后再计算。
 
 ## 补齐路径：分动作 net-benefit 实验
 

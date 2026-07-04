@@ -13,6 +13,7 @@ use anyhow::{bail, Context, Result};
 use clap::ValueEnum;
 use serde::Serialize;
 
+mod adaptive_baseline;
 mod baselines;
 mod loader;
 mod metrics;
@@ -22,6 +23,7 @@ mod strong_baseline;
 
 pub use net_benefit::{compute_net_benefit, NetBenefitInputs, NetBenefitReport};
 
+use adaptive_baseline::AdaptiveBaseline;
 use baselines::BaselineTables;
 use loader::load_examples;
 use metrics::evaluate_ranker;
@@ -183,6 +185,13 @@ pub fn evaluate(opts: EvalOptions) -> Result<()> {
         "strong_predictive".into(),
         evaluate_ranker(&test_examples, |example| {
             strong_baseline.predict_for_example(example, 5)
+        }),
+    );
+    let adaptive_baseline = AdaptiveBaseline::from_training(&train_examples);
+    metrics.insert(
+        "adaptive_predictive".into(),
+        evaluate_ranker(&test_examples, |example| {
+            adaptive_baseline.predict_for_example(example, 5)
         }),
     );
 

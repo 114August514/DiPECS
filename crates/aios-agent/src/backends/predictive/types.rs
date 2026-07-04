@@ -34,6 +34,13 @@ pub struct NextAppModelArtifact {
     /// personal usage. Defaults to empty for backward compatibility.
     #[serde(default)]
     pub user_recency: BTreeMap<String, String>,
+    /// Context-aware Markov transitions keyed by temporal features. Keys are
+    /// `"{current}\t{hour}"` or `"{current}\t{weekday}"`, values are ranked
+    /// next-app distributions. This captures time-of-day and day-of-week
+    /// patterns that the global Markov table averages over. Defaults to empty
+    /// for backward compatibility with older artifacts.
+    #[serde(default)]
+    pub markov_context: BTreeMap<String, Vec<AppScore>>,
     /// Learned reciprocal-rank-fusion combiner for the ensemble algorithm. The
     /// weights are fit offline on a held-out validation slice (never on the
     /// test split) and locked into the artifact, so runtime inference is pure

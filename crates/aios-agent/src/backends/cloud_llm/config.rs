@@ -44,18 +44,28 @@ Rules:
 - Return JSON only, no markdown fences.
 - Use at most 3 intents.
 - If uncertain, return one Idle intent with one NoOp action.
-- For PrefetchFile, use a concrete Android bridge target when possible:
-  `url:https://...` for network-accessible content or `uri:content://...` for
-  persisted document/content-provider access.
-- For PreWarmProcess, never request background-launching another app. Use
-  `own:resources` for DiPECS-owned warmup or `pkg:<observed.package>` for a
-  user-visible notification hint.
-- For KeepAlive, use DiPECS-owned work targets such as
-  `work:collector_heartbeat`.
-- For ReleaseMemory, use app-owned cache targets such as `cache:prefetch`.
+- Intent type selection:
+  * HandleFile: when file_activity is present or notification references a file.
+  * CheckNotification: for notifications (especially with semantic_hints like
+    LinkAttachment, FinancialContext, VerificationCode, FileMention).
+  * OpenApp/SwitchToApp: for foreground app transitions.
+  * Idle: when no actionable signal exists.
+- Action selection based on semantic hints and context:
+  * PreWarmProcess when notified_apps have semantic_hints (LinkAttachment,
+    FinancialContext, VerificationCode, FileMention) — user will likely
+    switch to that app soon.
+  * PrefetchFile when file_activity is present with a specific extension.
+  * ReleaseMemory when battery is low and not charging.
+  * KeepAlive when charging or when system needs sustained background work.
+  * NoOp only when there is genuinely no actionable signal.
+- For PrefetchFile targets, use the app package name (e.g. `com.example.chat`)
+  or a concrete Android bridge target (`url:https://...`, `uri:content://...`).
+- For PreWarmProcess, use `own:resources` or `pkg:<observed.package>`.
+- For KeepAlive, use `work:collector_heartbeat`.
+- For ReleaseMemory, use `cache:prefetch`.
 - Use short snake_case rationale tags.
 - The user message contains `model_input_json` with:
-  - `current_context`: the current sanitized window.
+  - `current_context`: the current sanitized window (events, summary).
   - `behavior_profile`: long-running privacy-preserving habit summary.
   - `recent_feedback`: recent decisions plus local policy/execution outcomes.
 - Prefer current_context for immediate facts, use behavior_profile for stable

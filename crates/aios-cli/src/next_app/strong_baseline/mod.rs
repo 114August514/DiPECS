@@ -15,7 +15,7 @@
 //! predicted next apps.
 
 mod bayes;
-mod markov;
+pub(crate) mod markov;
 
 #[cfg(test)]
 mod tests;

@@ -165,6 +165,47 @@ impl NextAppPredictor {
         self.artifact.global_popularity.clone()
     }
 
+    /// Context-aware Markov ranking using temporal features. Looks up
+    /// `"{current}\t{hour}"` and `"{current}\t{weekday}"` transitions and
+    /// merges them with equal weight. Returns empty when no temporal key
+    /// matched, so the combiner contributes nothing rather than a weaker
+    /// global signal.
+    pub(super) fn rank_markov_context(&self, features: &PredictionFeatures) -> Vec<AppScore> {
+        let Some(current) = &features.current_app else {
+            return Vec::new();
+        };
+        let mut combined: std::collections::BTreeMap<String, f32> =
+            std::collections::BTreeMap::new();
+        let mut found = false;
+        if let Some(hour) = features.hour_bucket {
+            let key = format!("{current}\t{hour}");
+            if let Some(scores) = self.artifact.markov_context.get(&key) {
+                for s in scores {
+                    *combined.entry(s.app.clone()).or_default() += s.score;
+                }
+                found = true;
+            }
+        }
+        if let Some(weekday) = features.weekday {
+            let key = format!("{current}\t{weekday}");
+            if let Some(scores) = self.artifact.markov_context.get(&key) {
+                for s in scores {
+                    *combined.entry(s.app.clone()).or_default() += s.score;
+                }
+                found = true;
+            }
+        }
+        if !found {
+            return Vec::new();
+        }
+        let mut ranked: Vec<AppScore> = combined
+            .into_iter()
+            .map(|(app, score)| AppScore { app, score })
+            .collect();
+        ranked.sort_by(|a, b| score_order(a.score, b.score).then_with(|| a.app.cmp(&b.app)));
+        ranked
+    }
+
     pub(super) fn rank_feature_lift(&self, features: &PredictionFeatures) -> Vec<AppScore> {
         let active: BTreeSet<String> = feature_keys(features).into_iter().collect();
         let mut scores = self.artifact.feature_lift.base_scores.clone();
@@ -281,6 +322,9 @@ fn validate_artifact(artifact: &NextAppModelArtifact) -> Result<(), String> {
             &app_vocab,
             true,
         )?;
+    }
+    for (key, scores) in &artifact.markov_context {
+        validate_score_list(&format!("markov_context[{key}]"), scores, &app_vocab, false)?;
     }
     for (user_id, scores) in &artifact.user_frequency {
         validate_score_list(

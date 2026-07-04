@@ -284,6 +284,13 @@ fn required(row: &dyn RecordMap, candidates: &[&str]) -> Result<String> {
 
 fn parse_timestamp_ms(raw: &str) -> Option<i64> {
     let trimmed = raw.trim();
+
+    // Try ISO-8601 datetime: "2018-01-16 06:01:05" or "2018-01-16T06:01:05"
+    if let Some(ms) = parse_iso_datetime_ms(trimmed) {
+        return Some(ms);
+    }
+
+    // Try numeric timestamp.
     let value = trimmed.parse::<i64>().ok()?;
     // Heuristic for the ambiguous "timestamp" column (as opposed to the
     // unambiguous "timestamp_ms" column, which is parsed directly as ms).
@@ -300,6 +307,52 @@ fn parse_timestamp_ms(raw: &str) -> Option<i64> {
     } else {
         value * 1000
     })
+}
+
+/// Parse ISO-8601 datetime strings like "2018-01-16 06:01:05" into ms since epoch.
+/// Returns None if the string doesn't look like an ISO datetime.
+fn parse_iso_datetime_ms(s: &str) -> Option<i64> {
+    // Accept "YYYY-MM-DD HH:MM:SS" or "YYYY-MM-DDTHH:MM:SS" with optional fractional seconds.
+    let (date_part, time_part) = if let Some(pos) = s.find('T') {
+        (&s[..pos], &s[pos + 1..])
+    } else if let Some(pos) = s.find(' ') {
+        (&s[..pos], &s[pos + 1..])
+    } else {
+        return None;
+    };
+
+    let mut date_fields = date_part.split('-');
+    let year: i32 = date_fields.next()?.parse().ok()?;
+    let month: u32 = date_fields.next()?.parse().ok()?;
+    let day: u32 = date_fields.next()?.parse().ok()?;
+    if month == 0 || month > 12 || day == 0 || day > 31 {
+        return None;
+    }
+
+    let time_core = time_part.split('.').next().unwrap_or(time_part);
+    let mut time_fields = time_core.split(':');
+    let hour: u32 = time_fields.next()?.parse().ok()?;
+    let minute: u32 = time_fields.next()?.parse().ok()?;
+    let second: u32 = time_fields.next().unwrap_or("0").parse().ok()?;
+    if hour > 23 || minute > 59 || second > 59 {
+        return None;
+    }
+
+    // Days since 1970-01-01 using a civil calendar formula.
+    let mut y = year as i64;
+    let mut m = month as i64;
+    if m <= 2 {
+        y -= 1;
+        m += 12;
+    }
+    let era = if y >= 0 { y } else { y - 399 } / 400;
+    let yoe = y - era * 400;
+    let doy = (153 * (m - 3) + 2) / 5 + day as i64 - 1;
+    let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+    let days = era * 146097 + doe - 719468;
+
+    let secs = days * 86400 + hour as i64 * 3600 + minute as i64 * 60 + second as i64;
+    Some(secs * 1000)
 }
 
 fn split_delimited(line: &str, delimiter: char) -> Vec<String> {

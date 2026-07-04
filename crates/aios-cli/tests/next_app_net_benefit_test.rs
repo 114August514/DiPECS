@@ -422,6 +422,30 @@ mod tests {
             );
         }
 
+        let summary_value = |mode: &str, field: &str| -> f64 {
+            runs.iter()
+                .find(|run| run.get("mode").and_then(|v| v.as_str()) == Some(mode))
+                .and_then(|run| run.get("summary"))
+                .and_then(|summary| summary.get(field))
+                .and_then(|v| v.as_f64())
+                .unwrap_or_else(|| {
+                    panic!("{mode} summary.{field} missing from {}", net_path.display())
+                })
+        };
+        let recomputed_saved_ms =
+            summary_value("collector_cold_startup", "mean_startup_total_time_ms")
+                - summary_value(
+                    "collector_prewarm_hit_startup",
+                    "mean_startup_total_time_ms",
+                );
+        let recomputed_miss_delta_ms =
+            summary_value(
+                "settings_after_wrong_prewarm_startup",
+                "mean_startup_total_time_ms",
+            ) - summary_value("settings_cold_startup", "mean_startup_total_time_ms");
+        let recomputed_control_ms =
+            summary_value("collector_prewarm_hit_startup", "mean_prewarm_latency_us") / 1000.0;
+
         let measured = net
             .get("measured_inputs")
             .expect("measured_inputs must be present");
@@ -438,10 +462,39 @@ mod tests {
             .get("miss_action_cost_ms")
             .and_then(|v| v.as_f64())
             .expect("miss_action_cost_ms missing from measured_inputs");
+        let miss_delta_ms = measured
+            .get("miss_startup_delta_ms")
+            .and_then(|v| v.as_f64())
+            .expect("miss_startup_delta_ms missing from measured_inputs");
+        let mean_prewarm_latency_ms = measured
+            .get("mean_prewarm_latency_ms")
+            .and_then(|v| v.as_f64())
+            .expect("mean_prewarm_latency_ms missing from measured_inputs");
         let control_plane_ms = measured
             .get("control_plane_ms")
             .and_then(|v| v.as_f64())
             .expect("control_plane_ms missing from measured_inputs");
+        const MEASURED_INPUT_TOLERANCE_MS: f64 = 0.001;
+        assert!(
+            (saved_ms - recomputed_saved_ms).abs() <= MEASURED_INPUT_TOLERANCE_MS,
+            "hit_saved_ms must match run summaries"
+        );
+        assert!(
+            (miss_delta_ms - recomputed_miss_delta_ms).abs() <= MEASURED_INPUT_TOLERANCE_MS,
+            "miss_startup_delta_ms must match wrong-prewarm run summaries"
+        );
+        assert!(
+            (miss_cost_ms - recomputed_miss_delta_ms.max(0.0)).abs() <= MEASURED_INPUT_TOLERANCE_MS,
+            "miss_action_cost_ms must match the non-negative wrong-prewarm startup delta"
+        );
+        assert!(
+            (mean_prewarm_latency_ms - recomputed_control_ms).abs() <= MEASURED_INPUT_TOLERANCE_MS,
+            "mean_prewarm_latency_ms must match run summaries"
+        );
+        assert!(
+            (control_plane_ms - recomputed_control_ms).abs() <= MEASURED_INPUT_TOLERANCE_MS,
+            "control_plane_ms must match measured PreWarm dispatch latency"
+        );
         assert!(
             saved_ms > 0.0,
             "measured PreWarm saved latency must be positive"

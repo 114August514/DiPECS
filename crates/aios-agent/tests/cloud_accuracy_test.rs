@@ -148,7 +148,9 @@ fn action_name(action: &ActionType) -> &'static str {
 fn load_accuracy_cases() -> AccuracyDataset {
     let path = env::var("CLOUD_ACCURACY_CASES")
         .map(PathBuf::from)
-        .unwrap_or_else(|_| project_root().join("data/evaluation/cloud-llm-accuracy-cases.json"));
+        .unwrap_or_else(|_| {
+            project_root().join("data/evaluation/cloud/cloud-llm-accuracy-cases.json")
+        });
     let file = fs::File::open(&path).unwrap_or_else(|_| panic!("open {}", path.display()));
     serde_json::from_reader(file).unwrap_or_else(|err| panic!("parse {}: {err}", path.display()))
 }

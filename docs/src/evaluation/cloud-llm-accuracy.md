@@ -56,12 +56,12 @@ bash tools/prepare-lsapp.sh
 ```bash
 python tools/generate/generate_cloud_accuracy_cases.py \
   --input data/lsapp/lsapp.tsv \
-  --output data/evaluation/cloud-llm-accuracy-cases.generated.json \
+  --output data/evaluation/cloud/cloud-llm-accuracy-cases.generated.json \
   --max-cases 500 \
   --include-seed
 ```
 
-生成的文件使用与 `data/evaluation/cloud-llm-accuracy-cases.json` 相同的 schema。
+生成的文件使用与 `data/evaluation/cloud/cloud-llm-accuracy-cases.json` 相同的 schema。
 
 
 ## 从其他来源生成用例
@@ -72,7 +72,7 @@ MobileRec 格式的应用交互文件：
 python tools/generate/generate_cloud_accuracy_cases.py \
   --source-kind mobilerec \
   --input third_party/MobileRec \
-  --output data/evaluation/cloud-llm-accuracy-cases.mobilerec.json \
+  --output data/evaluation/cloud/cloud-llm-accuracy-cases.mobilerec.json \
   --max-cases 1000 \
   --include-seed
 ```
@@ -83,7 +83,7 @@ python tools/generate/generate_cloud_accuracy_cases.py \
 python tools/generate/generate_cloud_accuracy_cases.py \
   --source-kind battery \
   --input third_party/battery-usage \
-  --output data/evaluation/cloud-llm-accuracy-cases.battery.json \
+  --output data/evaluation/cloud/cloud-llm-accuracy-cases.battery.json \
   --max-cases 300 \
   --include-seed
 ```
@@ -94,7 +94,7 @@ python tools/generate/generate_cloud_accuracy_cases.py \
 python tools/generate/generate_cloud_accuracy_cases.py \
   --source-kind mobile-usage \
   --input third_party/mobile-usage \
-  --output data/evaluation/cloud-llm-accuracy-cases.mobile-usage.json \
+  --output data/evaluation/cloud/cloud-llm-accuracy-cases.mobile-usage.json \
   --max-cases 300 \
   --include-seed
 ```
@@ -115,7 +115,7 @@ cargo test -p aios-agent --test cloud_accuracy_test -- --ignored --nocapture
 
 ```bash
 DIPECS_CLOUD_LLM_API_KEY=sk-xxx \
-CLOUD_ACCURACY_CASES=data/evaluation/cloud-llm-accuracy-cases.generated.json \
+CLOUD_ACCURACY_CASES=data/evaluation/cloud/cloud-llm-accuracy-cases.generated.json \
 CLOUD_ACCURACY_ROUNDS=3 \
 CLOUD_ACCURACY_MIN_PCT=90 \
 cargo test -p aios-agent --test cloud_accuracy_test -- --ignored --nocapture
@@ -128,18 +128,18 @@ cargo test -p aios-agent --test cloud_accuracy_test -- --ignored --nocapture
 ```bash
 # Seed 用例，core 匹配模式（intent + action + extension）
 python tools/evaluate/evaluate_cloud_accuracy.py \
-  --cases data/evaluation/cloud-llm-accuracy-cases.json \
+  --cases data/evaluation/cloud/cloud-llm-accuracy-cases.json \
   --rounds 2 \
   --match-mode core \
-  --out-dir data/evaluation
+  --out-dir data/evaluation/cloud
 
 # LSApp action-intent 用例
 python tools/evaluate/evaluate_cloud_accuracy.py \
-  --cases data/evaluation/cloud-llm-accuracy-cases.lsapp-action-intent.json \
+  --cases data/evaluation/cloud/cloud-llm-accuracy-cases.lsapp-action-intent.json \
   --rounds 1 \
   --match-mode action \
   --limit-cases 50 \
-  --out-dir data/evaluation
+  --out-dir data/evaluation/cloud
 ```
 
 匹配模式说明：
@@ -153,7 +153,7 @@ python tools/evaluate/evaluate_cloud_accuracy.py \
 输出文件格式（schema v2）：
 
 ```text
-data/evaluation/cloud-accuracy-topk-<unix_timestamp>.json
+data/evaluation/cloud/cloud-accuracy-topk-<unix_timestamp>.json
 ```
 
 关键字段：
@@ -168,8 +168,8 @@ data/evaluation/cloud-accuracy-topk-<unix_timestamp>.json
 
 | 文件 | 用例数 | 标签模式 | 说明 |
 |------|--------|----------|------|
-| `cloud-llm-accuracy-cases.json` | 30 | hinted-action | 手工编写的 seed 用例，覆盖多种 persona 和场景 |
-| `cloud-llm-accuracy-cases.battery.json` | 300 | hinted-action | 从电池/应用使用数据生成 |
-| `cloud-llm-accuracy-cases.lsapp.json` | 1000 | hinted-action | 从 LSApp 生成（注意：有数据泄露风险，仅用于烟雾测试） |
-| `cloud-llm-accuracy-cases.lsapp-next-app.json` | 100 | next-app | 从 LSApp 生成，无数据泄露，适合准确率报告 |
-| `cloud-llm-accuracy-cases.lsapp-action-intent.json` | 100 | action-intent | 从 LSApp 生成，仅评估 action_type |
+| `data/evaluation/cloud/cloud-llm-accuracy-cases.json` | 30 | hinted-action | 手工编写的 seed 用例，覆盖多种 persona 和场景 |
+| `data/evaluation/cloud/cloud-llm-accuracy-cases.battery.json` | 300 | hinted-action | 从电池/应用使用数据生成 |
+| `data/evaluation/cloud/cloud-llm-accuracy-cases.lsapp.json` | 1000 | hinted-action | 从 LSApp 生成（注意：有数据泄露风险，仅用于烟雾测试） |
+| `data/evaluation/cloud/cloud-llm-accuracy-cases.lsapp-next-app.json` | 100 | next-app | 从 LSApp 生成，无数据泄露，适合准确率报告 |
+| `data/evaluation/cloud/cloud-llm-accuracy-cases.lsapp-action-intent.json` | 100 | action-intent | 从 LSApp 生成，仅评估 action_type |

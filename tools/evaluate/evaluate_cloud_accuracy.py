@@ -265,12 +265,12 @@ def pct(num: int, den: int) -> float:
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--cases", default="data/evaluation/cloud-llm-accuracy-cases.json")
+    parser.add_argument("--cases", default="data/evaluation/cloud/cloud-llm-accuracy-cases.json")
     parser.add_argument("--rounds", type=int, default=int(os.environ.get("CLOUD_ACCURACY_ROUNDS", "1")))
     parser.add_argument("--limit-cases", type=int)
     parser.add_argument("--match-mode", choices=["full", "core", "action"], default="full")
     parser.add_argument("--top5-reference", type=float, default=90.0)
-    parser.add_argument("--out-dir", default="data/evaluation")
+    parser.add_argument("--out-dir", default="data/evaluation/cloud")
     args = parser.parse_args()
 
     load_dotenv(Path(".env"))

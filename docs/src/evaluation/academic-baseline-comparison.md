@@ -4,7 +4,7 @@
 >
 > 最后更新：2026-07-04
 >
-> 数据来源：`data/evaluation/academic-next-app-baselines.json`
+> 数据来源：`data/evaluation/next-app/academic-next-app-baselines.json`
 
 本页回答一个很具体的评审问题：DiPECS 的 next-app 预测结果，应当如何与 MAPLE、AppFormer、POI-based prediction、HAPP/APPredict 系列、GNN 推荐模型等学术工作放在一起看？
 
@@ -51,7 +51,7 @@
 - 用 DiPECS ensemble vs `strong_predictive` 两行支撑当前仓库内的准确率结论。
 - 把 MAPLE、TGT、AppFormer、POI、GNN 行作为相关工作背景。
 - 每个数值都保留 `source_url` 和 `source_locator`。
-- 新增外部论文行时，先更新 `data/evaluation/academic-next-app-baselines.json`，再同步更新本页。
+- 新增外部论文行时，先更新 `data/evaluation/next-app/academic-next-app-baselines.json`，再同步更新本页。
 
 不要这样使用：
 

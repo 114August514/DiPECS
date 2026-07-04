@@ -11,6 +11,7 @@ fn baselines_path() -> PathBuf {
     workspace_root()
         .join("data")
         .join("evaluation")
+        .join("next-app")
         .join("academic-next-app-baselines.json")
 }
 
@@ -288,6 +289,38 @@ fn direct_baseline_rows_match_committed_report_sources() {
 }
 
 #[test]
+fn evaluation_json_fixtures_live_under_experiment_subdirectories() {
+    let evaluation_root = workspace_root().join("data").join("evaluation");
+    let mut root_json_files = Vec::new();
+    for entry in fs::read_dir(&evaluation_root)
+        .unwrap_or_else(|err| panic!("could not read {}: {err}", evaluation_root.display()))
+    {
+        let path = entry
+            .unwrap_or_else(|err| {
+                panic!(
+                    "could not read entry in {}: {err}",
+                    evaluation_root.display()
+                )
+            })
+            .path();
+        if path.extension().and_then(|ext| ext.to_str()) == Some("json") {
+            root_json_files.push(
+                path.file_name()
+                    .and_then(|name| name.to_str())
+                    .unwrap_or("<invalid utf-8>")
+                    .to_owned(),
+            );
+        }
+    }
+
+    root_json_files.sort();
+    assert!(
+        root_json_files.is_empty(),
+        "data/evaluation root JSON fixtures should live in experiment subdirectories: {root_json_files:?}"
+    );
+}
+
+#[test]
 fn academic_baseline_doc_is_wired_and_mentions_comparability_policy() {
     let root = workspace_root();
     let doc_path = root
@@ -297,7 +330,7 @@ fn academic_baseline_doc_is_wired_and_mentions_comparability_policy() {
         .join("academic-baseline-comparison.md");
     let doc = fs::read_to_string(&doc_path)
         .unwrap_or_else(|err| panic!("could not read {}: {err}", doc_path.display()));
-    assert!(doc.contains("data/evaluation/academic-next-app-baselines.json"));
+    assert!(doc.contains("data/evaluation/next-app/academic-next-app-baselines.json"));
     assert!(doc.contains("不要这样使用"));
     assert!(doc.contains("direct"));
     assert!(doc.contains("contextual_only") || doc.contains("仅作背景"));

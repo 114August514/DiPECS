@@ -69,6 +69,11 @@ mod tests {
         let report_path =
             find_report().expect("lsapp-standard.report.json fixture must be committed");
         let report = load_json(&report_path).expect("lsapp-standard.report.json must parse");
+        assert_eq!(
+            report.get("split").and_then(|v| v.as_str()),
+            Some("Standard"),
+            "lsapp-standard.report.json must be the Standard split"
+        );
 
         let test_examples = report
             .get("test_examples")
@@ -96,6 +101,54 @@ mod tests {
                 > 0.0,
             "strong_predictive must produce a non-zero hit@1 baseline"
         );
+    }
+
+    #[test]
+    fn lsapp_standard_report_ensemble_beats_strong_predictive_top_k() {
+        let report_path =
+            find_report().expect("lsapp-standard.report.json fixture must be committed");
+        let report = load_json(&report_path).expect("lsapp-standard.report.json must parse");
+        let metrics = report.get("metrics").expect("metrics missing from report");
+        let ensemble = metrics
+            .get("ensemble")
+            .expect("ensemble metrics missing from report");
+        let strong = metrics
+            .get("strong_predictive")
+            .expect("strong_predictive metrics missing from report");
+        let test_examples = report
+            .get("test_examples")
+            .and_then(|v| v.as_u64())
+            .expect("test_examples missing from report");
+
+        assert_eq!(
+            ensemble.get("examples").and_then(|v| v.as_u64()),
+            Some(test_examples),
+            "ensemble must evaluate the same Standard test window count"
+        );
+        assert_eq!(
+            strong.get("examples").and_then(|v| v.as_u64()),
+            Some(test_examples),
+            "strong_predictive must evaluate the same Standard test window count"
+        );
+
+        for field in [
+            "hit_rate_at_1_pct",
+            "hit_rate_at_3_pct",
+            "hit_rate_at_5_pct",
+        ] {
+            let ensemble_hit = ensemble
+                .get(field)
+                .and_then(|v| v.as_f64())
+                .unwrap_or_else(|| panic!("ensemble {field} missing from report"));
+            let strong_hit = strong
+                .get(field)
+                .and_then(|v| v.as_f64())
+                .unwrap_or_else(|| panic!("strong_predictive {field} missing from report"));
+            assert!(
+                ensemble_hit > strong_hit,
+                "Standard ensemble {field} ({ensemble_hit:.3}%) must beat strong_predictive ({strong_hit:.3}%)"
+            );
+        }
     }
 
     #[test]
@@ -175,13 +228,11 @@ mod tests {
             .and_then(|m| m.get("ensemble"))
             .and_then(|e| e.get("hit_rate_at_1_pct"))
             .and_then(|v| v.as_f64())
-            .unwrap_or_else(|| {
-                eprintln!("SKIP: ensemble hit_rate_at_1_pct missing from report");
-                0.0
-            });
-        if ensemble_hit == 0.0 {
-            return;
-        }
+            .expect("ensemble hit_rate_at_1_pct missing from report");
+        assert!(
+            ensemble_hit > 0.0,
+            "ensemble hit_rate_at_1_pct should be positive"
+        );
 
         let strong_hit = match report
             .get("metrics")
@@ -233,7 +284,7 @@ mod tests {
             strong_gross
         );
 
-        // The current UX fixtures measure the warm→prewarm saving, but do not yet
+        // The current UX fixtures measure the cold→prewarm saving, but do not yet
         // expose a dedicated missed-prewarm cost or control-plane overhead. Build
         // the inputs through the placeholder constructor so those two unmeasured
         // fields are impossible to mistake for real data (see TODO(#90) on

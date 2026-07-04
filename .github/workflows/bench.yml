@@ -172,7 +172,4 @@ jobs:
         run: |
           cargo test -p aios-cli --lib next_app::strong_baseline -- --nocapture
           cargo test -p aios-cli --lib next_app::net_benefit -- --nocapture
-          cargo test -p aios-cli --test next_app_net_benefit_test \
-            -- lsapp_report_contains_strong_predictive_baseline \
-               ux_metrics_fixture_resolves_total_time_measurement_run \
-            --nocapture
+          cargo test -p aios-cli --test next_app_net_benefit_test -- --nocapture

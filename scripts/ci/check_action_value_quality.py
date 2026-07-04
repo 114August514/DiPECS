@@ -44,6 +44,8 @@ REQUIRED_MEASURED_SOURCES = {
 BENEFIT_FIELDS = (
     "net_benefit_ms",
     "saved_latency_ms",
+    "gross_saved_ms",
+    "gross_wasted_ms",
     "wasted_action_cost_ms",
     "control_plane_cost_ms",
 )

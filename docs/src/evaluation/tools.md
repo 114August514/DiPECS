@@ -100,7 +100,7 @@ cold/prewarm 启动样本合计 n=20。
 
 阈值：
 
-- PreWarm 加速 ≥ 20% 或 ≥ 100 ms
+- PreWarm 加速 ≥ 20% 且 ≥ 100 ms
 - ReleaseMemory jank 增加 ≤ 20 个百分点
 - startup p95 必须能从 raw samples 重算，避免均值掩盖尾部退化
 

@@ -12,6 +12,8 @@ mod types;
 
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod validation_tests;
 
 pub use backend::PredictiveLocalBackend;
 pub use train::train_next_app_artifact;

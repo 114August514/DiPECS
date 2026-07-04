@@ -2,7 +2,7 @@
 
 use std::collections::BTreeSet;
 
-use super::ensemble::logistic_feature_names;
+use super::ensemble::{ensemble_component_names, logistic_feature_names};
 use super::train::{order2_key, user_transition_key};
 use super::{
     score_order, AppScore, NextAppAlgorithm, NextAppModelArtifact, NextAppPredictor,
@@ -282,6 +282,32 @@ fn validate_artifact(artifact: &NextAppModelArtifact) -> Result<(), String> {
             true,
         )?;
     }
+    for (user_id, scores) in &artifact.user_frequency {
+        validate_score_list(
+            &format!("user_frequency[{user_id}]"),
+            scores,
+            &app_vocab,
+            false,
+        )?;
+    }
+    for (key, app) in &artifact.user_recency {
+        let Some((_, current_app)) = key.rsplit_once('\t') else {
+            return Err(format!(
+                "artifact user_recency key `{key}` is not user_id<TAB>current_app"
+            ));
+        };
+        if !app_vocab.contains(current_app) {
+            return Err(format!(
+                "artifact user_recency current app `{current_app}` is not in app_vocab"
+            ));
+        }
+        if !app_vocab.contains(app.as_str()) {
+            return Err(format!(
+                "artifact user_recency target app `{app}` is not in app_vocab"
+            ));
+        }
+    }
+    validate_combiner(&artifact.ensemble_combiner)?;
     if !(artifact.ensemble_logistic.feature_names.is_empty()
         && artifact.ensemble_logistic.weights.is_empty())
     {
@@ -305,6 +331,40 @@ fn validate_artifact(artifact: &NextAppModelArtifact) -> Result<(), String> {
             return Err(
                 "artifact ensemble_logistic weights length does not match feature_names".into(),
             );
+        }
+    }
+    Ok(())
+}
+
+fn validate_combiner(combiner: &super::EnsembleCombiner) -> Result<(), String> {
+    if combiner.components.is_empty() && combiner.weights.is_empty() {
+        return Ok(());
+    }
+    if combiner.components.is_empty()
+        || combiner.weights.is_empty()
+        || combiner.components.len() != combiner.weights.len()
+    {
+        return Err(
+            "artifact ensemble_combiner components and weights must be parallel vectors".into(),
+        );
+    }
+    let known: BTreeSet<&str> = ensemble_component_names().into_iter().collect();
+    let mut seen = BTreeSet::new();
+    for (component, weight) in combiner.components.iter().zip(combiner.weights.iter()) {
+        if !known.contains(component.as_str()) {
+            return Err(format!(
+                "artifact ensemble_combiner component `{component}` is unknown"
+            ));
+        }
+        if !seen.insert(component.as_str()) {
+            return Err(format!(
+                "artifact ensemble_combiner contains duplicate component `{component}`"
+            ));
+        }
+        if !weight.is_finite() || *weight < 0.0 {
+            return Err(format!(
+                "artifact ensemble_combiner weight for `{component}` must be finite and non-negative"
+            ));
         }
     }
     Ok(())

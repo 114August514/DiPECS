@@ -15,8 +15,6 @@ use super::{
 /// a sharp top-rank preference.
 pub(crate) const RRF_K: f32 = 1.0;
 
-/// Weight of the probability-magnitude term relative to the reciprocal-rank
-/// term in ensemble fusion.
 const MAGNITUDE_BLEND: f32 = 0.5;
 
 const LOGISTIC_FEATURES_PER_COMPONENT: usize = 3;
@@ -44,6 +42,7 @@ struct EnsembleComponent {
     rank: fn(&NextAppPredictor, &PredictionFeatures) -> Vec<AppScore>,
 }
 
+#[derive(Clone)]
 struct CachedExample {
     label: String,
     rankings: Vec<Vec<AppScore>>,
@@ -190,11 +189,24 @@ pub(super) fn fit_ensemble_models(
 
     let cached = cache_validation_examples(&fit_predictor, &val_examples);
     let rrf = fit_rrf_combiner(&cached);
-    let mut logistic = fit_logistic_reranker(&cached);
+    let logistic_fit: Vec<CachedExample> = cached
+        .iter()
+        .enumerate()
+        .filter(|(idx, _)| idx % 2 == 0)
+        .map(|(_, example)| example.clone())
+        .collect();
+    let logistic_gate: Vec<CachedExample> = cached
+        .iter()
+        .enumerate()
+        .filter(|(idx, _)| idx % 2 == 1)
+        .map(|(_, example)| example.clone())
+        .collect();
+    let mut logistic = fit_logistic_reranker(&logistic_fit);
     if !logistic.is_empty() {
-        let rrf_hit = weighted_hit_at_1(&cached, &rrf.weights);
-        let logistic_hit = logistic_hit_at_1(&cached, &logistic);
-        if logistic_hit < rrf_hit {
+        if logistic_gate.is_empty()
+            || logistic_hit_at_1(&logistic_gate, &logistic)
+                < weighted_hit_at_1(&logistic_gate, &rrf.weights)
+        {
             logistic = LogisticRerankerModel::default();
         }
     }

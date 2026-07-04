@@ -34,7 +34,18 @@ data/traces/
 | `golden_sample.json` | - | Golden trace：raw event → expected sanitized 对照 |
 | `android_real_device_sample.redacted.jsonl` | 5 | 真机脱敏样本，验证 PublicApi ingress |
 | `android_synthetic_large.redacted.jsonl` | 2400 | 旧版合成轨迹，通知 title/text 已脱敏为空 |
-| `emulator-e2e-*.jsonl` | - | 模拟器端到端采集原始数据 |
+| `android_synthetic_large.redacted.summary.json` | - | 上表合成轨迹的统计摘要（事件类型/来源计数），由 `generate_synthetic_android_trace.py` 产出 |
+| `synthetic-next-app-v1.labels.jsonl` | - | next-app 基准的 ground-truth 标签（每窗口的实际下一个 app），供 `benchmark_next_app` 使用 |
+
+## 运行捕获产物（时间戳命名，非固定 fixture）
+
+以下文件是端到端场景脚本（`tests/scenarios/lib/*-stages.sh`）在模拟器/真机运行时**捕获的原始 trace**，文件名带时间戳。它们是可追溯的运行证据，不被任何测试按精确路径引用；新增运行会产生新文件。
+
+| 文件模式 | 来源脚本 | 说明 |
+|------|------|------|
+| `emulator-e2e-<ts>.jsonl` | `emulator-e2e-stages.sh` | 模拟器端到端采集原始数据（每次运行一个批次） |
+| `action-loop-e2e-<ts>.jsonl` | `action-loop-stages.sh` | 动作回路端到端运行捕获 |
+| `action-type-coverage-<ts>.jsonl` | action-loop 覆盖运行 | 四类可转发动作覆盖捕获 |
 
 ## scenarios/ — 场景化合成轨迹
 

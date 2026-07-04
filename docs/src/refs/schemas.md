@@ -2,7 +2,7 @@
 
 > Status: Current  
 > Last verified: 2026-07-01  
-> Code anchors: `crates/aios-spec/src/`, `data/schemas/datapath.md`, `data/traces/`, `data/evaluation/`
+> Code anchors: `crates/aios-spec/src/`, `data/schemas/datapath*.md`, `data/traces/`, `data/evaluation/`
 
 **这篇文档回答什么**：DiPECS 里所有 JSON/NDJSON 数据的来源、格式、关键字段和对应的 Rust/Kotlin 类型。  
 **适合谁读**：需要对接数据、写测试 fixture、调试 trace，或者给评估数据集做后处理的人。
@@ -221,4 +221,4 @@ summary
 - [模型记忆与行为画像](../architecture/model-memory.md)
 - [评估场景与数据集](../evaluation/scenarios.md)
 - [评估工具](../evaluation/tools.md)
-- `data/schemas/datapath.md`
+- `data/schemas/datapath.md`（索引）及分阶段文件 `datapath-collection.md` / `datapath-decision.md` / `datapath-execution.md`

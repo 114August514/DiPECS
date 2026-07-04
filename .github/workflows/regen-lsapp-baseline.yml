@@ -23,7 +23,9 @@ jobs:
   regen:
     name: Regenerate LSApp baseline reports
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    # full LSApp 单 split train+eval 在标准 runner 上约 20+ 分钟，两个 split +
+    # 上传需放宽到 60 分钟（首次 30 分钟 timeout 在 cold-start 中途被杀）。
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v7
         with:

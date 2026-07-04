@@ -141,11 +141,14 @@
 
 截至 `feat/strong-predictive-baseline` 的当前实验，强预测基线已能写入
 `lsapp-standard.report.json` / `lsapp-coldstart.report.json`。当前 standard split 上
-DiPECS ensemble 已超过强基线：hit@1 为 56.442% vs 53.784%，hit@3 为
-76.104% vs 72.563%，hit@5 为 84.241% vs 80.428%。Pixel 6a n=20 net-benefit
+DiPECS ensemble 已超过强基线：hit@1 为 56.509% vs 53.784%，hit@3 为
+76.059% vs 72.563%，hit@5 为 84.588% vs 80.428%。Pixel 6a n=20 net-benefit
 artifact 将 standard split 的 hit@1 接入同一套实测 PreWarm hit/miss/control 成本，
-并断言 DiPECS `net_benefit_ms > 0` 且高于强基线。cold-start split 仍不能作为
-DiPECS ensemble 胜出证据：hit@1 为 21.196% vs 48.050%。
+并断言 DiPECS `net_benefit_ms > 0` 且高于强基线。cold-start split 上，#109 为
+ensemble 新增了不依赖单用户历史的 `markov_context` / `adaptive_predictive` 全局
+组件后，ensemble cold-start hit@1 由旧版 21.196% 升至 50.446%，已反超强基线
+48.050%——这体现的是 RRF 融合的冷启动鲁棒性（全局分量补偿了缺失的单用户历史），
+而非单用户个性化本身的贡献。
 
 这解决 #90 在 standard split / Android-safe `own:*` PreWarm 范围内的 gate；其他动作、
 第三方静默预热和长期用户体验仍必须单独评估。

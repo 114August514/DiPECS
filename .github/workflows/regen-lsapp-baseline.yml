@@ -1,0 +1,85 @@
+# 一次性工具：在大内存 CI runner 上重新生成 LSApp next-app 基线报告。
+#
+# 背景：committed data/evaluation/next-app/lsapp-{standard,coldstart}.report.json
+# 停留在 #109 之前的旧 ensemble（coldstart ensemble hit@1=21.196%），而 #109
+# 起 ensemble 新增了不依赖单用户历史的 markov_context / adaptive_predictive
+# 组件，coldstart 真值已升到 ~50.446%（见 docs/.../lsapp-evaluation-2026-07-04.md）。
+# 本机 train 会 OOM，故在 CI runner 上程序化重生成并作为 artifact 拉取。
+#
+# 用法：手动 workflow_dispatch 触发一次 → 下载 lsapp-baseline-reports artifact
+# → 提交两份 JSON → 删除本 workflow 文件（一次性，不应长期存在）。
+name: Regen-LSApp-Baseline
+
+on:
+  workflow_dispatch:
+
+jobs:
+  regen:
+    name: Regenerate LSApp baseline reports
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          lfs: true
+          submodules: true
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.RUST_VERSION }}
+
+      - name: Cache Dependencies
+        uses: Swatinem/rust-cache@v2
+
+      - name: Prepare LSApp dataset
+        run: ./tools/prepare-lsapp.sh
+
+      - name: Build release CLI
+        run: cargo build -p aios-cli --release --bin aios-cli
+
+      - name: Regenerate standard split report
+        run: |
+          ./target/release/aios-cli train-next-app \
+            --dataset lsapp --input data/lsapp/lsapp.tsv \
+            --output "$RUNNER_TEMP/artifact-standard.json" --split standard
+          ./target/release/aios-cli eval-next-app \
+            --dataset lsapp --input data/lsapp/lsapp.tsv \
+            --artifact "$RUNNER_TEMP/artifact-standard.json" \
+            --output data/evaluation/next-app/lsapp-standard.report.json \
+            --split standard
+
+      - name: Regenerate cold-start split report
+        run: |
+          ./target/release/aios-cli train-next-app \
+            --dataset lsapp --input data/lsapp/lsapp.tsv \
+            --output "$RUNNER_TEMP/artifact-coldstart.json" --split cold-start
+          ./target/release/aios-cli eval-next-app \
+            --dataset lsapp --input data/lsapp/lsapp.tsv \
+            --artifact "$RUNNER_TEMP/artifact-coldstart.json" \
+            --output data/evaluation/next-app/lsapp-coldstart.report.json \
+            --split cold-start
+
+      - name: Show regenerated key metrics
+        run: |
+          for sp in standard coldstart; do
+            echo "=== $sp ==="
+            for r in global_popularity markov ensemble; do
+              jq -r --arg r "$r" \
+                '"  \($r): hit@1=\(.metrics[$r].hit_rate_at_1_pct) macro@1=\(.metrics[$r].macro_hit_rate_at_1_pct)"' \
+                "data/evaluation/next-app/lsapp-$sp.report.json"
+            done
+          done
+
+      - name: Upload regenerated reports
+        uses: actions/upload-artifact@v4
+        with:
+          name: lsapp-baseline-reports
+          path: |
+            data/evaluation/next-app/lsapp-standard.report.json
+            data/evaluation/next-app/lsapp-coldstart.report.json
+          if-no-files-found: error
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_VERSION: "1.95.0"

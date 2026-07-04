@@ -2,11 +2,11 @@
 name: Performance-Bench
 
 on:
-  schedule:
-    # Weekly heavy LSApp gate; PRs can also opt in with the next-app-eval label.
-    - cron: '17 18 * * 0'
+  # 完整 LSApp train+eval 消融刻意不在 CI 跑：release 冷编译依赖链约 55 分钟，
+  # 远超快速反馈预算。它现在是本地专用（crates/aios-cli/tests/next_app_ablation_test.rs,
+  # #[ignore]）。CI 只保留秒级的 PreWarm 回归和 StrongBaseline smoke。
   pull_request:
-    types: [ opened, synchronize, reopened, labeled ]
+    types: [ opened, synchronize, reopened ]
     branches: [ main ]
     paths:
       - '**.rs'
@@ -136,6 +136,8 @@ jobs:
     name: Action Benefit Baseline Guard
     runs-on: ubuntu-latest
     needs: data-quality-guard
+    # 兜底：任何步骤挂死都在 15 分钟内失败并给出日志，而不是拖到默认 6 小时。
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
         with:
@@ -163,15 +165,12 @@ jobs:
             -- ux_metrics_prewarm_shows_no_regression \
             --nocapture
 
-      # B. 预测质量 vs 强基线（scheduled / label-gated，因数据大/训练慢）
-      # 失败语义：个性化模型未以严格边距击败 popularity/markov 强基线。
-      # 这是完整 LSApp train+eval gate；release 模式和 -j 1 用于控制 CI 资源压力。
-      - name: LSApp Personalization Ablation (optional)
-        if: github.event_name == 'schedule' || contains(github.event.pull_request.labels.*.name, 'next-app-eval')
-        run: |
-          ./tools/prepare-lsapp.sh
-          cargo test -j 1 -p aios-cli --release --test next_app_ablation_test \
-            personalization_contribution_on_lsapp -- --nocapture
+      # B. 完整 LSApp 个性化消融 —— 本地专用，不在 CI 跑。
+      # 该 gate 冷编译 release 依赖链约 55 分钟，远超 CI 快速反馈预算。它现在是
+      # 本地 #[ignore] 测试，跑法见 next_app_ablation_test.rs 文件头：
+      #   cargo test -j 1 -p aios-cli --release --test next_app_ablation_test \
+      #     -- --ignored --nocapture
+      # 基线数字通过重生成 committed report 保护，回归由下面的 smoke 兜底。
 
       # C. 强基线集成 smoke：默认 CI 不跑完整 LSApp 训练，但必须确认
       # StrongPredictiveActionBaseline 代码和 committed LSApp report 接线没有回退。

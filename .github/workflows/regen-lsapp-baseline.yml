@@ -11,7 +11,13 @@
 name: Regen-LSApp-Baseline
 
 on:
+  # workflow_dispatch 需文件先在默认分支才能触发；这是一次性工具且尚未进 main，
+  # 故改用 push 触发，并限定在本 gate 分支 + 仅本文件变化时，避免拖慢常规 push。
   workflow_dispatch:
+  push:
+    branches: [ codex/issue100-lsapp-ablation-gate ]
+    paths:
+      - '.github/workflows/regen-lsapp-baseline.yml'
 
 jobs:
   regen:

@@ -44,19 +44,23 @@ home_screen() {
 
 send_prewarm() {
   local line latency_us
-  line="$(python3 "$SENDER" "$ACTION_HOST" "$PORT" "$TOKEN" "$DELAY" PreWarmProcess own:warmup Immediate 2>&1 || true)"
+  line="$(python3 "$SENDER" "$ACTION_HOST" "$PORT" "$TOKEN" "$DELAY" PreWarmProcess own:warmup Immediate 2>&1)"
   latency_us="$(printf '%s' "$line" | python3 -c '
 import json, re, sys
 text = sys.stdin.read()
 m = re.search(r"device=({.*?})", text)
 if not m:
-    print("0")
-    raise SystemExit
+    raise SystemExit("send_prewarm missing device response")
 try:
     data = json.loads(m.group(1))
-    print(int(data.get("latency_us") or 0))
-except Exception:
-    print("0")
+except Exception as err:
+    raise SystemExit(f"send_prewarm invalid device response: {err}")
+if data.get("status") != "ok":
+    raise SystemExit(f"send_prewarm bridge did not accept action: {data}")
+latency_us = int(data.get("latency_us") or 0)
+if latency_us <= 0:
+    raise SystemExit("send_prewarm missing positive latency_us")
+print(latency_us)
 ')"
   printf '%s\t%s\n' "$latency_us" "$line"
 }
@@ -77,9 +81,17 @@ measure_miss_actual_start() {
 write_startup_sample() {
   local file="$1" idx="$2" mode="$3" total="$4" prewarm_latency_us="${5:-0}"
   local ts
+  if ! [[ "$total" =~ ^[0-9]+$ ]] || (( total <= 0 )); then
+    echo "$mode startup TotalTime missing or non-positive: ${total:-<missing>}" >&2
+    return 1
+  fi
+  if ! [[ "$prewarm_latency_us" =~ ^[0-9]+$ ]]; then
+    echo "$mode prewarm latency missing or non-numeric: ${prewarm_latency_us:-<missing>}" >&2
+    return 1
+  fi
   ts="$(date -u +%s%3N)"
   printf '{"sample_index":%d,"timestamp_ms":%d,"mode":"%s","startup_total_time_ms":%d,"prewarm_latency_us":%d}\n' \
-    "$idx" "$ts" "$mode" "${total:-0}" "${prewarm_latency_us:-0}" >> "$file"
+    "$idx" "$ts" "$mode" "$total" "$prewarm_latency_us" >> "$file"
 }
 
 collect_collector_cold() {
@@ -90,8 +102,8 @@ collect_collector_cold() {
     sleep 2
     local total
     total="$(measure_collector_start)"
-    write_startup_sample "$file" "$i" collector_cold_startup "${total:-0}" 0
-    echo "collector_cold_startup[$i] total=${total:-0}ms" >&2
+    write_startup_sample "$file" "$i" collector_cold_startup "$total" 0
+    echo "collector_cold_startup[$i] total=${total}ms" >&2
     home_screen
     sleep "$SAMPLE_INTERVAL_SECS"
   done
@@ -108,8 +120,8 @@ collect_collector_prewarm_hit() {
     read -r prewarm_latency line < <(send_prewarm)
     sleep 1
     total="$(measure_collector_start)"
-    write_startup_sample "$file" "$i" collector_prewarm_hit_startup "${total:-0}" "${prewarm_latency:-0}"
-    echo "collector_prewarm_hit_startup[$i] total=${total:-0}ms prewarm_latency=${prewarm_latency:-0}us" >&2
+    write_startup_sample "$file" "$i" collector_prewarm_hit_startup "$total" "$prewarm_latency"
+    echo "collector_prewarm_hit_startup[$i] total=${total}ms prewarm_latency=${prewarm_latency}us" >&2
     home_screen
     sleep "$SAMPLE_INTERVAL_SECS"
   done
@@ -124,8 +136,8 @@ collect_miss_actual_cold() {
     sleep 2
     local total
     total="$(measure_miss_actual_start)"
-    write_startup_sample "$file" "$i" settings_cold_startup "${total:-0}" 0
-    echo "settings_cold_startup[$i] total=${total:-0}ms" >&2
+    write_startup_sample "$file" "$i" settings_cold_startup "$total" 0
+    echo "settings_cold_startup[$i] total=${total}ms" >&2
     home_screen
     sleep "$SAMPLE_INTERVAL_SECS"
   done
@@ -144,8 +156,8 @@ collect_miss_actual_after_wrong_prewarm() {
     sleep 1
     stop_pkg "$MISS_ACTUAL_PACKAGE"
     total="$(measure_miss_actual_start)"
-    write_startup_sample "$file" "$i" settings_after_wrong_prewarm_startup "${total:-0}" "${prewarm_latency:-0}"
-    echo "settings_after_wrong_prewarm_startup[$i] total=${total:-0}ms prewarm_latency=${prewarm_latency:-0}us" >&2
+    write_startup_sample "$file" "$i" settings_after_wrong_prewarm_startup "$total" "$prewarm_latency"
+    echo "settings_after_wrong_prewarm_startup[$i] total=${total}ms prewarm_latency=${prewarm_latency}us" >&2
     home_screen
     sleep "$SAMPLE_INTERVAL_SECS"
   done
@@ -194,12 +206,18 @@ def rel(path):
     except ValueError:
         return resolved.as_posix()
 
-def load(path, mode):
+def load(path, mode, require_prewarm_latency=False):
     samples = [json.loads(line) for line in open(path, encoding="utf-8") if line.strip()]
     if not samples:
         raise SystemExit(f"{mode} has no samples")
     values = [float(s["startup_total_time_ms"]) for s in samples]
-    latencies = [float(s.get("prewarm_latency_us") or 0) for s in samples if s.get("prewarm_latency_us")]
+    if any(value <= 0 for value in values):
+        raise SystemExit(f"{mode} startup TotalTime missing or non-positive")
+    latencies = [float(s.get("prewarm_latency_us") or 0) for s in samples]
+    if require_prewarm_latency and (
+        len(latencies) != len(samples) or any(latency <= 0 for latency in latencies)
+    ):
+        raise SystemExit(f"{mode} prewarm latency missing or non-positive")
     def percentile(pct):
         vals = sorted(values)
         rank = int(math.ceil(pct / 100.0 * len(vals)))
@@ -208,14 +226,24 @@ def load(path, mode):
         "n": len(samples),
         "mean_startup_total_time_ms": round(statistics.mean(values), 3),
         "p95_startup_total_time_ms": percentile(95.0),
-        "mean_prewarm_latency_us": round(statistics.mean(latencies), 3) if latencies else 0.0,
+        "mean_prewarm_latency_us": round(statistics.mean(latencies), 3)
+        if require_prewarm_latency
+        else 0.0,
     }
     return {"mode": mode, "samples": samples, "summary": summary}
 
 collector_cold = load(collector_cold_p, "collector_cold_startup")
-collector_hit = load(collector_hit_p, "collector_prewarm_hit_startup")
+collector_hit = load(
+    collector_hit_p,
+    "collector_prewarm_hit_startup",
+    require_prewarm_latency=True,
+)
 miss_cold = load(miss_cold_p, "settings_cold_startup")
-miss_after_wrong = load(miss_after_wrong_p, "settings_after_wrong_prewarm_startup")
+miss_after_wrong = load(
+    miss_after_wrong_p,
+    "settings_after_wrong_prewarm_startup",
+    require_prewarm_latency=True,
+)
 
 lsapp = json.load(open(lsapp_p, encoding="utf-8"))
 examples = int(lsapp["test_examples"])
@@ -250,6 +278,29 @@ def benefit(hit_rate_pct):
 
 ensemble = benefit(ensemble_hit)
 strong = benefit(strong_hit)
+n_at_least_20_per_mode = all(
+    run["summary"]["n"] >= 20
+    for run in [collector_cold, collector_hit, miss_cold, miss_after_wrong]
+)
+measured_inputs_valid = (
+    math.isfinite(hit_saved_ms)
+    and math.isfinite(miss_startup_delta_ms)
+    and math.isfinite(mean_prewarm_latency_ms)
+    and math.isfinite(miss_action_cost_ms)
+    and math.isfinite(control_plane_ms)
+    and hit_saved_ms > 0
+    and mean_prewarm_latency_ms > 0
+    and miss_action_cost_ms >= 0
+    and control_plane_ms > 0
+)
+net_benefit_positive = ensemble["net_benefit_ms"] > 0
+dipecs_beats_strong_predictive = ensemble["net_benefit_ms"] > strong["net_benefit_ms"]
+accepted = (
+    n_at_least_20_per_mode
+    and measured_inputs_valid
+    and net_benefit_positive
+    and dipecs_beats_strong_predictive
+)
 
 data = {
     "schema_version": "dipecs.prewarm_net_benefit.v1",
@@ -291,13 +342,11 @@ data = {
         ),
     },
     "conclusion": {
-        "accepted": True,
-        "n_at_least_20_per_mode": all(
-            run["summary"]["n"] >= 20
-            for run in [collector_cold, collector_hit, miss_cold, miss_after_wrong]
-        ),
-        "net_benefit_positive": ensemble["net_benefit_ms"] > 0,
-        "dipecs_beats_strong_predictive": ensemble["net_benefit_ms"] > strong["net_benefit_ms"],
+        "accepted": accepted,
+        "n_at_least_20_per_mode": n_at_least_20_per_mode,
+        "measured_inputs_valid": measured_inputs_valid,
+        "net_benefit_positive": net_benefit_positive,
+        "dipecs_beats_strong_predictive": dipecs_beats_strong_predictive,
     },
 }
 

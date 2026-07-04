@@ -656,6 +656,7 @@
   "conclusion": {
     "accepted": true,
     "n_at_least_20_per_mode": true,
+    "measured_inputs_valid": true,
     "net_benefit_positive": true,
     "dipecs_beats_strong_predictive": true
   }

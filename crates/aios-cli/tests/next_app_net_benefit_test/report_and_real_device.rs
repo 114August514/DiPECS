@@ -438,3 +438,36 @@ fn dipecs_ensemble_net_benefit_beats_strong_baseline() {
         strong_report.net_benefit_ms
     );
 }
+
+#[test]
+fn prewarm_net_benefit_conclusion_matches_gates() {
+    let net_path =
+        find_net_benefit_report().expect("PreWarm net-benefit fixture must be committed");
+    let net = load_json(&net_path).expect("PreWarm net-benefit fixture must parse");
+    let conclusion = net
+        .get("conclusion")
+        .expect("net-benefit conclusion must be present");
+
+    let n_gate = conclusion
+        .get("n_at_least_20_per_mode")
+        .and_then(|v| v.as_bool())
+        .expect("n_at_least_20_per_mode must be recorded");
+    let inputs_gate = conclusion
+        .get("measured_inputs_valid")
+        .and_then(|v| v.as_bool())
+        .expect("measured_inputs_valid must be recorded");
+    let positive_gate = conclusion
+        .get("net_benefit_positive")
+        .and_then(|v| v.as_bool())
+        .expect("net_benefit_positive must be recorded");
+    let beats_gate = conclusion
+        .get("dipecs_beats_strong_predictive")
+        .and_then(|v| v.as_bool())
+        .expect("dipecs_beats_strong_predictive must be recorded");
+
+    assert_eq!(
+        conclusion.get("accepted").and_then(|v| v.as_bool()),
+        Some(n_gate && inputs_gate && positive_gate && beats_gate),
+        "accepted must be derived from all net-benefit gates"
+    );
+}

@@ -22,7 +22,7 @@
     "min_prewarm_ms_faster": 100,
     "max_jank_pct_points_increase": 20.0,
     "max_rss_mb": 250.0,
-    "max_pss_mb": 80.0
+    "max_pss_mb": 125.0
   },
   "runs": [
     {

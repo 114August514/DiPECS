@@ -8,6 +8,8 @@ use serde_json::Value;
 
 const DATA: &str =
     include_str!("../../../data/evaluation/ux-metrics/ux-metrics-emulator-20260703-171457.json");
+const REAL_DEVICE_DATA: &str =
+    include_str!("../../../data/evaluation/ux-metrics/ux-metrics-real-device-20260704-172048.json");
 const COLLECT_UX_SCRIPT: &str = include_str!("../../../tools/collect/collect-ux-metrics.sh");
 const EPSILON: f64 = 0.011;
 
@@ -17,13 +19,22 @@ struct RunMetrics {
     avg_startup_total_time_ms: Option<f64>,
     avg_cpu_pct: f64,
     avg_rss_mb: f64,
+    max_rss_mb: f64,
     avg_pss_mb: f64,
+    max_pss_mb: f64,
     avg_jank_pct: f64,
 }
 
 fn fixture() -> Value {
     let raw = DATA.strip_prefix('\u{FEFF}').unwrap_or(DATA);
     serde_json::from_str(raw).expect("ux metrics JSON fixture must parse")
+}
+
+fn real_device_fixture() -> Value {
+    let raw = REAL_DEVICE_DATA
+        .strip_prefix('\u{FEFF}')
+        .unwrap_or(REAL_DEVICE_DATA);
+    serde_json::from_str(raw).expect("real-device ux metrics JSON fixture must parse")
 }
 
 fn sample_count(data: &Value) -> usize {
@@ -118,7 +129,9 @@ fn recompute_run(run: &Value, expected_sample_count: usize) -> RunMetrics {
         },
         avg_cpu_pct: avg(&cpu),
         avg_rss_mb: avg(&rss),
+        max_rss_mb: rss.iter().copied().fold(0.0, f64::max),
         avg_pss_mb: avg(&pss),
+        max_pss_mb: pss.iter().copied().fold(0.0, f64::max),
         avg_jank_pct: avg(&jank),
     }
 }
@@ -314,25 +327,39 @@ fn ux_metrics_conclusion_matches_deltas() {
 
 #[test]
 fn ux_metrics_stays_within_budget() {
-    let data = fixture();
-    let thresholds = &data["thresholds"];
-    let runs = data["runs"].as_array().expect("runs");
-    let n = sample_count(&data);
-    let metrics: Vec<RunMetrics> = runs.iter().map(|r| recompute_run(r, n)).collect();
+    for data in [fixture(), real_device_fixture()] {
+        let dataset_id = data["dataset_id"].as_str().expect("dataset_id");
+        let thresholds = &data["thresholds"];
+        let runs = data["runs"].as_array().expect("runs");
+        let n = sample_count(&data);
+        let metrics: Vec<RunMetrics> = runs.iter().map(|r| recompute_run(r, n)).collect();
 
-    for run in &metrics {
-        assert!(
-            run.avg_rss_mb <= number(thresholds, "max_rss_mb"),
-            "{} RSS too high: {:.2} MB",
-            run.mode,
-            run.avg_rss_mb
-        );
-        assert!(
-            run.avg_pss_mb <= number(thresholds, "max_pss_mb"),
-            "{} PSS too high: {:.2} MB",
-            run.mode,
-            run.avg_pss_mb
-        );
+        for run in &metrics {
+            assert!(
+                run.avg_rss_mb <= number(thresholds, "max_rss_mb"),
+                "{dataset_id} {} avg RSS too high: {:.2} MB",
+                run.mode,
+                run.avg_rss_mb
+            );
+            assert!(
+                run.max_rss_mb <= number(thresholds, "max_rss_mb"),
+                "{dataset_id} {} max RSS too high: {:.2} MB",
+                run.mode,
+                run.max_rss_mb
+            );
+            assert!(
+                run.avg_pss_mb <= number(thresholds, "max_pss_mb"),
+                "{dataset_id} {} avg PSS too high: {:.2} MB",
+                run.mode,
+                run.avg_pss_mb
+            );
+            assert!(
+                run.max_pss_mb <= number(thresholds, "max_pss_mb"),
+                "{dataset_id} {} max PSS too high: {:.2} MB",
+                run.mode,
+                run.max_pss_mb
+            );
+        }
     }
 }
 

@@ -158,12 +158,13 @@ mod tests {
     /// - real `hit_rate_at_1_pct` from the LSApp report
     /// - real `prewarm_saved_ms` from the UX fixture
     ///
-    /// This is ignored until #90 has real action-level evidence. With the
-    /// current stronger #91 baseline, LSApp gross saved latency is higher for
-    /// `strong_predictive` than for the DiPECS ensemble, so enabling this gate
-    /// would be an honest failure rather than a regression.
+    /// This is not the full #90 net-benefit gate: wasted action cost and
+    /// control-plane overhead are still placeholders below. It is a real,
+    /// non-skipping gate for the measured gross-saved slice that #90/#91 depend
+    /// on: DiPECS must first beat the strong predictive baseline on the same
+    /// LSApp hit@1 window before action-cost accounting can make a stronger
+    /// system claim.
     #[test]
-    #[ignore = "TODO(#90): requires DiPECS action net-benefit to beat the strong predictive baseline"]
     fn dipecs_ensemble_gross_saved_beats_strong_baseline() {
         let report_path =
             find_report().expect("lsapp-standard.report.json fixture must be committed");
@@ -203,21 +204,17 @@ mod tests {
 
         let ux_path = find_ux_metrics().expect("ux-metrics fixture must be committed");
         let ux = load_json(&ux_path).expect("ux-metrics fixture must parse");
-        let saved_ms = match ux
+        let saved_ms = ux
             .get("ux_deltas")
             .and_then(|d| d.get("prewarm_vs_cold"))
             .and_then(|p| p.get("startup_total_time_ms_reduction"))
             .and_then(|v| v.as_f64())
-        {
-            Some(s) => s,
-            None => {
-                eprintln!(
-                    "SKIP: ux_deltas.prewarm_vs_cold.startup_total_time_ms_reduction missing from {}",
+            .unwrap_or_else(|| {
+                panic!(
+                    "ux_deltas.prewarm_vs_cold.startup_total_time_ms_reduction missing from {}",
                     ux_path.display()
-                );
-                return;
-            },
-        };
+                )
+            });
 
         // Gross saved latency uses only measured inputs, so we assert on it.
         let examples_f = examples as f64;

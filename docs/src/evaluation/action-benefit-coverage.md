@@ -99,22 +99,25 @@
    测量结果，是把预测命中率乘一个假设常量再改名。引用时必须标注为「合成回测常量，
    非真实设备测量」。
 2. **LSApp 评估停在 Top-k 准确率，不发动作。**
-   命中率很高（standard 集 ensemble hit@1 ≈ 41%），但按准则「只证明 Top-k 准、
+   命中率很高（standard 集 ensemble hit@1 = 56.442%），但按准则「只证明 Top-k 准、
    不执行动作」属伪需求。它证明的是预测质量，不是系统收益。
 3. **PreWarm 收益是「预热了就快」，接近同义反复。**
    `ux-metrics` 实验已经补到 cold/prewarm 启动样本合计 n=20，并报告均值 + p95；
-   但它仍没有接入真实预测命中率（DiPECS 实测命中率约 24%~41%，意味着大量预热
-   是浪费），也没有算「省下延迟 − 浪费预热开销 − 控制面开销」的净值。
+   standard split 已把真实预测命中率接入 gross-saved gate；但它仍没有测
+   误预热成本和控制面开销，因此不能把 placeholder net benefit 当作完整净收益。
 
 此外，最关键的缺口是**没有与强基线在同设备同预算下对打**：准则要求主对照是
 `StrongPredictiveActionBaseline`（强预测也来驱动动作），而不是 native no-action。
 
 截至 `feat/strong-predictive-baseline` 的当前实验，强预测基线已能写入
-`lsapp-standard.report.json` / `lsapp-coldstart.report.json`。它在预测命中率上反而强于
-DiPECS ensemble：standard hit@1 为 53.784% vs 41.545%，cold-start hit@1 为
-48.050% vs 21.196%。这说明 #90 不能用「预测命中率 × PreWarm 加速」的 gross saved
-latency 证明 DiPECS 胜出；必须补齐真实动作预算、误预热成本、控制面开销和治理收益后，
-再计算 action-level net benefit。
+`lsapp-standard.report.json` / `lsapp-coldstart.report.json`。当前 standard split 上
+DiPECS ensemble 已超过强基线：hit@1 为 56.442% vs 53.784%，hit@3 为
+76.104% vs 72.563%，hit@5 为 84.241% vs 80.428%；因此可以启用
+「预测命中率 × 实测 PreWarm 加速」的 gross-saved 先决 gate。cold-start 仍不能作为
+DiPECS ensemble 胜出证据：hit@1 为 21.196% vs 48.050%。
+
+这只解决 #90/#91 的预测质量和已测启动收益连接问题；完整 action-level net benefit
+仍必须补齐真实动作预算、误预热成本、控制面开销和治理收益后再计算。
 
 ## 补齐路径：分动作 net-benefit 实验
 

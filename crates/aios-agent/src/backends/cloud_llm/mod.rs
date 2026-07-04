@@ -578,7 +578,7 @@ mod cloud_bench_tests {
                 good as f64 / rounds as f64 * 100.0
             );
 
-            let out = project_root().join("data/evaluation");
+            let out = project_root().join("data/evaluation/cloud");
             fs::create_dir_all(&out).ok();
             let p = out.join(format!("cloud-latency-{}.json", now_ts()));
             let d = serde_json::json!({
@@ -663,7 +663,7 @@ mod cloud_bench_tests {
             );
         }
 
-        let out = project_root().join("data/evaluation");
+        let out = project_root().join("data/evaluation/cloud");
         fs::create_dir_all(&out).ok();
         let p = out.join(format!("cloud-scenarios-{}.json", now_ts()));
         let d = serde_json::json!({

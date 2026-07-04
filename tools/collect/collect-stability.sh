@@ -7,7 +7,7 @@ ADB="${ADB:-}"
 PACKAGE="${PACKAGE:-com.dipecs.collector}"
 DURATION_MINUTES="${DURATION_MINUTES:-10}"
 SAMPLE_INTERVAL_SECS="${SAMPLE_INTERVAL_SECS:-30}"
-OUT_DIR="${OUT_DIR:-data/evaluation}"
+OUT_DIR="${OUT_DIR:-data/evaluation/stability}"
 
 if [[ -z "$ADB" ]]; then
   if command -v adb >/dev/null 2>&1; then ADB="$(command -v adb)"

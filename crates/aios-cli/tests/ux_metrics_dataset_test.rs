@@ -7,7 +7,7 @@
 use serde_json::Value;
 
 const DATA: &str =
-    include_str!("../../../data/evaluation/ux-metrics-emulator-20260703-171457.json");
+    include_str!("../../../data/evaluation/ux-metrics/ux-metrics-emulator-20260703-171457.json");
 const COLLECT_UX_SCRIPT: &str = include_str!("../../../tools/collect/collect-ux-metrics.sh");
 const EPSILON: f64 = 0.011;
 

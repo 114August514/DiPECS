@@ -47,9 +47,11 @@ local.properties
 # 过滤巨大的原始采集数据（建议存放在专门的数据服务器或通过 LFS 管理）
 data/traces/*.raw
 data/traces/*.bin
-# 过滤运行时的临时评估日志
+# 过滤运行时的临时评估日志(评估产物已按实验族分子目录,故递归匹配)
+data/evaluation/**/*.log
 data/evaluation/*.log
 # replay 审计流明细:由 trace + aios-cli replay 可确定性重生成,审计哈希已记入 .md
+data/evaluation/**/*.audit
 data/evaluation/*.audit
 # LSApp 派生数据:由 third_party/LSApp + tools/prepare-lsapp.sh 可重生成;
 # 上游未声明许可,179MB 派生 TSV 不入库。

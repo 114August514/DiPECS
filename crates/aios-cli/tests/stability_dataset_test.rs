@@ -4,7 +4,8 @@
 
 use serde_json::Value;
 
-const DATA: &str = include_str!("../../../data/evaluation/stability-emulator-canonical.json");
+const DATA: &str =
+    include_str!("../../../data/evaluation/stability/stability-emulator-canonical.json");
 const EPSILON: f64 = 0.011;
 
 fn fixture() -> Value {

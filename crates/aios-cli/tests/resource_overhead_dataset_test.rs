@@ -6,10 +6,12 @@
 
 use serde_json::Value;
 
-const DATA: &str =
-    include_str!("../../../data/evaluation/resource-overhead-emulator-20260701-131525.json");
-const LATEST_RESOURCE_DATA: &str =
-    include_str!("../../../data/evaluation/resource-overhead-emulator-20260701-162742.json");
+const DATA: &str = include_str!(
+    "../../../data/evaluation/resource-overhead/resource-overhead-emulator-20260701-131525.json"
+);
+const LATEST_RESOURCE_DATA: &str = include_str!(
+    "../../../data/evaluation/resource-overhead/resource-overhead-emulator-20260701-162742.json"
+);
 const EPSILON: f64 = 0.011;
 
 #[derive(Debug, Clone)]

@@ -22,12 +22,14 @@ fn evaluation_dir() -> PathBuf {
 }
 
 fn find_report() -> Option<PathBuf> {
-    let path = evaluation_dir().join("lsapp-standard.report.json");
+    let path = evaluation_dir()
+        .join("next-app")
+        .join("lsapp-standard.report.json");
     path.exists().then_some(path)
 }
 
 fn find_ux_metrics() -> Option<PathBuf> {
-    let mut candidates: Vec<PathBuf> = fs::read_dir(evaluation_dir())
+    let mut candidates: Vec<PathBuf> = fs::read_dir(evaluation_dir().join("ux-metrics"))
         .ok()?
         .filter_map(|entry| {
             let entry = entry.ok()?;

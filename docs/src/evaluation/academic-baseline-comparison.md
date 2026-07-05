@@ -24,7 +24,7 @@
 
 | 方法 | 数据集 | Split | Hit@1 | Hit@3 | Hit@5 | MRR@5 | Macro Hit@1 | 可比性 |
 | --- | --- | --- | ---: | ---: | ---: | ---: | ---: | --- |
-| DiPECS ensemble | LSApp | Standard | 56.442% | 76.104% | 84.241% | 67.0% | 52.963% | 直接参照 |
+| DiPECS ensemble | LSApp | Standard | 56.509% | 76.059% | 84.588% | 67.1% | 52.981% | 直接参照 |
 | Strong predictive baseline | LSApp | Standard | 53.784% | 72.563% | 80.428% | 63.8% | 49.696% | 直接可比 |
 
 这两行来自 `data/evaluation/next-app/lsapp-standard.report.json`。目前仓库里的准确率主张只应基于这两行：DiPECS ensemble 在同一 LSApp Standard 测试窗口上高于 `strong_predictive` baseline。

@@ -10,11 +10,11 @@
     "test_examples": 272519,
     "metric_scope": "micro hit@K and MRR@5 from the committed DiPECS LSApp Standard report",
     "metrics": {
-      "hit_at_1_pct": 56.442,
-      "hit_at_3_pct": 76.104,
-      "hit_at_5_pct": 84.241,
-      "mrr_at_5_pct": 67.0,
-      "macro_hit_at_1_pct": 52.963
+      "hit_at_1_pct": 56.509,
+      "hit_at_3_pct": 76.059,
+      "hit_at_5_pct": 84.588,
+      "mrr_at_5_pct": 67.1,
+      "macro_hit_at_1_pct": 52.981
     }
   },
   "comparability_legend": {

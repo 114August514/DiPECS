@@ -26,10 +26,10 @@
 
 | Ranker | hit@1 | gross saved | gross wasted | control cost | net benefit |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| DiPECS ensemble | 56.442% | 78322686.591 ms | 59351.913 ms | 2287524.486 ms | 75975810.192 ms |
+| DiPECS ensemble | 56.509% | 78415660.263 ms | 59260.619 ms | 2287524.486 ms | 76068875.158 ms |
 | StrongPredictiveActionBaseline | 53.784% | 74634268.374 ms | 62973.691 ms | 2287524.486 ms | 72283770.198 ms |
 
-DiPECS minus strong baseline: 3692039.994 ms.
+DiPECS minus strong baseline: 3785104.96 ms.
 
 ## Scope
 

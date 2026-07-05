@@ -637,11 +637,11 @@
     "action_budget": "top1_one_prewarm_per_lsapp_test_example",
     "dipecs_ensemble": {
       "source": "measured_device",
-      "hit_rate_at_1_pct": 56.442,
-      "gross_saved_ms": 78322686.591,
-      "gross_wasted_ms": 59351.913,
+      "hit_rate_at_1_pct": 56.509,
+      "gross_saved_ms": 78415660.263,
+      "gross_wasted_ms": 59260.619,
       "control_plane_cost_ms": 2287524.486,
-      "net_benefit_ms": 75975810.192
+      "net_benefit_ms": 76068875.158
     },
     "strong_predictive": {
       "source": "measured_device",
@@ -651,7 +651,7 @@
       "control_plane_cost_ms": 2287524.486,
       "net_benefit_ms": 72283770.198
     },
-    "dipecs_minus_strong_net_benefit_ms": 3692039.994
+    "dipecs_minus_strong_net_benefit_ms": 3785104.96
   },
   "conclusion": {
     "accepted": true,

@@ -8,15 +8,25 @@
   "train_examples": 977842,
   "test_examples": 384136,
   "metrics": {
+    "adaptive_predictive": {
+      "examples": 384136,
+      "predicted": 384136,
+      "hit_rate_at_1_pct": 48.813,
+      "hit_rate_at_3_pct": 61.489,
+      "hit_rate_at_5_pct": 67.871,
+      "mean_reciprocal_rank_at_5": 0.558,
+      "prediction_coverage_pct": 100.0,
+      "macro_hit_rate_at_1_pct": 48.195
+    },
     "ensemble": {
       "examples": 384136,
       "predicted": 384136,
-      "hit_rate_at_1_pct": 21.196,
-      "hit_rate_at_3_pct": 40.852,
-      "hit_rate_at_5_pct": 52.567,
-      "mean_reciprocal_rank_at_5": 0.321,
+      "hit_rate_at_1_pct": 50.446,
+      "hit_rate_at_3_pct": 61.384,
+      "hit_rate_at_5_pct": 66.335,
+      "mean_reciprocal_rank_at_5": 0.562,
       "prediction_coverage_pct": 100.0,
-      "macro_hit_rate_at_1_pct": 21.389
+      "macro_hit_rate_at_1_pct": 49.085
     },
     "global_popularity": {
       "examples": 384136,

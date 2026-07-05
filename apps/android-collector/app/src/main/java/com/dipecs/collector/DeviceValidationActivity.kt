@@ -4,55 +4,54 @@ import android.app.Activity
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
+import android.content.Intent
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.os.Build
 import android.view.View
 import android.view.ViewGroup
 import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
-import com.dipecs.collector.validation.CombinedExperimentSnapshot
-import com.dipecs.collector.validation.CombinedIssueExperimentRunner
+import com.dipecs.collector.services.CombinedIssueExperimentService
+import org.json.JSONObject
 import java.util.Locale
 
-class DeviceValidationActivity : Activity(), CombinedIssueExperimentRunner.Listener {
+class DeviceValidationActivity : Activity() {
     private val mainHandler = Handler(Looper.getMainLooper())
-    private lateinit var runner: CombinedIssueExperimentRunner
     private lateinit var durationInput: EditText
     private lateinit var intervalInput: EditText
     private lateinit var prefetchTargetInput: EditText
     private lateinit var statusText: TextView
     private lateinit var summaryText: TextView
     private lateinit var reportText: TextView
-    private var latestSnapshot: CombinedExperimentSnapshot? = null
+    private var latestSnapshot: JSONObject? = null
+    private val refreshRunnable = object : Runnable {
+        override fun run() {
+            renderFromServiceSnapshot()
+            mainHandler.postDelayed(this, 2_000L)
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        runner = CombinedIssueExperimentRunner(this, this)
         setContentView(buildPage())
-        render(runner.snapshot("Ready"))
+        renderFromServiceSnapshot()
     }
 
-    override fun onCombinedSnapshot(snapshot: CombinedExperimentSnapshot) {
-        mainHandler.post { render(snapshot) }
+    override fun onResume() {
+        super.onResume()
+        renderFromServiceSnapshot()
+        mainHandler.post(refreshRunnable)
     }
 
-    override fun onCombinedFinished(snapshot: CombinedExperimentSnapshot) {
-        mainHandler.post {
-            render(snapshot)
-            toast("Combined test finished and exported")
-        }
-    }
-
-    override fun onDestroy() {
-        if (latestSnapshot?.running == true) {
-            runner.stop()
-        }
-        super.onDestroy()
+    override fun onPause() {
+        mainHandler.removeCallbacks(refreshRunnable)
+        super.onPause()
     }
 
     private fun buildPage(): View {
@@ -167,21 +166,31 @@ class DeviceValidationActivity : Activity(), CombinedIssueExperimentRunner.Liste
             toast("Interval must be positive")
             return
         }
-        runner.start(
-            durationMinutes = duration,
-            intervalSeconds = interval,
-            target = prefetchTargetInput.text.toString().trim(),
-        )
-        toast("Combined test started")
+        val intent = Intent(this, CombinedIssueExperimentService::class.java)
+            .setAction(CombinedIssueExperimentService.ACTION_START)
+            .putExtra(CombinedIssueExperimentService.EXTRA_DURATION_MINUTES, duration)
+            .putExtra(CombinedIssueExperimentService.EXTRA_INTERVAL_SECONDS, interval)
+            .putExtra(CombinedIssueExperimentService.EXTRA_PREFETCH_TARGET, prefetchTargetInput.text.toString().trim())
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            startForegroundService(intent)
+        } else {
+            startService(intent)
+        }
+        toast("Combined test started in foreground service")
+        mainHandler.postDelayed({ renderFromServiceSnapshot() }, 500L)
     }
 
     private fun stopCombinedTest() {
-        runner.stop()
+        startService(
+            Intent(this, CombinedIssueExperimentService::class.java)
+                .setAction(CombinedIssueExperimentService.ACTION_STOP),
+        )
         toast("Stopping after current sample; export will be written")
+        mainHandler.postDelayed({ renderFromServiceSnapshot() }, 500L)
     }
 
     private fun copyReport() {
-        val report = latestSnapshot?.markdownReport.orEmpty()
+        val report = latestSnapshot?.optString("markdown_report").orEmpty()
         if (report.isBlank()) {
             toast("No report yet")
             return
@@ -191,32 +200,51 @@ class DeviceValidationActivity : Activity(), CombinedIssueExperimentRunner.Liste
         toast("Report copied")
     }
 
-    private fun render(snapshot: CombinedExperimentSnapshot) {
+    private fun renderFromServiceSnapshot() {
+        val raw = getSharedPreferences(CombinedIssueExperimentService.PREFS_NAME, MODE_PRIVATE)
+            .getString(CombinedIssueExperimentService.KEY_SNAPSHOT_JSON, "")
+            .orEmpty()
+        val snapshot = runCatching { JSONObject(raw) }.getOrNull()
+        if (snapshot == null) {
+            latestSnapshot = null
+            statusText.text = "Status: idle\nProgress: 0.0%\nMessage: Ready\nJSONL: -\nMarkdown: -"
+            summaryText.text = "Samples: 0\nStart the foreground service to keep a two-hour run alive across page switches."
+            reportText.text = "# DiPECS #97/#98/#99 Combined Device Experiment\n\nNo samples yet."
+            return
+        }
+        render(snapshot)
+    }
+
+    private fun render(snapshot: JSONObject) {
         latestSnapshot = snapshot
-        val percent = if (snapshot.targetDurationMs > 0L) {
-            (snapshot.elapsedMs * 100.0 / snapshot.targetDurationMs).coerceIn(0.0, 100.0)
+        val elapsedMs = snapshot.optLong("elapsed_ms")
+        val targetDurationMs = snapshot.optLong("target_duration_ms")
+        val percent = if (targetDurationMs > 0L) {
+            (elapsedMs * 100.0 / targetDurationMs).coerceIn(0.0, 100.0)
         } else {
             0.0
         }
         statusText.text = buildString {
-            appendLine("Status: ${if (snapshot.running) "running" else "idle/exported"}")
-            appendLine("Progress: ${formatDouble(percent)}% (${formatMillis(snapshot.elapsedMs)} / ${formatMillis(snapshot.targetDurationMs)})")
-            appendLine("Message: ${snapshot.message.ifBlank { "-" }}")
-            appendLine("JSONL: ${snapshot.jsonPath.ifBlank { "-" }}")
-            append("Markdown: ${snapshot.markdownPath.ifBlank { "-" }}")
+            appendLine("Status: ${if (snapshot.optBoolean("running")) "running in foreground service" else "idle/exported"}")
+            appendLine("Progress: ${formatDouble(percent)}% (${formatMillis(elapsedMs)} / ${formatMillis(targetDurationMs)})")
+            appendLine("Message: ${snapshot.optString("message").ifBlank { "-" }}")
+            appendLine("JSONL: ${snapshot.optString("json_path").ifBlank { "-" }}")
+            append("Markdown: ${snapshot.optString("markdown_path").ifBlank { "-" }}")
         }
 
-        val s = snapshot.summary
+        val s = snapshot.optJSONObject("summary") ?: JSONObject()
         summaryText.text = buildString {
-            appendLine("Samples: ${s.samples}")
-            appendLine("Prefetch success: ${s.prefetchSuccessRateText}; mean latency ${s.prefetchMeanLatencyMs} ms")
-            appendLine("KeepAlive success: ${s.keepAliveSuccessRateText}; mean latency ${s.keepAliveMeanLatencyMs} ms")
-            appendLine("ReleaseMemory success: ${s.releaseSuccessRateText}")
-            appendLine("ReleaseMemory mean available-mem delta: ${s.releaseMeanAvailableDeltaKb} KB")
-            appendLine("Mean PSS delta: ${s.meanPssDeltaKb} KB")
-            append("Mean Java heap delta: ${s.meanHeapDeltaKb} KB")
+            appendLine("Samples: ${s.optInt("samples")}")
+            appendLine("Prefetch success: ${s.optString("prefetch_success_rate_text", "-")}; mean latency ${s.optLong("prefetch_mean_latency_ms")} ms")
+            appendLine("KeepAlive success: ${s.optString("keep_alive_success_rate_text", "-")}; mean latency ${s.optLong("keep_alive_mean_latency_ms")} ms")
+            appendLine("ReleaseMemory success: ${s.optString("release_success_rate_text", "-")}")
+            appendLine("ReleaseMemory mean available-mem delta: ${s.optLong("release_mean_available_delta_kb")} KB")
+            appendLine("Mean PSS delta: ${s.optLong("mean_pss_delta_kb")} KB")
+            append("Mean Java heap delta: ${s.optLong("mean_heap_delta_kb")} KB")
         }
-        reportText.text = snapshot.markdownReport
+        reportText.text = snapshot.optString("markdown_report").ifBlank {
+            "# DiPECS #97/#98/#99 Combined Device Experiment\n\nNo report yet."
+        }
     }
 
     private fun editText(defaultText: String): EditText =

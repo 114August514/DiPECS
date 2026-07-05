@@ -75,6 +75,11 @@
             android:exported="false"
             android:foregroundServiceType="dataSync" />
 
+        <service
+            android:name=".services.CombinedIssueExperimentService"
+            android:exported="false"
+            android:foregroundServiceType="dataSync" />
+
         <!-- 鈹€鈹€ JobScheduler-based keep-alive (fallback when not system) 鈹€鈹€ -->
         <service
             android:name=".services.ActionMaintenanceJobService"

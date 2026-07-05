@@ -66,15 +66,31 @@
 
 ### 待证实（目前只有代码路径或单次测量，不能支撑"真实场景有用"）
 
-1. **PrefetchFile / KeepAlive 的真实收益。** 只证明"能发出去并被确认"，没证明
+1. **PrefetchFile 的真实收益。** 只证明"能发出去并被确认"，没证明
    "发出去后系统变好了"。
-2. **ReleaseMemory 真内存压力收益。** idle 场景下结论已降级，仍缺 n>=20 真内存
+2. **KeepAlive 的抗杀收益 —— 已确认在普通 app 形态下机制不生效（#98）。**
+   KeepAlive 的系统级效果是把自身 `oom_score_adj` 调低 + pin 到 foreground
+   cgroup（`SystemActionExecutors.kt`），让 LMKD 在内存压力下优先杀别人。四层
+   实测证明该机制在普通 app 上无法兑现：
+   - 真机普通 app：`oom=denied, cgroup=denied`，退化为 JobScheduler fallback；
+   - 模拟器 root shell（uid=0）：能写 `/proc/<pid>/oom_score_adj`（机制本身存在）；
+   - 模拟器 app uid（`run-as`）：写自身 `oom_score_adj` 仍 `DENIED`；
+   - 模拟器 root 代写 -800 后，app 退后台 4 s 即被 AMS 重算覆盖为 50 —— app 进程的
+     `oom_score_adj` 由 ActivityManagerService 动态管理，外部代写留不住。
+
+   结论：KeepAlive 的抗杀收益只有在 platform-signed 的 `/system/bin/dipecsd`
+   （不受 AMS 生命周期管理的原生进程）部署下才能兑现；app 形态下无论权限如何都
+   无法验证。这与 PreWarm 的 `own:*` 边界同构。收集脚本
+   `tools/collect/collect-keepalive-memory-pressure.sh` 与 n>=20 gate 已就绪，
+   accept 门槛硬性要求机制真实 engage（`mechanism_engaged`），因此在系统部署可用前
+   不会产出假阳性；见后续 dipecsd 系统部署 issue。
+3. **ReleaseMemory 真内存压力收益。** idle 场景下结论已降级，仍缺 n>=20 真内存
    压力场景复测。
-3. **真实长期用户体验。** 无真实用户、无 field study，无法支撑"用了 DiPECS 后
+4. **真实长期用户体验。** 无真实用户、无 field study，无法支撑"用了 DiPECS 后
    电池/流畅度/启动延迟整体改善"。
-4. **第三方应用静默预热收益。** 普通 Android 安全语义下 `pkg:*`/`notif:*` 不能被
+5. **第三方应用静默预热收益。** 普通 Android 安全语义下 `pkg:*`/`notif:*` 不能被
    当作静默后台启动第三方 app；#90 当前关闭的是 `own:*` 自有资源预热闭环。
-5. **离线 emulator fixture 的外推边界。** `action-net-benefit` fixture 能作为
+6. **离线 emulator fixture 的外推边界。** `action-net-benefit` fixture 能作为
    schema / CLI / CI 辅助 gate，但其中 wrong-target prewarm 成本来自既有动作确认延迟
    的保守近似，不是新的同设备多样本错预热实验；#90 的主关闭依据应以 Pixel 6a
    n=20/mode measured-device artifact 为准。
@@ -102,7 +118,7 @@
 | `PreWarmProcess` | 预热应用进程 | 齐 | 转发到设备 | 已测：模拟器 n=20 +44.7% 启动（489.3 vs 884.1 ms，p95 512.0 vs 932.0 ms）；Pixel 6a net-benefit n=20/mode，hit saved 509.2 ms，miss action cost 0.5 ms，dispatch/control 8.394 ms/action；DiPECS net benefit 75,975,810 ms > strong baseline 72,283,770 ms | #90 标准 split / `own:*` PreWarm gate 已闭环 |
 | `ReleaseMemory` | 释放非关键内存 | 齐 | 转发到设备 | 已测但不稳定：旧 run jank -3.67 pp，新 run idle 场景 0.0 pp、PSS -0.462 MB；Pixel 6a idle jank 0.0 pp、PSS -20.418 MB，最新结论为 neutral | 收益微弱，踩「伪需求」线，暂不作卖点 |
 | `PrefetchFile` | 预加载热点文件到页缓存 | 齐 | 带 `url:`/`uri:` 时转发 | 无 | 能发≠有用，收益待证 |
-| `KeepAlive` | 保活当前前台进程 | 齐 | 无条件转发 | 无 | 能发≠有用，收益待证 |
+| `KeepAlive` | 保活当前前台进程 | 齐 | 无条件转发 | 已实测机制边界（#98）：真机/模拟器 app 形态下 `oom=denied,cgroup=denied`；root 代写 oom_score_adj 被 AMS 覆盖。app 形态无法兑现抗杀收益 | 收益需 platform-signed dipecsd 部署；app 形态下机制不生效，见 #98 |
 | `NoOp` | 不执行操作 | — | — | — | — |
 
 数据来源：`data/evaluation/ux-metrics-emulator-20260703-171457.md`、
@@ -205,14 +221,17 @@ PR #108 (`real-device-action-evidence`) 应被理解为**证据收敛 PR**，其
 | --- | --- | --- | --- | --- |
 | `PreWarmProcess` | 命中时省冷启动 | `am start -W` TotalTime，命中/未命中分别测 | 未命中预热的 CPU/RSS 占用 | 净收益 > 0 且优于强基线 |
 | `PrefetchFile` | page cache 命中降 IO 延迟 | 预取后读延迟对比（`vmtouch` / 首读 wall time） | 未命中文件占页缓存、被回收 | 命中率 + IO delta 显著 |
-| `KeepAlive` | 避免前台进程被杀重启 | 内存压力下进程存活率 + 重启次数 | 保活挤占内存加剧他进程 OOM | 存活率提升且不恶化整体 |
+| `KeepAlive` | 避免前台进程被杀重启 | 内存压力下进程存活率 + 重启次数 | 保活挤占内存加剧他进程 OOM | 存活率提升且不恶化整体；**前提：机制须真实 engage（oom+cgroup），app 形态下恒为 fallback，需 platform-signed dipecsd** |
 | `ReleaseMemory` | 缓解内存压力降 jank | **真内存压力场景**下 PSS / available / jank | 误释放导致后续重加载 | 真压力下可复现，否则降级为「中性」 |
 
 关键修正点：
 
 - `ReleaseMemory` 必须换场景。idle 模拟器测不出内存压力收益，需人为制造内存压力
   后再测，否则如实标注为「中性 / 待验证」。
-- `PrefetchFile` / `KeepAlive` 从零补起，它们目前只有派发路径、无任何收益证据。
+- `PrefetchFile` 从零补起，目前只有派发路径、无任何收益证据。
+- `KeepAlive` 的采集脚本 + n>=20 gate 已就绪（`collect-keepalive-memory-pressure.sh`），
+  且已实测确认其抗杀机制在 app 形态下不生效（`oom_score_adj` 被 AMS 覆盖），
+  正收益的验证依赖 platform-signed dipecsd 系统部署（见 #98 与后续系统部署 issue）。
 - 强基线对照是硬要求，每个动作都要有「强预测直接执行、无 policy/lifecycle 治理」
   这一列，才能回答 DiPECS 的治理闭环带来什么。
 - 样本量：n=5 不够，每动作每模式至少 n≥20，报均值 + p95。

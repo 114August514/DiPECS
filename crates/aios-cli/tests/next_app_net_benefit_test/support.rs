@@ -25,6 +25,13 @@ pub(super) fn find_net_benefit_report() -> Option<PathBuf> {
     path.exists().then_some(path)
 }
 
+pub(super) fn find_keepalive_memory_pressure_report() -> Option<PathBuf> {
+    let path = evaluation_dir()
+        .join("keepalive")
+        .join("keepalive-memory-pressure-real-device-20260705-fixture.json");
+    path.exists().then_some(path)
+}
+
 pub(super) fn find_ux_metrics() -> Option<PathBuf> {
     let mut candidates: Vec<PathBuf> = fs::read_dir(evaluation_dir().join("ux-metrics"))
         .ok()?

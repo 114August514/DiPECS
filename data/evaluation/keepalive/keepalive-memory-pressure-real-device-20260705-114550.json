@@ -1,0 +1,173 @@
+{
+  "schema_version": "dipecs.keepalive_memory_pressure.v1",
+  "issue": 98,
+  "source": "emulator_or_partial",
+  "status": "emulator_dry_run",
+  "collected_at_utc": "2026-07-05T03:46:15.763132+00:00",
+  "device": {
+    "serial": "2B071JEGR05551",
+    "model": "Pixel 6a",
+    "android_release": "16",
+    "sdk": "36"
+  },
+  "provenance": {
+    "script": "tools/collect/collect-keepalive-memory-pressure.sh",
+    "lsapp_report": "data/evaluation/next-app/lsapp-standard.report.json",
+    "target_package": "com.dipecs.collector",
+    "samples_per_mode": 1,
+    "calibration_samples": 5,
+    "pressure_target": "derived_from_device_memavailable",
+    "pressure_hold_mb": 16,
+    "max_pressure_mb": 16
+  },
+  "safety": {
+    "emulator_dry_run_required": true,
+    "temperature_stop_c": 42.0,
+    "min_available_stop_mb": 256.0,
+    "min_available_stop_memtotal_pct": 5.0,
+    "safety_stopped": false
+  },
+  "calibration": {
+    "pressure_valid": false,
+    "background_no_pressure_samples": 0,
+    "pilot_samples": 0,
+    "native_baseline_stress_reason": "emulator_dry_run"
+  },
+  "runs": [
+    {
+      "mode": "no_keepalive_pressure",
+      "samples": [
+        {
+          "sample_index": 0,
+          "timestamp_ms": 1783223161221,
+          "mode": "no_keepalive_pressure",
+          "target_pid_before": 18256,
+          "target_pid_after": 18256,
+          "target_survived": true,
+          "target_restarted": false,
+          "return_total_time_ms": 404,
+          "keepalive_device_status": "not_sent",
+          "keepalive_summary": null,
+          "keepalive_error": null,
+          "keepalive_latency_us": 0,
+          "oom_score_adjusted": false,
+          "cgroup_pinned": false,
+          "pressure_hold_mb": 16,
+          "pressure_available_min_mb": 2151.73,
+          "available_before_mb": 2210.652,
+          "available_after_mb": 2100.25,
+          "memtotal_mb": 5578.184,
+          "target_pss_before_mb": 39.913,
+          "target_pss_after_mb": 103.987,
+          "pressure_pss_peak_mb": 48.461,
+          "total_frames": 3,
+          "janky_frames": 1,
+          "jank_pct": 33.33,
+          "oom_event_count": 0
+        }
+      ],
+      "summary": {
+        "n": 1,
+        "survival_rate_pct": 100.0,
+        "restart_rate_pct": 0.0,
+        "mean_return_total_time_ms": 404.0,
+        "p95_return_total_time_ms": 404.0,
+        "mean_jank_pct": 33.33,
+        "p95_jank_pct": 33.33,
+        "mean_available_after_mb": 2100.25,
+        "p95_pressure_available_min_mb": 2151.73,
+        "mean_target_pss_after_mb": 103.987,
+        "oom_event_count": 0,
+        "system_keepalive_ok_count": 0
+      }
+    },
+    {
+      "mode": "keepalive_pressure",
+      "samples": [
+        {
+          "sample_index": 0,
+          "timestamp_ms": 1783223174589,
+          "mode": "keepalive_pressure",
+          "target_pid_before": 18491,
+          "target_pid_after": 18491,
+          "target_survived": true,
+          "target_restarted": false,
+          "return_total_time_ms": 376,
+          "keepalive_device_status": "error",
+          "keepalive_summary": "keepalive:fallback",
+          "keepalive_error": "oom=denied, cgroup=denied — JobScheduler fallback only",
+          "keepalive_latency_us": 138929,
+          "oom_score_adjusted": false,
+          "cgroup_pinned": false,
+          "pressure_hold_mb": 16,
+          "pressure_available_min_mb": 2112.285,
+          "available_before_mb": 2166.434,
+          "available_after_mb": 2082.398,
+          "memtotal_mb": 5578.184,
+          "target_pss_before_mb": 39.817,
+          "target_pss_after_mb": 88.526,
+          "pressure_pss_peak_mb": 48.429,
+          "total_frames": 3,
+          "janky_frames": 1,
+          "jank_pct": 33.33,
+          "oom_event_count": 0
+        }
+      ],
+      "summary": {
+        "n": 1,
+        "survival_rate_pct": 100.0,
+        "restart_rate_pct": 0.0,
+        "mean_return_total_time_ms": 376.0,
+        "p95_return_total_time_ms": 376.0,
+        "mean_jank_pct": 33.33,
+        "p95_jank_pct": 33.33,
+        "mean_available_after_mb": 2082.398,
+        "p95_pressure_available_min_mb": 2112.285,
+        "mean_target_pss_after_mb": 88.526,
+        "oom_event_count": 0,
+        "system_keepalive_ok_count": 0
+      }
+    }
+  ],
+  "summary": {
+    "pressure_valid": false,
+    "formal_n_at_least_20_per_mode": false,
+    "native_baseline_hit": false,
+    "survival_delta_pp": 0.0,
+    "restart_delta_pp": 0.0,
+    "return_p95_delta_ms": 0.0,
+    "jank_delta_pp": 0.0,
+    "available_after_delta_mb": 0.0,
+    "oom_event_delta": 0,
+    "target_benefit": 0.0,
+    "system_cost": 0.0,
+    "net_benefit_score": 0.0
+  },
+  "strong_baseline_comparison": {
+    "dipecs_ensemble": {
+      "hit_rate_at_1_pct": 56.509,
+      "action_budget": 272519,
+      "gross_target_benefit": 0.0,
+      "system_cost": 0.0,
+      "net_benefit_score": 0.0
+    },
+    "strong_predictive": {
+      "hit_rate_at_1_pct": 53.784,
+      "action_budget": 272519,
+      "gross_target_benefit": 0.0,
+      "system_cost": 0.0,
+      "net_benefit_score": 0.0
+    }
+  },
+  "conclusion": {
+    "pressure_valid": false,
+    "n_at_least_20_per_mode": false,
+    "native_baseline_hit": false,
+    "directional_benefit": false,
+    "user_cost_absent": true,
+    "memory_cost_absent": true,
+    "accepted": false,
+    "status": "not_significant",
+    "reason": "KeepAlive did not pass measured pressure benefit gates"
+  }
+}

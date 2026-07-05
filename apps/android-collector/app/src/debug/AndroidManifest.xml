@@ -6,5 +6,37 @@
             android:name=".debug.DebugCollectorControlActivity"
             android:exported="true"
             android:theme="@style/AppTheme" />
+        <service
+            android:name=".debug.DebugMemoryPressureService"
+            android:exported="true"
+            android:process=":pressure" />
+        <service
+            android:name=".debug.DebugMemoryPressureService1"
+            android:exported="true"
+            android:process=":pressure1" />
+        <service
+            android:name=".debug.DebugMemoryPressureService2"
+            android:exported="true"
+            android:process=":pressure2" />
+        <service
+            android:name=".debug.DebugMemoryPressureService3"
+            android:exported="true"
+            android:process=":pressure3" />
+        <service
+            android:name=".debug.DebugMemoryPressureService4"
+            android:exported="true"
+            android:process=":pressure4" />
+        <service
+            android:name=".debug.DebugMemoryPressureService5"
+            android:exported="true"
+            android:process=":pressure5" />
+        <service
+            android:name=".debug.DebugMemoryPressureService6"
+            android:exported="true"
+            android:process=":pressure6" />
+        <service
+            android:name=".debug.DebugMemoryPressureService7"
+            android:exported="true"
+            android:process=":pressure7" />
     </application>
 </manifest>

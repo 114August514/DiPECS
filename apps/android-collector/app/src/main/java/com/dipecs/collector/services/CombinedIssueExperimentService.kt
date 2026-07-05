@@ -8,7 +8,6 @@ import android.app.Service
 import android.content.Intent
 import android.os.Build
 import android.os.IBinder
-import android.os.PowerManager
 import com.dipecs.collector.DeviceValidationActivity
 import com.dipecs.collector.R
 import com.dipecs.collector.validation.CombinedExperimentSnapshot
@@ -17,7 +16,6 @@ import org.json.JSONObject
 
 class CombinedIssueExperimentService : Service(), CombinedIssueExperimentRunner.Listener {
     private lateinit var runner: CombinedIssueExperimentRunner
-    private var wakeLock: PowerManager.WakeLock? = null
 
     override fun onCreate() {
         super.onCreate()
@@ -29,10 +27,9 @@ class CombinedIssueExperimentService : Service(), CombinedIssueExperimentRunner.
         when (intent?.action) {
             ACTION_START -> {
                 val duration = intent.getIntExtra(EXTRA_DURATION_MINUTES, 120).coerceAtLeast(1)
-                val interval = intent.getIntExtra(EXTRA_INTERVAL_SECONDS, 30).coerceAtLeast(1)
+                val interval = intent.getIntExtra(EXTRA_INTERVAL_SECONDS, 60).coerceAtLeast(1)
                 val target = intent.getStringExtra(EXTRA_PREFETCH_TARGET).orEmpty()
                 startForeground(NOTIFICATION_ID, notification("Running combined device experiment"))
-                acquireWakeLock(duration)
                 runner.start(duration, interval, target)
                 saveSnapshot(runner.snapshot("service started"))
             }
@@ -61,14 +58,8 @@ class CombinedIssueExperimentService : Service(), CombinedIssueExperimentRunner.
 
     override fun onCombinedFinished(snapshot: CombinedExperimentSnapshot) {
         saveSnapshot(snapshot.copy(running = false))
-        releaseWakeLock()
         stopForeground(STOP_FOREGROUND_REMOVE)
         stopSelf()
-    }
-
-    override fun onDestroy() {
-        releaseWakeLock()
-        super.onDestroy()
     }
 
     private fun saveSnapshot(snapshot: CombinedExperimentSnapshot) {
@@ -102,26 +93,6 @@ class CombinedIssueExperimentService : Service(), CombinedIssueExperimentRunner.
             .edit()
             .putString(KEY_SNAPSHOT_JSON, json.toString())
             .apply()
-    }
-
-    private fun acquireWakeLock(durationMinutes: Int) {
-        val current = wakeLock
-        if (current?.isHeld == true) return
-        val timeoutMs = durationMinutes * 60_000L + WAKE_LOCK_GRACE_MS
-        wakeLock = getSystemService(PowerManager::class.java)
-            ?.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "$packageName:combined-issue-experiment")
-            ?.apply {
-                setReferenceCounted(false)
-                acquire(timeoutMs)
-            }
-    }
-
-    private fun releaseWakeLock() {
-        val current = wakeLock
-        if (current?.isHeld == true) {
-            current.release()
-        }
-        wakeLock = null
     }
 
     private fun notification(content: String): Notification {
@@ -169,6 +140,5 @@ class CombinedIssueExperimentService : Service(), CombinedIssueExperimentRunner.
 
         private const val CHANNEL_ID = "dipecs_combined_issue_experiment"
         private const val NOTIFICATION_ID = 1202
-        private const val WAKE_LOCK_GRACE_MS = 5 * 60_000L
     }
 }

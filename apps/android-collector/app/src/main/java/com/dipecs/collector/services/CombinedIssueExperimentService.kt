@@ -29,7 +29,7 @@ class CombinedIssueExperimentService : Service(), CombinedIssueExperimentRunner.
         when (intent?.action) {
             ACTION_START -> {
                 val duration = intent.getIntExtra(EXTRA_DURATION_MINUTES, 120).coerceAtLeast(1)
-                val interval = intent.getIntExtra(EXTRA_INTERVAL_SECONDS, 60).coerceAtLeast(1)
+                val interval = intent.getIntExtra(EXTRA_INTERVAL_SECONDS, 30).coerceAtLeast(1)
                 val target = intent.getStringExtra(EXTRA_PREFETCH_TARGET).orEmpty()
                 startForeground(NOTIFICATION_ID, notification("Running combined device experiment"))
                 acquireWakeLock(duration)

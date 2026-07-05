@@ -96,7 +96,7 @@ class DeviceValidationActivity : Activity() {
         content.addView(durationInput)
 
         content.addView(sectionLabel("Sample interval seconds"))
-        intervalInput = editText("60")
+        intervalInput = editText("30")
         content.addView(intervalInput)
 
         content.addView(sectionLabel("PrefetchFile target"))

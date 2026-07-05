@@ -8,12 +8,19 @@ SAMPLES="${SAMPLES:-20}"
 SAMPLE_INTERVAL_SECS="${SAMPLE_INTERVAL_SECS:-1}"
 PRESSURE_WINDOW_SECS="${PRESSURE_WINDOW_SECS:-12}"
 POST_ACTION_WINDOW_SECS="${POST_ACTION_WINDOW_SECS:-4}"
+# PRESSURE_COMMAND must HOLD memory pressure for the full measurement window
+# (roughly PRESSURE_WINDOW_SECS + POST_ACTION_WINDOW_SECS). If it releases its
+# memory on exit before mem_before/mem_after are sampled, both arms see ~0 gain,
+# the Welch t-test comes back non-significant, and the gate fails closed (no
+# false accept) — but you also get no usable evidence. Use a command that blocks
+# and keeps its allocation resident across the whole window.
 PRESSURE_COMMAND="${PRESSURE_COMMAND:-}"
 TOKEN="${TOKEN:-dipecs-dev-emulator-shared-token-00000000}"
 PORT="${PORT:-46321}"
 ACTION_HOST="${ACTION_HOST:-127.0.0.1}"
 DELAY="${DELAY:-1.0}"
 RELEASE_TARGET="${RELEASE_TARGET:-cache:prefetch}"
+SEED_VOLATILE_CACHE_MB="${SEED_VOLATILE_CACHE_MB:-0}"
 OUT_DIR="${OUT_DIR:-$REPO_ROOT/data/evaluation/action-net-benefit}"
 SENDER="$REPO_ROOT/tests/scenarios/lib/action-forensic-sender.py"
 
@@ -57,6 +64,33 @@ print(latency_us)
 PY
 )"
   printf '%s\t%s\n' "$latency_us" "$line"
+}
+
+seed_volatile_cache() {
+  if (( SEED_VOLATILE_CACHE_MB <= 0 )); then
+    return
+  fi
+  local target line status summary
+  target="own:volatile-cache:$SEED_VOLATILE_CACHE_MB"
+  line="$(python3 "$SENDER" "$ACTION_HOST" "$PORT" "$TOKEN" "$DELAY" PreWarmProcess "$target" Immediate 2>&1)"
+  read -r status summary < <(LINE="$line" python3 - <<'PY'
+import json
+import os
+import re
+
+text = os.environ["LINE"]
+m = re.search(r"device=({.*?})", text)
+if not m:
+    raise SystemExit("PreWarmProcess volatile cache seed missing device response")
+data = json.loads(m.group(1))
+print(data.get("status", ""), data.get("summary", ""))
+PY
+)
+  if [[ "$status" != "ok" ]]; then
+    echo "Volatile cache seed failed: $line" >&2
+    return 1
+  fi
+  echo "seed_volatile_cache target=$target summary=$summary" >&2
 }
 
 pidof_package() {
@@ -107,19 +141,30 @@ reset_gfxinfo() {
   adb_cmd shell dumpsys gfxinfo "$PACKAGE" reset >/dev/null 2>&1 || true
 }
 
-run_pressure_window() {
+start_pressure_window() {
   if [[ -z "$PRESSURE_COMMAND" ]]; then
     echo "PRESSURE_COMMAND is required for #99 evidence" >&2
     exit 1
   fi
   export ADB PACKAGE PRESSURE_WINDOW_SECS
   bash -lc "$PRESSURE_COMMAND" &
-  local pressure_pid=$!
+  PRESSURE_PID=$!
   sleep "$PRESSURE_WINDOW_SECS"
-  wait "$pressure_pid" || {
-    echo "PRESSURE_COMMAND failed" >&2
+  if ! kill -0 "$PRESSURE_PID" >/dev/null 2>&1; then
+    wait "$PRESSURE_PID" || true
+    echo "PRESSURE_COMMAND exited before the post-pressure measurement window" >&2
     return 1
-  }
+  fi
+}
+
+finish_pressure_window() {
+  local pressure_pid="$1"
+  if [[ -n "$pressure_pid" ]]; then
+    wait "$pressure_pid" || {
+      echo "PRESSURE_COMMAND failed" >&2
+      return 1
+    }
+  fi
 }
 
 write_sample() {
@@ -173,12 +218,14 @@ collect_mode() {
   for ((i=0; i<SAMPLES; i++)); do
     adb_cmd shell am force-stop "$PACKAGE" >/dev/null 2>&1 || true
     start_control
+    seed_volatile_cache
     reset_gfxinfo
     local pid_before mem_start mem_before pss_before jank_before release_latency
-    local pid_after mem_after pss_after jank_after
+    local pid_after mem_after pss_after jank_after pressure_pid
     pid_before="$(pidof_package)"
     mem_start="$(mem_available_kb)"
-    run_pressure_window
+    start_pressure_window
+    pressure_pid="$PRESSURE_PID"
     mem_before="$(mem_available_kb)"
     pss_before="$(pss_kb "$pid_before")"
     jank_before="$(jank_pct)"
@@ -193,6 +240,7 @@ collect_mode() {
     mem_after="$(mem_available_kb)"
     pss_after="$(pss_kb "$pid_after")"
     jank_after="$(jank_pct)"
+    finish_pressure_window "$pressure_pid"
     write_sample "$file" "$i" "$mode" "$release_latency" "$pid_before" "$pid_after" \
       "$mem_start" "$mem_before" "$mem_after" "$pss_before" "$pss_after" \
       "$jank_before" "$jank_after"
@@ -209,7 +257,8 @@ assemble_report() {
   python3 - \
     "$raw_dir/baseline_pressure.jsonl" \
     "$raw_dir/release_memory_pressure.jsonl" \
-    "$json_path" "$md_path" "$timestamp" "$serial" "$PACKAGE" "$RELEASE_TARGET" "$REPO_ROOT" <<'PY'
+    "$json_path" "$md_path" "$timestamp" "$serial" "$PACKAGE" "$RELEASE_TARGET" \
+    "$SEED_VOLATILE_CACHE_MB" "$REPO_ROOT" <<'PY'
 import datetime
 import json
 import math
@@ -316,6 +365,7 @@ def _continued_fraction_beta(a, b, x, max_iter=200, tol=1e-14):
     serial,
     package,
     release_target,
+    seed_volatile_cache_mb,
     repo_root,
 ) = sys.argv[1:]
 
@@ -405,9 +455,13 @@ available_memory_significant = p_available < SIGNIFICANCE_ALPHA
 statistically_significant = available_memory_significant
 
 n_at_least_20_per_mode = all(run["summary"]["n"] >= 20 for run in [baseline, release])
+# AND across both arms (not OR): a valid comparison requires that BOTH the
+# baseline and release runs actually experienced memory pressure. OR would let a
+# run where only one arm was stressed pass, making the available-memory delta an
+# apples-to-oranges artifact rather than a like-for-like pressure comparison.
 memory_pressure_observed = (
     baseline["summary"]["mean_mem_available_pressure_drop_kb"] > 0
-    or release["summary"]["mean_mem_available_pressure_drop_kb"] > 0
+    and release["summary"]["mean_mem_available_pressure_drop_kb"] > 0
 )
 measured_inputs_valid = (
     math.isfinite(available_gain_kb)
@@ -428,18 +482,25 @@ accepted = (
     and release_memory_effective
     and statistically_significant
 )
+if accepted:
+    status = "measured_android_device"
+elif n_at_least_20_per_mode and memory_pressure_observed and measured_inputs_valid:
+    status = "measured_no_significant_benefit"
+else:
+    status = "measurement_pending_pressure_gate"
 
 data = {
     "schema_version": "dipecs.release_memory_pressure_benefit.v1",
     "dataset_id": f"release-memory-pressure-benefit-{timestamp}",
     "action": "ReleaseMemory",
     "source": "measured_device",
-    "status": "measured_android_device" if accepted else "measurement_pending_pressure_gate",
+    "status": status,
     "environment": {
         "device": "Android adb target",
         "adb_serial": serial,
         "package": package,
         "release_target": release_target,
+        "seed_volatile_cache_mb": int(seed_volatile_cache_mb),
         "samples_per_mode": baseline["summary"]["n"],
         "collected_at": datetime.datetime.now().isoformat(timespec="seconds"),
     },
@@ -556,6 +617,20 @@ fi
 adb_cmd wait-for-device >/dev/null
 adb_cmd forward --remove "tcp:$PORT" >/dev/null 2>&1 || true
 adb_cmd forward "tcp:$PORT" "tcp:$PORT" >/dev/null
+
+# The bridge validates envelope freshness against the device wall clock
+# (AuthorizedActionSocketServer.hasFreshActionWindow, ±30s skew). A device whose
+# system clock is not synced (real device without network/NITZ) rejects
+# host-clock envelopes as expired. Measure device-minus-host offset once and
+# export it so every action-forensic-sender.py dispatch aligns to the device
+# clock. Emulators / correctly-synced devices measure ~0 and behave as before.
+if [[ -z "${DEVICE_CLOCK_OFFSET_MS:-}" ]]; then
+  _dev_ms="$(adb_cmd shell date +%s%3N | tr -d '\r')"
+  _host_ms="$(date +%s%3N)"
+  DEVICE_CLOCK_OFFSET_MS=$(( _dev_ms - _host_ms ))
+fi
+export DEVICE_CLOCK_OFFSET_MS
+echo "device clock offset = ${DEVICE_CLOCK_OFFSET_MS} ms" >&2
 
 collect_mode baseline_pressure false
 collect_mode release_memory_pressure true

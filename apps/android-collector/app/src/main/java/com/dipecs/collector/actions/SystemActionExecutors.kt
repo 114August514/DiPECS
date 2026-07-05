@@ -66,6 +66,15 @@ object SystemActionExecutors {
         reason: String,
         startedAt: Long,
     ): ActionResult {
+        if (target.startsWith("own:volatile-cache")) {
+            val ok = OwnResourceWarmer.warm(context, target, reason)
+            return ActionResult(
+                success = ok,
+                summary = if (ok) "prewarm_own:${target.removePrefix("own:")}" else "prewarm_own_failed",
+                latencyUs = (System.nanoTime() - startedAt) / 1000,
+                error = if (ok) null else "Volatile cache prewarm rejected",
+            )
+        }
         val intent = Intent(context, SystemPrewarmActivity::class.java).apply {
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             putExtra(SystemPrewarmActivity.EXTRA_TARGET, target)
@@ -253,10 +262,18 @@ object SystemActionExecutors {
                 val deleted = AccessibleContentPrefetcher.clearCache(appContext)
                 parts += "prefetch_cache:$deleted"
             }
+            normalizedTarget == "cache:volatile" -> {
+                val released = VolatileMemoryCache.clear()
+                requestHeapTrim()
+                parts += "volatile_cache:${released.releasedBytes}"
+            }
             normalizedTarget == "cache:all" -> {
                 // 1. Clear our own prefetch cache.
                 val deleted = AccessibleContentPrefetcher.clearCache(appContext)
                 parts += "prefetch_cache:$deleted"
+                val released = VolatileMemoryCache.clear()
+                requestHeapTrim()
+                parts += "volatile_cache:${released.releasedBytes}"
                 // 2. Try clearing other app caches (system-only).
                 try {
                     val cleared = clearAppCachesSystem(appContext)
@@ -355,6 +372,12 @@ object SystemActionExecutors {
             )
         }
         return count
+    }
+
+    private fun requestHeapTrim() {
+        Runtime.getRuntime().gc()
+        System.runFinalization()
+        Runtime.getRuntime().gc()
     }
 
     private fun clearPackageCache(context: Context, pkg: String): String {

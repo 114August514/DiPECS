@@ -194,7 +194,7 @@ jank 全 0。电量/温度为 AC 供电下的换算估算,非燃料计实测。
 **价值**:短时长跑未见显著内存增长(RSS 甚至回落),支撑"可作设备常驻服务"的论点。
 (注:4 分钟为短窗观测,长期泄漏需更长跑验证。)
 
-### 8.3 UX 收益:PreWarm 启动加速 / ReleaseMemory 降级
+### 8.3 UX 收益:PreWarm 启动加速 / ReleaseMemory 语义升级
 
 模拟器数据:`ux-metrics-emulator-20260701-150110.json`(run1)、
 `-151856.json`(run2),各 5 样本/模式。
@@ -210,7 +210,11 @@ jank 全 0。电量/温度为 AC 供电下的换算估算,非燃料计实测。
 
 **读法(诚实)**:**PreWarm 两轮一致显著**(启动快 44–55%),是最硬的 UX 收益证据;
 **ReleaseMemory 降 jank 两轮不一致**(run1 有、run2 无),最新 idle run 记为
-`release_memory_effective=false` / neutral,只能作弱证据,需真内存压力复测后再下结论。
+`release_memory_effective=false` / neutral。旧 `cache:prefetch` 真压力复测
+`release-memory-pressure-benefit-20260705-173505` accepted=false，证明删磁盘缓存文件
+不能作为内存压力收益；本次语义升级后的 `cache:volatile` 真压力复测
+`release-memory-pressure-benefit-20260705-185226` accepted=true，可作为 app-owned
+volatile memory release 的正面证据。
 
 后续 committed emulator run `ux-metrics-emulator-20260703-171457` 把 cold/prewarm
 启动样本合计补到 n=20:冷启动均值 884.1 ms、p95 932.0 ms;prewarm 均值
@@ -221,8 +225,13 @@ Pixel 6a 真机 smoke run `data/evaluation/ux-metrics/ux-metrics-real-device-202
 复现了 PreWarm 同方向收益:cold startup n=5 均值 600.4 ms、p95 620.0 ms;
 prewarm startup n=5 均值 142.6 ms、p95 168.0 ms,快 457.8 ms / 76.2%。
 但 ReleaseMemory 在 idle 短窗口中 jank 仍为 4.76%,改善 0.0 pp,仅观察到 PSS
-降低 20.418 MB。因此 ReleaseMemory 当前结论是**中性/弱证据/待真内存压力复测**,
-不得作为稳定 UX 卖点引用。
+降低 20.418 MB。2026-07-05 Pixel 6a n=20/mode 真压力复测分成两层结论：
+旧 `cache:prefetch` available-memory gain -3475.4 KB、PSS reduction gain -2205.2 KB、
+Welch p=0.65937954，accepted=false；升级后的 `cache:volatile` 在
+`PreWarmProcess own:volatile-cache:64` seed 后释放 app-owned volatile cache，
+available-memory gain +55158.6 KB、PSS reduction gain +64621.3 KB、jank delta
+0.0 pp、Welch p=0.00026891，accepted=true。因此 ReleaseMemory 当前可作为
+**app-owned volatile memory release** 的正面证据引用，但不得表述为稳定 jank/长期 UX 卖点。
 
 Pixel 6a n=20/mode net-benefit run
 `data/evaluation/next-app/prewarm-net-benefit-real-device-20260704-184148.md`

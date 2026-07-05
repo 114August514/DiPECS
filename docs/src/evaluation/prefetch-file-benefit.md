@@ -51,3 +51,26 @@ The generated artifact is accepted only when all gates are true:
 If the same-budget hit-rate inputs are omitted, the script still produces a
 measurement artifact, but it remains `measurement_pending_baseline_gate` and
 must not be cited as closing #97.
+
+## Pixel 6a Status (2026-07-05)
+
+Pixel 6a (`2B071JEGR05551`) currently cannot produce an accepted #97 artifact.
+The bridge accepts `PrefetchFile` envelopes after aligning the sender timestamp
+to the device clock, but the asynchronous Android prefetcher does not produce a
+cache file:
+
+- `url:https://raw.githubusercontent.com/114August514/DiPECS/main/README.md`
+  returned `prefetch_failed` and no `prefetch_succeeded`;
+- `url:https://example.com/`, `url:https://badssl.com/`, and
+  `url:https://www.google.com/generate_204` also failed to populate
+  `cache/prefetch`;
+- `uri:content://media/external/downloads/427` failed without a SAF-granted
+  persisted read permission; a scripted DocumentsUI grant attempt was not stable
+  enough to use as evidence.
+
+The device system clock is still `2025-06-07` while the host date is
+`2026-07-05`; HTTPS failures are therefore likely affected by TLS validity
+checks, but changing the device-wide clock with root was not performed because
+it is a persistent global device mutation. Until the prefetcher reaches
+`prefetch_succeeded` and creates a cache file, do not run or cite the n>=20
+benefit gate for #97.

@@ -11,7 +11,14 @@ object CacheTrimmer {
         val normalizedTarget = target?.trim().takeUnless { it.isNullOrBlank() } ?: TARGET_PREFETCH
         val deleted = when (normalizedTarget) {
             TARGET_PREFETCH -> AccessibleContentPrefetcher.clearCache(appContext)
-            TARGET_ALL -> clearDirectoryChildren(appContext.cacheDir)
+            TARGET_VOLATILE -> {
+                val released = VolatileMemoryCache.clear()
+                released.releasedChunks
+            }
+            TARGET_ALL -> {
+                VolatileMemoryCache.clear()
+                clearDirectoryChildren(appContext.cacheDir)
+            }
             else -> {
                 EventRepository.recordInternal(
                     appContext,
@@ -54,5 +61,6 @@ object CacheTrimmer {
     }
 
     private const val TARGET_PREFETCH = "cache:prefetch"
+    private const val TARGET_VOLATILE = "cache:volatile"
     private const val TARGET_ALL = "cache:all"
 }

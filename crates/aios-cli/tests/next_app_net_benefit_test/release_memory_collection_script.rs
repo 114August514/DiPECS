@@ -12,6 +12,14 @@ fn release_memory_collection_script_fails_closed_on_missing_pressure_evidence() 
         "ReleaseMemory pressure collection must require an explicit pressure command"
     );
     assert!(
+        SCRIPT.contains("start_pressure_window") && SCRIPT.contains("finish_pressure_window"),
+        "ReleaseMemory pressure collection must keep the pressure source alive across before/after measurements"
+    );
+    assert!(
+        SCRIPT.contains("exited before the post-pressure measurement window"),
+        "ReleaseMemory pressure collection must fail when pressure exits before action sampling"
+    );
+    assert!(
         SCRIPT.contains("ReleaseMemory missing device response"),
         "ReleaseMemory collection must fail when the bridge response cannot be parsed"
     );
@@ -62,6 +70,10 @@ fn release_memory_collection_script_fails_closed_on_missing_pressure_evidence() 
     assert!(
         SCRIPT.contains("available_memory_significant"),
         "ReleaseMemory acceptance must require significant available-memory gain"
+    );
+    assert!(
+        SCRIPT.contains("measured_no_significant_benefit"),
+        "ReleaseMemory artifacts must distinguish measured negative results from missing pressure evidence"
     );
     assert!(
         SCRIPT.contains("pss_non_regression_required")

@@ -39,7 +39,6 @@ class SystemPrewarmActivity : Activity() {
                 .put("target", target)
                 .put("reason", reason),
         )
-
         // The Zygote fork has already occurred. Finish immediately.
         finish()
         // Call onDestroy without animation.

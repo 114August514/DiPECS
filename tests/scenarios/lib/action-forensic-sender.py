@@ -38,6 +38,7 @@ action:"<AuthorizedAction JSON 字符串>"}`。认证标签 HMAC-SHA256 覆盖 f
 import hashlib
 import hmac
 import json
+import os
 import socket
 import sys
 import time
@@ -90,7 +91,14 @@ def main():
     token = sys.argv[3]
     delay = float(sys.argv[4]) if len(sys.argv) > 4 else 1.5
 
-    issued_at_ms = int(time.time() * 1000)
+    # The Android bridge checks issued/expires against the device wall clock
+    # (AuthorizedActionSocketServer.kt: now = System.currentTimeMillis()) with
+    # only a 30s skew allowance. Some real devices have a stale system clock, so
+    # host-clock envelopes can be rejected as expired. DEVICE_CLOCK_OFFSET_MS is
+    # device clock minus host clock in milliseconds, measured by collection
+    # scripts when needed. The default 0 keeps the original behavior.
+    clock_offset_ms = int(os.environ.get("DEVICE_CLOCK_OFFSET_MS", "0"))
+    issued_at_ms = int(time.time() * 1000) + clock_offset_ms
     expires_at_ms = issued_at_ms + PAYLOAD_TTL_MS
     # 可选位置参数:类型/目标/紧迫度。默认 KeepAlive 心跳,保持原调用向后兼容。
     # 设备 dispatch 只读 action_type+target;urgency 仅随 action 字节进 canonical HMAC,

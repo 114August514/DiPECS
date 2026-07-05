@@ -13,6 +13,8 @@ ADB="${ADB:-adb}"
 PACKAGE="${PACKAGE:-com.dipecs.collector}"
 SAMPLES="${SAMPLES:-20}"
 SAMPLE_INTERVAL_SECS="${SAMPLE_INTERVAL_SECS:-1}"
+CACHE_POLL_INTERVAL_SECS="${CACHE_POLL_INTERVAL_SECS:-0.25}"
+CACHE_STABLE_POLLS="${CACHE_STABLE_POLLS:-5}"
 TOKEN="${TOKEN:-dipecs-dev-emulator-shared-token-00000000}"
 PORT="${PORT:-46321}"
 ACTION_HOST="${ACTION_HOST:-127.0.0.1}"
@@ -56,6 +58,7 @@ PY
 
 CACHE_FILE_NAME="$(cache_file_name)"
 CACHE_PATH="/data/user/0/$PACKAGE/cache/prefetch/$CACHE_FILE_NAME"
+APP_CACHE_REL_PATH="cache/prefetch/$CACHE_FILE_NAME"
 
 start_control() {
   adb_cmd shell am start -n "$PACKAGE/.debug.DebugCollectorControlActivity" >/dev/null 2>&1 ||
@@ -106,26 +109,49 @@ send_prefetch() {
   printf '%s\n' "$latency"
 }
 
+run_as_sh() {
+  local command="$1"
+  local quoted
+  printf -v quoted '%q' "$command"
+  adb_cmd shell "run-as $PACKAGE sh -c $quoted"
+}
+
 cache_exists() {
-  adb_cmd shell run-as "$PACKAGE" sh -c "test -s '$CACHE_PATH'" >/dev/null 2>&1
+  run_as_sh "test -s $APP_CACHE_REL_PATH" >/dev/null 2>&1
+}
+
+cache_size_bytes_or_zero() {
+  run_as_sh "stat -c %s $APP_CACHE_REL_PATH 2>/dev/null || echo 0" |
+    tr -d '\r[:space:]'
 }
 
 wait_cache_file() {
   local timeout_ms="${1:-30000}"
-  local started now
+  local started now size last_size stable_polls
   started="$(date +%s%3N)"
+  last_size=0
+  stable_polls=0
   while true; do
-    if cache_exists; then
-      now="$(date +%s%3N)"
-      printf '%s\n' "$((now - started))"
-      return 0
+    size="$(cache_size_bytes_or_zero)"
+    if [[ "$size" =~ ^[0-9]+$ ]] && (( size > 0 )); then
+      if (( size == last_size )); then
+        stable_polls=$((stable_polls + 1))
+      else
+        stable_polls=1
+        last_size="$size"
+      fi
+      if (( stable_polls >= CACHE_STABLE_POLLS )); then
+        now="$(date +%s%3N)"
+        printf '%s\n' "$((now - started))"
+        return 0
+      fi
     fi
     now="$(date +%s%3N)"
     if (( now - started > timeout_ms )); then
       echo "PrefetchFile did not create expected cache file: $CACHE_PATH" >&2
       return 1
     fi
-    sleep 0.25
+    sleep "$CACHE_POLL_INTERVAL_SECS"
   done
 }
 
@@ -134,23 +160,18 @@ read_cache_once_ms() {
     echo "cache file missing before read: $CACHE_PATH" >&2
     return 1
   fi
-  python3 - "$ADB" "$PACKAGE" "$CACHE_PATH" <<'PY'
+  python3 - "$ADB" "$PACKAGE" "$APP_CACHE_REL_PATH" <<'PY'
+import shlex
 import subprocess
 import sys
 import time
 
 adb, package, cache_path = sys.argv[1:]
+inner = f"cat {shlex.quote(cache_path)} > /dev/null"
+remote = f"run-as {shlex.quote(package)} sh -c {shlex.quote(inner)}"
 started = time.perf_counter_ns()
 result = subprocess.run(
-    [
-        adb,
-        "shell",
-        "run-as",
-        package,
-        "sh",
-        "-c",
-        f"cat {cache_path!r} > /dev/null",
-    ],
+    [adb, "shell", remote],
     stdout=subprocess.PIPE,
     stderr=subprocess.PIPE,
     text=True,
@@ -165,7 +186,7 @@ PY
 }
 
 cache_size_bytes() {
-  adb_cmd shell run-as "$PACKAGE" sh -c "stat -c %s '$CACHE_PATH' 2>/dev/null || wc -c < '$CACHE_PATH'" |
+  run_as_sh "stat -c %s $APP_CACHE_REL_PATH 2>/dev/null || wc -c < $APP_CACHE_REL_PATH" |
     tr -d '\r[:space:]'
 }
 

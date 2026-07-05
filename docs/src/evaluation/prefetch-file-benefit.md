@@ -54,23 +54,61 @@ must not be cited as closing #97.
 
 ## Pixel 6a Status (2026-07-05)
 
-Pixel 6a (`2B071JEGR05551`) currently cannot produce an accepted #97 artifact.
-The bridge accepts `PrefetchFile` envelopes after aligning the sender timestamp
-to the device clock, but the asynchronous Android prefetcher does not produce a
-cache file:
+Pixel 6a (`2B071JEGR05551`) produced an accepted #97 artifact:
 
-- `url:https://raw.githubusercontent.com/114August514/DiPECS/main/README.md`
-  returned `prefetch_failed` and no `prefetch_succeeded`;
-- `url:https://example.com/`, `url:https://badssl.com/`, and
-  `url:https://www.google.com/generate_204` also failed to populate
-  `cache/prefetch`;
-- `uri:content://media/external/downloads/427` failed without a SAF-granted
-  persisted read permission; a scripted DocumentsUI grant attempt was not stable
-  enough to use as evidence.
+- JSON: `data/evaluation/action-net-benefit/prefetch-file-benefit-20260705-201053.json`;
+- Markdown: `data/evaluation/action-net-benefit/prefetch-file-benefit-20260705-201053.md`;
+- target:
+  `url:https://raw.githubusercontent.com/114August514/DiPECS/main/docs/src/slides/final/package-lock.json`;
+- payload size: 399,165 bytes in every sample;
+- samples: n=20 for `prefetched_read`, n=20 for `miss_fetch_then_read`;
+- prefetched read mean/p95: 79.993/101.332 ms;
+- miss fetch+read mean/p95: 1860.332/2276.297 ms;
+- measured per-hit saved latency: 1780.339 ms;
+- measured miss action cost: 1775.8 ms;
+- dispatch/control cost: 8.916 ms/action.
 
-The device system clock is still `2025-06-07` while the host date is
-`2026-07-05`; HTTPS failures are therefore likely affected by TLS validity
-checks, but changing the device-wide clock with root was not performed because
-it is a persistent global device mutation. Until the prefetcher reaches
-`prefetch_succeeded` and creates a cache file, do not run or cite the n>=20
-benefit gate for #97.
+Same-budget LSApp standard inputs were provided from
+`data/evaluation/next-app/lsapp-standard.report.json`:
+
+- examples: 272,519;
+- DiPECS ensemble hit@1: 56.509%;
+- `StrongPredictiveActionBaseline` hit@1: 53.784%.
+
+With those inputs, the projected net-benefit gate is positive and beats the
+strong baseline:
+
+- DiPECS projected net benefit: 61,268,324.531 ms;
+- StrongPredictive projected net benefit: 34,859,928.678 ms;
+- DiPECS minus strong baseline: +26,408,395.853 ms.
+
+The accepted semantics are intentionally narrow: the device directly measures
+per-hit saving and miss cost; the same-budget DiPECS-vs-strong comparison is
+projected from real LSApp hit rates, not measured as two separate device traces.
+
+### Device Clock Root Cause
+
+The initial Pixel 6a failures were not caused by the phone hotspot. The device
+could route and resolve external hosts (`8.8.8.8` and `raw.githubusercontent.com`
+pinged successfully), and `com.dipecs.collector` had `INTERNET` permission.
+The failing layer was HTTPS in the app process: the device clock was stuck at
+`2025-06-07` while the host date was `2026-07-05`, and Android
+`time_detector` had empty network and telephony suggestion histories even with
+auto time enabled.
+
+After setting the rooted test device clock to the host time, the same
+`PrefetchFile` URL reached `prefetch_succeeded` and populated
+`cache/prefetch`. The collection script still computes and exports
+`DEVICE_CLOCK_OFFSET_MS` for bridge freshness, but HTTPS itself requires the
+device wall clock to be plausible for certificate validation.
+
+### Collector Fixes From The Run
+
+The #97 run exposed two collector-side issues that are now fixed:
+
+- `adb shell run-as "$PACKAGE" sh -c ...` must be sent as one remote command
+  string; otherwise Android `adb shell` can split the intended `sh -c` command
+  and make cache checks fail even when the file exists.
+- The collector must wait for cache file size to stabilize before reading.
+  The Android prefetcher writes directly to the final cache file, so waiting
+  only for a non-empty file can read a partial download.

@@ -39,3 +39,27 @@ fn prefetch_collection_script_fails_closed_on_missing_measurements() {
         "PrefetchFile artifact acceptance must be derived from measured gates"
     );
 }
+
+#[test]
+fn prefetch_collection_script_preserves_run_as_shell_command_strings() {
+    assert!(
+        SCRIPT.contains("run_as_sh()"),
+        "PrefetchFile collection must wrap run-as sh -c commands so adb shell receives one remote command string"
+    );
+    assert!(
+        !SCRIPT.contains("adb_cmd shell run-as \"$PACKAGE\" sh -c"),
+        "PrefetchFile collection must not pass run-as sh -c as split adb shell argv; Android adb shell drops the intended command string"
+    );
+}
+
+#[test]
+fn prefetch_collection_script_waits_for_stable_cache_size_before_reading() {
+    assert!(
+        SCRIPT.contains("CACHE_STABLE_POLLS"),
+        "PrefetchFile collection must wait for the cache file size to stabilize before measuring reads"
+    );
+    assert!(
+        SCRIPT.contains("stable_polls"),
+        "PrefetchFile collection must require repeated stable size observations, not only a non-empty cache file"
+    );
+}

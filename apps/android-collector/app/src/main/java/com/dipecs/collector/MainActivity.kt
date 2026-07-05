@@ -12,7 +12,7 @@ import android.view.ViewGroup
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
-import com.dipecs.collector.BuildConfig
+import com.dipecs.collector.services.CollectorForegroundService
 import com.dipecs.collector.storage.CollectorPreferences
 import com.dipecs.collector.storage.EventStore
 
@@ -20,12 +20,8 @@ class MainActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(buildHomePage())
-        // 测试便利:adb 可用 --ez auto_start true 拉起前台采集服务(连带动作 socket),
-        // 免去人工点 Start。仅读 launch intent,不导出任何凭证。
-        // 该入口只在 debug build 启用,release 包忽略此 extra,避免将 LAUNCHER activity
-        // 作为非预期后台服务启动点暴露到生产环境。
         if (BuildConfig.DEBUG && intent?.getBooleanExtra("auto_start", false) == true) {
-            startCollectorService(com.dipecs.collector.services.CollectorForegroundService.ACTION_START)
+            startCollectorService(CollectorForegroundService.ACTION_START)
         }
     }
 
@@ -52,24 +48,30 @@ class MainActivity : Activity() {
 
         content.addView(buildHero())
         content.addView(buildStatusStrip())
-        content.addView(buildNavCard(
+        content.addView(navCard(
             title = "运行状态",
             description = "查看采集服务、权限、动作桥接和最近事件。",
             glyph = "S",
             color = Colors.success,
         ) { startActivity(Intent(this, DashboardActivity::class.java)) })
-        content.addView(buildNavCard(
+        content.addView(navCard(
             title = "采集源管理",
             description = "管理 UsageStats、通知监听、无障碍服务和设备状态。",
             glyph = "C",
             color = Colors.primary,
         ) { startActivity(Intent(this, SourcesActivity::class.java)) })
-        content.addView(buildNavCard(
+        content.addView(navCard(
             title = "操作控制台",
-            description = "执行预取、云端桥接、动作 socket、数据导出和调试任务。",
+            description = "执行预取、动作 socket、数据导出和调试任务。",
             glyph = "A",
             color = Colors.warning,
         ) { startActivity(Intent(this, ConsoleActivity::class.java)) })
+        content.addView(navCard(
+            title = "真机验证",
+            description = "本地-only 跑通项目、#97、#98、#99；不需要 API key。",
+            glyph = "V",
+            color = Colors.primaryDark,
+        ) { startActivity(Intent(this, DeviceValidationActivity::class.java)) })
 
         scroll.addView(content)
         root.addView(scroll)
@@ -80,7 +82,7 @@ class MainActivity : Activity() {
     private fun buildHero(): View =
         LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(20), dp(30), dp(20), dp(28))
+            setPadding(dp(20), dp(26), dp(20), dp(24))
             background = GradientDrawable().apply {
                 setColor(Colors.cardBg)
                 cornerRadius = dp(8).toFloat()
@@ -92,22 +94,29 @@ class MainActivity : Activity() {
             }
 
             addView(TextView(this@MainActivity).apply {
-                text = "Android 行为采集与动作验证"
-                textSize = 24f
+                text = "Android 行为采集与真机验证"
+                textSize = 23f
                 typeface = Typeface.DEFAULT_BOLD
                 setTextColor(Colors.textPrimary)
-                setPadding(0, 0, 0, dp(14))
+                setPadding(0, 0, 0, dp(10))
+            })
+            addView(TextView(this@MainActivity).apply {
+                text = "默认本地运行。真机验证页会排除云端 LLM，不会要求 API key。"
+                textSize = 13f
+                setTextColor(Colors.textSecondary)
+                lineHeight = dp(21)
+                setPadding(0, 0, 0, dp(12))
             })
             addView(LinearLayout(this@MainActivity).apply {
                 orientation = LinearLayout.HORIZONTAL
                 addView(primaryButton("启动采集") {
-                    startCollectorService(com.dipecs.collector.services.CollectorForegroundService.ACTION_START)
+                    startCollectorService(CollectorForegroundService.ACTION_START)
                     toast("采集已启动")
                 }.apply {
                     layoutParams = LinearLayout.LayoutParams(0, WRAP, 1f).apply { setMargins(0, 0, dp(6), 0) }
                 })
-                addView(secondaryButton("查看状态") {
-                    startActivity(Intent(this@MainActivity, DashboardActivity::class.java))
+                addView(secondaryButton("真机验证") {
+                    startActivity(Intent(this@MainActivity, DeviceValidationActivity::class.java))
                 }.apply {
                     layoutParams = LinearLayout.LayoutParams(0, WRAP, 1f).apply { setMargins(dp(6), 0, 0, 0) }
                 })
@@ -115,8 +124,7 @@ class MainActivity : Activity() {
         }
 
     private fun buildStatusStrip(): View {
-        val store = EventStore(this)
-        val stats = store.stats()
+        val stats = EventStore(this).stats()
         val running = CollectorPreferences.isCollectorRunning(this)
         val socket = CollectorPreferences.isActionSocketListening(this)
         return LinearLayout(this).apply {
@@ -157,11 +165,11 @@ class MainActivity : Activity() {
             })
         }
 
-    private fun buildNavCard(title: String, description: String, glyph: String, color: Int, onClick: () -> Unit): View =
+    private fun navCard(title: String, description: String, glyph: String, color: Int, onClick: () -> Unit): View =
         LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(18), dp(18), dp(18), dp(18))
+            setPadding(dp(18), dp(16), dp(18), dp(16))
             background = GradientDrawable().apply {
                 setColor(Colors.cardBg)
                 cornerRadius = dp(8).toFloat()
@@ -191,6 +199,13 @@ class MainActivity : Activity() {
                     textSize = 17f
                     typeface = Typeface.DEFAULT_BOLD
                     setTextColor(Colors.textPrimary)
+                })
+                addView(TextView(this@MainActivity).apply {
+                    text = description
+                    textSize = 12f
+                    setTextColor(Colors.textSecondary)
+                    lineHeight = dp(19)
+                    setPadding(0, dp(4), 0, 0)
                 })
             })
             addView(TextView(this@MainActivity).apply {

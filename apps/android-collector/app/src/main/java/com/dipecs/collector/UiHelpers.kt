@@ -30,11 +30,12 @@ object Colors {
     val surfaceMuted = Color.rgb(241, 245, 249)
 }
 
-internal enum class AppPage(val label: String, val glyph: String) {
-    Home("首页", "H"),
-    Dashboard("状态", "S"),
-    Sources("采集", "C"),
-    Console("控制", "A"),
+internal enum class AppPage(val label: String) {
+    Home("首页"),
+    Dashboard("状态"),
+    Sources("采集"),
+    Console("控制"),
+    Validation("验证"),
 }
 
 internal fun Activity.buildAppTopBar(title: String): View =
@@ -60,15 +61,12 @@ internal fun Activity.buildAppTopBar(title: String): View =
             }
         })
 
-        addView(LinearLayout(this@buildAppTopBar).apply {
-            orientation = LinearLayout.VERTICAL
+        addView(TextView(this@buildAppTopBar).apply {
+            text = title
+            textSize = 20f
+            typeface = Typeface.DEFAULT_BOLD
+            setTextColor(Colors.textPrimary)
             layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
-            addView(TextView(this@buildAppTopBar).apply {
-                text = title
-                textSize = 20f
-                typeface = Typeface.DEFAULT_BOLD
-                setTextColor(Colors.textPrimary)
-            })
         })
     }
 
@@ -79,35 +77,29 @@ internal fun Activity.buildBottomNav(current: AppPage): View =
     LinearLayout(this).apply {
         orientation = LinearLayout.HORIZONTAL
         gravity = Gravity.CENTER
-        setPadding(dp(10), dp(8), dp(10), dp(10))
+        setPadding(dp(8), dp(8), dp(8), dp(10))
         setBackgroundColor(Colors.cardBg)
         elevation = 8f
 
         AppPage.values().forEach { page ->
             val selected = page == current
-            addView(LinearLayout(this@buildBottomNav).apply {
-                orientation = LinearLayout.VERTICAL
+            addView(TextView(this@buildBottomNav).apply {
+                text = page.label
+                textSize = 13f
+                typeface = Typeface.DEFAULT_BOLD
                 gravity = Gravity.CENTER
-                isClickable = true
-                isFocusable = true
+                setTextColor(if (selected) Colors.primaryDark else Colors.tabInactive)
                 background = GradientDrawable().apply {
                     cornerRadius = dp(8).toFloat()
                     setColor(if (selected) Colors.primaryLight else Color.TRANSPARENT)
                 }
-                setPadding(0, dp(10), 0, dp(10))
-                layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply {
-                    setMargins(dp(3), 0, dp(3), 0)
-                }
+                minHeight = dp(44)
                 setOnClickListener {
                     if (!selected) openPage(page)
                 }
-                addView(TextView(this@buildBottomNav).apply {
-                    text = page.label
-                    textSize = 15f
-                    typeface = Typeface.DEFAULT_BOLD
-                    gravity = Gravity.CENTER
-                    setTextColor(if (selected) Colors.primaryDark else Colors.tabInactive)
-                })
+                layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply {
+                    setMargins(dp(2), 0, dp(2), 0)
+                }
             })
         }
     }
@@ -118,6 +110,7 @@ private fun Activity.openPage(page: AppPage) {
         AppPage.Dashboard -> DashboardActivity::class.java
         AppPage.Sources -> SourcesActivity::class.java
         AppPage.Console -> ConsoleActivity::class.java
+        AppPage.Validation -> DeviceValidationActivity::class.java
     }
     if (this::class.java == target) return
 
@@ -129,7 +122,6 @@ private fun Activity.openPage(page: AppPage) {
     startActivity(Intent(this, target).addFlags(flags))
     overridePendingTransition(0, 0)
 
-    // Bottom navigation should behave like top-level tabs, not like a deep stack.
     if (this !is MainActivity && page != AppPage.Home) {
         finish()
         overridePendingTransition(0, 0)

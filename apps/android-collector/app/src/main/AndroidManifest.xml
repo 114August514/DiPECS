@@ -2,7 +2,7 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
-    <!-- ── Normal-app permissions (always required) ── -->
+    <!-- 鈹€鈹€ Normal-app permissions (always required) 鈹€鈹€ -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
     <uses-permission android:name="android.permission.INTERNET" />
@@ -11,7 +11,7 @@
     <uses-permission android:name="android.permission.PACKAGE_USAGE_STATS" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
-    <!-- ── System-tier permissions (platform or priv-app signing required) ──
+    <!-- 鈹€鈹€ System-tier permissions (platform or priv-app signing required) 鈹€鈹€
          These enable the system-level action implementations in
          SystemActionExecutors.kt. When shipped as a normal app, these are
          silently ignored by the platform. -->
@@ -37,7 +37,7 @@
         android:directBootAware="true"
         tools:ignore="DirectBootAwarePersistent">
 
-        <!-- ── Launcher Activity (debug) ── -->
+        <!-- 鈹€鈹€ Launcher Activity (debug) 鈹€鈹€ -->
         <activity
             android:name=".MainActivity"
             android:exported="true">
@@ -50,8 +50,9 @@
         <activity android:name=".DashboardActivity" android:exported="false" />
         <activity android:name=".SourcesActivity" android:exported="false" />
         <activity android:name=".ConsoleActivity" android:exported="false" />
+        <activity android:name=".DeviceValidationActivity" android:exported="false" />
 
-        <!-- ── System-level: transparent Activity for Zygote process prewarm ──
+        <!-- 鈹€鈹€ System-level: transparent Activity for Zygote process prewarm 鈹€鈹€
              Theme.NoDisplay = invisible to the user. Launched with FLAG_ACTIVITY_NEW_TASK
              by SystemActionExecutors.prewarmProcess(). -->
         <activity
@@ -63,19 +64,24 @@
             android:taskAffinity=""
             android:process=":prewarm" />
 
-        <!-- ── Foreground collector service ── -->
+        <!-- 鈹€鈹€ Foreground collector service 鈹€鈹€ -->
         <service
             android:name=".services.CollectorForegroundService"
             android:exported="false"
             android:foregroundServiceType="dataSync" />
 
-        <!-- ── JobScheduler-based keep-alive (fallback when not system) ── -->
+        <service
+            android:name=".services.PerformanceExperimentService"
+            android:exported="false"
+            android:foregroundServiceType="dataSync" />
+
+        <!-- 鈹€鈹€ JobScheduler-based keep-alive (fallback when not system) 鈹€鈹€ -->
         <service
             android:name=".services.ActionMaintenanceJobService"
             android:exported="false"
             android:permission="android.permission.BIND_JOB_SERVICE" />
 
-        <!-- ── Notification listener ── -->
+        <!-- 鈹€鈹€ Notification listener 鈹€鈹€ -->
         <service
             android:name=".services.NotificationCollectorService"
             android:exported="true"
@@ -86,7 +92,7 @@
             </intent-filter>
         </service>
 
-        <!-- ── Accessibility listener ── -->
+        <!-- 鈹€鈹€ Accessibility listener 鈹€鈹€ -->
         <service
             android:name=".services.AccessibilityCollectorService"
             android:exported="true"
@@ -100,7 +106,7 @@
                 android:resource="@xml/accessibility_service_config" />
         </service>
 
-        <!-- ── Boot-complete receiver: auto-start on system boot ── -->
+        <!-- 鈹€鈹€ Boot-complete receiver: auto-start on system boot 鈹€鈹€ -->
         <receiver
             android:name=".services.BootReceiver"
             android:exported="true">

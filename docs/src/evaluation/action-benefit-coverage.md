@@ -9,16 +9,19 @@
 
 动作**类型是齐的**，代码链（`aios-spec` 定义 → `PolicyEngine` 能力校验 →
 `AndroidAdapter` 真机派发）5 种动作全部完整。问题不在动作面，而在**收益证明的
-覆盖度**：4 个真机动作已完成 `PreWarmProcess` 正收益 gate、`KeepAlive` 普通 app
-机制边界、`ReleaseMemory` 语义升级后的真压力正收益复测；目前 `PreWarmProcess`
-与升级后的 `ReleaseMemory cache:volatile` 收益显著。
+覆盖度**：4 个真机动作已完成 `PreWarmProcess` 正收益 gate、`PrefetchFile`
+首读/下载等待收益 gate、`KeepAlive` 普通 app 机制边界、`ReleaseMemory` 语义升级后的
+真压力正收益复测；目前 `PreWarmProcess`、`PrefetchFile` 与升级后的
+`ReleaseMemory cache:volatile` 收益显著。
 
 因此当前实验已经能支撑 `PreWarmProcess own:*` 的标准 LSApp split 净收益结论：
 在强预测也能驱动动作的前提下，DiPECS ensemble 的 `net_benefit_ms` 为正且高于
 `StrongPredictiveActionBaseline`。这个结论仍只覆盖 Android-safe 自有资源预热，
-不能外推为普通 Android app 可静默预热第三方应用；`ReleaseMemory` 的旧
+不能外推为普通 Android app 可静默预热第三方应用；`PrefetchFile` 的设备侧证据证明
+命中文件可避免需要时下载等待，但 DiPECS-vs-strong 净收益仍由 LSApp hit@1 输入投影；
+`ReleaseMemory` 的旧
 `cache:prefetch` 磁盘缓存清理语义已按真压力证据降级，但升级后的
-`cache:volatile` app-owned 内存释放语义通过 #99；`PrefetchFile` 仍缺最终收益样本。
+`cache:volatile` app-owned 内存释放语义通过 #99。
 
 ## 真实场景证据分级
 
@@ -29,6 +32,7 @@
 `data/evaluation/next-app/prewarm-net-benefit-real-device-20260704-184148.*`、
 `data/evaluation/action-latency/action-latency-real-device-20260704-172936.*`、
 `data/evaluation/resource-overhead/resource-overhead-real-device-20260704-172617.*`、
+`data/evaluation/action-net-benefit/prefetch-file-benefit-20260705-201053.*`、
 `data/evaluation/action-net-benefit/release-memory-pressure-benefit-20260705-173505.*`、
 `data/evaluation/action-net-benefit/release-memory-pressure-benefit-20260705-185226.*`
 以及主分支上的 CI 离线回归。
@@ -52,15 +56,24 @@
    8.394 ms/action。接入 LSApp standard hit@1 后，DiPECS ensemble
    `net_benefit_ms=75,975,810.192`，强基线为 `72,283,770.198`，DiPECS 高
    `3,692,039.994 ms`。该结论只覆盖 Android-safe `own:*` 预热证据。
-5. **动作链路真实闭环。** 4 类可转发动作在 Android 模拟器/真机上均被设备确认并回执
+5. **PrefetchFile 在 Pixel 6a 上证明了命中收益并通过 #97 gate。**
+   `prefetch-file-benefit-20260705-201053` 使用非 LFS 的 399,165-byte GitHub raw
+   目标，n=20/mode 且所有样本 payload size 一致。prefetched read mean/p95 为
+   79.993/101.332 ms；miss fetch+read mean/p95 为 1860.332/2276.297 ms；
+   hit saved 为 1780.339 ms，miss action cost 为 1775.8 ms，dispatch/control
+   为 8.916 ms/action。接入 LSApp standard hit@1 后，DiPECS ensemble projected
+   `net_benefit_ms=61,268,324.531`，强基线为 `34,859,928.678`，DiPECS 高
+   `26,408,395.853 ms`。边界：设备直接测量的是每次命中文件的节省和 miss 成本，
+   DiPECS-vs-strong 是由真实 LSApp 命中率投影，不是两套设备 trace 的直接 A/B。
+6. **动作链路真实闭环。** 4 类可转发动作在 Android 模拟器/真机上均被设备确认并回执
    (`EXECUTED`)，不只是代码里能调用。Pixel 6a 真机 action bridge 回执延迟为
    841-1964 us：`PreWarmProcess own:warmup` 841 us、`KeepAlive` 973 us、
    `ReleaseMemory` 971 us、`PrefetchFile` 1964 us。
-6. **系统开销够低、可常驻。** replay 1600+ 事件峰值 RSS 约 11 MB、wall time 128 ms；
+7. **系统开销够低、可常驻。** replay 1600+ 事件峰值 RSS 约 11 MB、wall time 128 ms；
    长跑 4 分钟未现显著内存增长。Pixel 6a 短窗口 resource-overhead smoke run 中，
    observe-only PSS 均值 38.946 MB，action-loop PSS 均值 40.726 MB，`top`
    CPU 读数低于该采样方法精度；这只能证明控制面开销量级较低，不能当作精确 CPU 结论。
-7. **ReleaseMemory 在升级后的 app-owned volatile cache 语义下通过真压力 gate。**
+8. **ReleaseMemory 在升级后的 app-owned volatile cache 语义下通过真压力 gate。**
    旧 `cache:prefetch` 语义只删磁盘缓存文件，在 Pixel 6a n=20/mode 真压力复测中
    accepted=false（available gain -3475.4 KB，PSS reduction gain -2205.2 KB，
    Welch p=0.65937954）。本次语义升级新增 `PreWarmProcess own:volatile-cache:64`
@@ -80,9 +93,7 @@
 
 ### 待证实（目前只有代码路径或单次测量，不能支撑"真实场景有用"）
 
-1. **PrefetchFile 的真实收益。** 只证明"能发出去并被确认"，没证明
-   "发出去后系统变好了"。
-2. **KeepAlive 的抗杀收益 —— 已确认在普通 app 形态下机制不生效（#98）。**
+1. **KeepAlive 的抗杀收益 —— 已确认在普通 app 形态下机制不生效（#98）。**
    KeepAlive 的系统级效果是把自身 `oom_score_adj` 调低 + pin 到 foreground
    cgroup（`SystemActionExecutors.kt`），让 LMKD 在内存压力下优先杀别人。四层
    实测证明该机制在普通 app 上无法兑现：
@@ -98,11 +109,11 @@
    `tools/collect/collect-keepalive-memory-pressure.sh` 与 n>=20 gate 已就绪，
    accept 门槛硬性要求机制真实 engage（`mechanism_engaged`），因此在系统部署可用前
    不会产出假阳性；见后续 dipecsd 系统部署 issue。
-3. **真实长期用户体验。** 无真实用户、无 field study，无法支撑"用了 DiPECS 后
+2. **真实长期用户体验。** 无真实用户、无 field study，无法支撑"用了 DiPECS 后
    电池/流畅度/启动延迟整体改善"。
-4. **第三方应用静默预热收益。** 普通 Android 安全语义下 `pkg:*`/`notif:*` 不能被
+3. **第三方应用静默预热收益。** 普通 Android 安全语义下 `pkg:*`/`notif:*` 不能被
    当作静默后台启动第三方 app；#90 当前关闭的是 `own:*` 自有资源预热闭环。
-5. **离线 emulator fixture 的外推边界。** `action-net-benefit` fixture 能作为
+4. **离线 emulator fixture 的外推边界。** `action-net-benefit` fixture 能作为
    schema / CLI / CI 辅助 gate，但其中 wrong-target prewarm 成本来自既有动作确认延迟
    的保守近似，不是新的同设备多样本错预热实验；#90 的主关闭依据应以 Pixel 6a
    n=20/mode measured-device artifact 为准。
@@ -112,9 +123,9 @@
 当前最诚实的说法是：
 
 > DiPECS 是一个能保护隐私、治理风险、低开销地把本地信号转成真实 Android 动作的
-> 框架；其中 Android-safe PreWarm 已在标准 LSApp split 上证明正净收益并超过强预测基线；
-> 升级后的 ReleaseMemory 能释放 app-owned volatile cache，并在真内存压力下显著改善
-> PSS / available memory。
+> 框架；其中 Android-safe PreWarm 和 PrefetchFile 已在标准 LSApp split 上证明正净收益
+> 并超过强预测基线；升级后的 ReleaseMemory 能释放 app-owned volatile cache，并在
+> 真内存压力下显著改善 PSS / available memory。
 
 不能支撑的说法是：
 
@@ -130,13 +141,14 @@
 | --- | --- | --- | --- | --- | --- |
 | `PreWarmProcess` | 预热应用进程 | 齐 | 转发到设备 | 已测：模拟器 n=20 +44.7% 启动（489.3 vs 884.1 ms，p95 512.0 vs 932.0 ms）；Pixel 6a net-benefit n=20/mode，hit saved 509.2 ms，miss action cost 0.5 ms，dispatch/control 8.394 ms/action；DiPECS net benefit 75,975,810 ms > strong baseline 72,283,770 ms | #90 标准 split / `own:*` PreWarm gate 已闭环 |
 | `ReleaseMemory` | 释放非关键内存 | 齐 | 转发到设备 | 旧 `cache:prefetch` 语义已测为负面：available gain -3475.4 KB、PSS reduction gain -2205.2 KB、Welch p=0.65937954，accepted=false；升级后 `cache:volatile` n=20/mode 真压力通过：available gain +55158.6 KB、PSS reduction gain +64621.3 KB、Welch p=0.00026891，accepted=true | #99 在 app-owned volatile memory 语义下闭环；旧磁盘 cache 清理语义不得作为内存收益引用 |
-| `PrefetchFile` | 预加载热点文件到页缓存 | 齐 | 带 `url:`/`uri:` 时转发 | 无 | 能发≠有用，收益待证 |
+| `PrefetchFile` | 预加载热点文件到页缓存 | 齐 | 带 `url:`/`uri:` 时转发 | Pixel 6a n=20/mode 真机通过：399,165-byte HTTPS 目标，prefetched read mean/p95 79.993/101.332 ms，miss fetch+read mean/p95 1860.332/2276.297 ms，hit saved 1780.339 ms；接入 LSApp standard hit@1 后 DiPECS projected net benefit 61,268,324 ms > strong baseline 34,859,929 ms | #97 gate 已闭环；设备测 hit/miss，强基线对比由 LSApp 命中率投影 |
 | `KeepAlive` | 保活当前前台进程 | 齐 | 无条件转发 | 已实测机制边界（#98）：真机/模拟器 app 形态下 `oom=denied,cgroup=denied`；root 代写 oom_score_adj 被 AMS 覆盖。app 形态无法兑现抗杀收益 | 收益需 platform-signed dipecsd 部署；app 形态下机制不生效，见 #98 |
 | `NoOp` | 不执行操作 | — | — | — | — |
 
 数据来源：`data/evaluation/ux-metrics-emulator-20260703-171457.md`、
 `data/evaluation/ux-metrics/ux-metrics-real-device-20260704-172048.md`、
 `data/evaluation/next-app/prewarm-net-benefit-real-device-20260704-184148.md`、
+`data/evaluation/action-net-benefit/prefetch-file-benefit-20260705-201053.md`、
 `data/evaluation/action-latency/action-latency-real-device-20260704-172936.md`、
 `data/evaluation/resource-overhead/resource-overhead-real-device-20260704-172617.md`。
 
@@ -246,7 +258,8 @@ cache 清理语义已被真压力负面复测降级，本次又补上 app-owned 
 - `ReleaseMemory` 已换真压力场景复测。旧 `cache:prefetch` 结果不显著，应如实标注为
   「磁盘缓存清理语义不构成内存压力收益」；升级后的 `cache:volatile` 结果显著，可进入
   成果列表，但边界限定为 app-owned volatile memory release。
-- `PrefetchFile` 从零补起，目前只有派发路径、无任何收益证据。
+- `PrefetchFile` 已补 Pixel 6a n=20/mode hit/miss 成本测量，并通过 #97 projected
+  net-benefit gate；后续若更换目标类型（大文件、content URI、不同网络）需重新测。
 - `KeepAlive` 的采集脚本 + n>=20 gate 已就绪（`collect-keepalive-memory-pressure.sh`），
   且已实测确认其抗杀机制在 app 形态下不生效（`oom_score_adj` 被 AMS 覆盖），
   正收益的验证依赖 platform-signed dipecsd 系统部署（见 #98 与后续系统部署 issue）。
@@ -254,5 +267,6 @@ cache 清理语义已被真压力负面复测降级，本次又补上 app-owned 
   这一列，才能回答 DiPECS 的治理闭环带来什么。
 - 样本量：n=5 不够，每动作每模式至少 n≥20，报均值 + p95。
 
-优先级建议：先做 `PreWarmProcess` 完整端到端版（把已有的 +54.8% 从「预热就快」
-升级为「真实命中率下净收益 vs 强基线」），再做 `PrefetchFile`。
+优先级建议：`PreWarmProcess`、`PrefetchFile`、`ReleaseMemory cache:volatile`
+均已有 n>=20 真机 gate；后续优先处理 KeepAlive 的 platform-signed dipecsd
+系统部署前提和长期 field-study 证据。

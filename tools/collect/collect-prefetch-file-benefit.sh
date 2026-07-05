@@ -1,5 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
+# inherit_errexit makes command substitutions `$(...)` inherit `set -e`. Without
+# it, a failure inside send_action (bad bridge status / missing latency) that
+# surfaces via `read < <(send_action)` inside send_prefetch/clear_prefetch_cache
+# is swallowed when those are called as `x="$(send_prefetch)"`, silently
+# producing a garbage latency instead of aborting. This closes that fail-open
+# so a rejected PrefetchFile/ReleaseMemory dispatch fails the run, not the data.
+shopt -s inherit_errexit
 
 REPO_ROOT="${REPO_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}"
 ADB="${ADB:-adb}"
@@ -402,6 +409,17 @@ data = {
         "same_budget_baseline_inputs_present": has_baseline_inputs,
         "net_benefit_positive": net_benefit_positive,
         "dipecs_beats_strong_predictive": dipecs_beats_strong_predictive,
+        # The device measurement only establishes that PrefetchFile moves a real,
+        # positive fetch latency off the read critical path (hit_saved_ms > 0).
+        # net_benefit_positive and dipecs_beats_strong_predictive are driven by the
+        # OPERATOR-SUPPLIED ablation hit rates (DIPECS_HIT_RATE_PCT / STRONG_HIT_RATE_PCT),
+        # not a device-measured comparison. So accepted=true means "given those
+        # supplied hit rates, the measured per-hit saving yields positive net benefit
+        # over the strong baseline" — NOT the device proving DiPECS beats the baseline.
+        "accepted_semantics": (
+            "device measures per-hit saving (hit_saved_ms>0); net-benefit vs strong "
+            "baseline is projected from operator-supplied hit rates, not device-measured"
+        ),
     },
 }
 

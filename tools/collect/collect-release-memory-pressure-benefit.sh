@@ -8,6 +8,12 @@ SAMPLES="${SAMPLES:-20}"
 SAMPLE_INTERVAL_SECS="${SAMPLE_INTERVAL_SECS:-1}"
 PRESSURE_WINDOW_SECS="${PRESSURE_WINDOW_SECS:-12}"
 POST_ACTION_WINDOW_SECS="${POST_ACTION_WINDOW_SECS:-4}"
+# PRESSURE_COMMAND must HOLD memory pressure for the full measurement window
+# (roughly PRESSURE_WINDOW_SECS + POST_ACTION_WINDOW_SECS). If it releases its
+# memory on exit before mem_before/mem_after are sampled, both arms see ~0 gain,
+# the Welch t-test comes back non-significant, and the gate fails closed (no
+# false accept) — but you also get no usable evidence. Use a command that blocks
+# and keeps its allocation resident across the whole window.
 PRESSURE_COMMAND="${PRESSURE_COMMAND:-}"
 TOKEN="${TOKEN:-dipecs-dev-emulator-shared-token-00000000}"
 PORT="${PORT:-46321}"
@@ -405,9 +411,13 @@ available_memory_significant = p_available < SIGNIFICANCE_ALPHA
 statistically_significant = available_memory_significant
 
 n_at_least_20_per_mode = all(run["summary"]["n"] >= 20 for run in [baseline, release])
+# AND across both arms (not OR): a valid comparison requires that BOTH the
+# baseline and release runs actually experienced memory pressure. OR would let a
+# run where only one arm was stressed pass, making the available-memory delta an
+# apples-to-oranges artifact rather than a like-for-like pressure comparison.
 memory_pressure_observed = (
     baseline["summary"]["mean_mem_available_pressure_drop_kb"] > 0
-    or release["summary"]["mean_mem_available_pressure_drop_kb"] > 0
+    and release["summary"]["mean_mem_available_pressure_drop_kb"] > 0
 )
 measured_inputs_valid = (
     math.isfinite(available_gain_kb)

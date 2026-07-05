@@ -117,9 +117,9 @@ Ping:
 | ActionType | 允许 target | 正常 App 模式行为 |
 | :--- | :--- | :--- |
 | `PrefetchFile` | `url:https://...`, `uri:content://...` | 预取可访问内容到 app cache |
-| `ReleaseMemory` | `cache:prefetch`, `cache:all`, 或空 target | 只清理 DiPECS 自己的 cache |
+| `ReleaseMemory` | `cache:prefetch`, `cache:all`, `cache:volatile`, 或空 target | 只清理 DiPECS 自己的 file cache，或释放 DiPECS 自己 seed 的 volatile memory cache |
 | `KeepAlive` | `work:*` 或空 target | 调度 DiPECS 自己的 `JobScheduler` 维护任务 |
-| `PreWarmProcess` | `own:*` | 预热 DiPECS 自己的资源 |
+| `PreWarmProcess` | `own:*`, `own:volatile-cache:<MB>` | 预热 DiPECS 自己的资源，或 seed 一个有上限的 app-owned volatile memory cache |
 | `PreWarmProcess` | `pkg:*`, `notif:*` | 发用户可见通知提示，不后台启动第三方 App |
 | `NoOp` | 任意 | 只记录审计事件 |
 

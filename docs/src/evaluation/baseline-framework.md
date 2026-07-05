@@ -405,4 +405,4 @@ cargo test --test integration rationale_coverage
 
 - [评估工具](tools.md)
 - [模拟器评估套件](emulator-evaluation-suite.md)
-- [RFC-0002 Action Bus 治理](docs/src/rfc/0002-action-bus-governance.md)
+- [RFC-0002 Action Bus 治理](../rfc/0002-action-bus-governance.md)

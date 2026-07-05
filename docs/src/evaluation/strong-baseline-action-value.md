@@ -132,7 +132,7 @@ PR #108 又补充了 Pixel 6a n=20/mode PreWarm hit/miss measurement：
 PreWarm dispatch/control cost 8.394 ms/action。`next_app_net_benefit_test`
 现在用这些 measured-device inputs 重新计算 net benefit，并断言 DiPECS ensemble
 `net_benefit_ms` 为正且高于 `StrongPredictiveActionBaseline`：
-75,975,810.192 ms vs 72,283,770.198 ms。
+76,068,875.158 ms vs 72,283,770.198 ms。
 
 `origin/main` 还包含一个离线 action-level measured fixture gate，可作为 schema / CLI /
 CI 辅助，而不是替代上面的 real-device gate：

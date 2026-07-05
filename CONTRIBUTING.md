@@ -1,67 +1,85 @@
 # Contributing to DiPECS
 
-DiPECS 是一个处在快速演进中的 AIOS 原型。本文件只说明参与开发需要遵守的最低规则；背景、架构和学术文档请阅读 [文档中心](https://114august514.github.io/DiPECS/)。
+[English](CONTRIBUTING.md) | [简体中文](CONTRIBUTING.zh-CN.md)
+
+DiPECS is a fast-moving Android/Linux AIOS research prototype. This guide covers
+the minimum rules for contributing code, evaluation artifacts, and documentation.
+For background and architecture, read the [documentation site](https://114august514.github.io/DiPECS/).
 
 ## Before You Start
 
-- Bug 修复：先确认是否已有 Issue；新 Issue 需要包含复现步骤、期望行为和实际行为。
-- 新功能或协议变更：先走 [RFC 流程](https://114august514.github.io/DiPECS/rfc/process/)，尤其是会影响 `aios-spec`、跨 crate 数据结构或模块边界的改动。
-- 大改动：先在 Issue / RFC 中说明范围，避免一次 PR 混入架构、实现、格式化和文档重写。
+- Bug fixes: check whether an issue already exists. New issues should include
+  reproduction steps, expected behavior, and actual behavior.
+- New features or protocol changes: open or update an RFC first, especially
+  when the change touches `aios-spec`, cross-crate data structures, action
+  governance, or Android bridge contracts.
+- Large changes: state the scope in an issue or RFC before implementation. Do
+  not mix architecture changes, feature work, formatting churn, and unrelated
+  documentation rewrites in one PR.
 
 ## Setup
 
-项目工具链由仓库锁定。详细的环境配置步骤见 [环境配置指南](https://114august514.github.io/DiPECS/team/environment/)。
-
-一键自检：
+The repository pins its Rust toolchain and Android assumptions. Start with:
 
 ```bash
 source scripts/setup-env.sh
 ```
 
-验证：
+Basic verification:
 
 ```bash
 cargo build --workspace
 cargo test --workspace
 ```
 
-本地开发、Android 部署和日志命令见 [开发指南](https://114august514.github.io/DiPECS/team/dev/)。
+Android work requires Android SDK Platform 35 and NDK r27d. See the development
+docs for detailed environment notes.
 
 ## Local Checks
 
-提交 PR 前至少运行：
+Before opening a PR, run at least:
 
 ```bash
 cargo fmt --all -- --check
-cargo clippy --workspace --all-targets -- -D warnings
+cargo clippy --workspace --all-targets --all-features -- -D warnings
 cargo test --workspace
 ```
 
-需要验证 Android target 时运行：
+For the broader local CI-style check:
 
 ```bash
-./scripts/check-all.sh
+bash scripts/dev/check-all.sh
 ```
 
-CI 红了不能合并。依赖审计和 CI 细节见 [CI 质检体系](https://114august514.github.io/DiPECS/team/ci/)。
+For documentation changes:
+
+```bash
+cd docs
+uv run env PYTHONPATH=. mkdocs build
+```
 
 ## Architecture Rules
 
-模块边界是本项目最重要的约束：
+Module boundaries are part of the design, not implementation detail:
 
-- `aios-spec` 是协议单一事实来源，不依赖业务模块。
-- `apps/android-collector` 提供 Android 采集能力，不生产最终 `StructuredContext`。
-- `aios-collector` 是 Rust 采集层入口，负责接入 app/system 来源并输出 `CollectorEnvelope` / `RawEvent`。
-- `aios-core` 负责隐私脱敏、窗口聚合和策略审查。
-- `aios-agent` 只接收 `StructuredContext`，统一输出 `IntentBatch`。
-- `aios-action` 只执行 `PolicyEngine` 授权后的 `AuthorizedAction`，并依赖 `aios-core` 获取 `ActionAdapter` trait 和 `AuthorizedAction` 类型。
-- `aios-daemon` 只做运行时装配和生命周期管理。
+- `aios-spec` is the protocol source of truth and must not depend on business modules.
+- `apps/android-collector` collects Android public-API data and hosts the
+  action bridge; it does not produce final `StructuredContext`.
+- `aios-collector` ingests app/system sources and outputs `CollectorEnvelope` /
+  `RawEvent`.
+- `aios-core` owns privacy sanitization, window aggregation, policy review,
+  replay validation, and `AuthorizedAction` lifecycle sealing.
+- `aios-agent` receives only sanitized context and outputs `IntentBatch`.
+- `aios-action` executes only policy-authorized actions and Android-safe bridge
+  subsets.
+- `aios-daemon` composes runtime components and manages lifecycle.
 
-依赖方向：`aios-spec -> collector/core/agent -> aios-daemon`，`aios-action` 额外依赖 `aios-core`（为了 `ActionAdapter` trait 和 `AuthorizedAction` 类型）。禁止循环依赖，禁止让 action 读取采集或推理内部状态。详细说明见 [代码地图](https://114august514.github.io/DiPECS/architecture/crates/) 和 [RFC-0001](https://114august514.github.io/DiPECS/rfc/0001-layered-collection-and-decision-routing/)。
+Avoid circular dependencies. Do not let action execution read collector or
+inference internals directly.
 
 ## Pull Requests
 
-使用 feature branch 工作流：
+Use feature branches:
 
 ```text
 feat/<short-name>
@@ -69,40 +87,57 @@ fix/<short-name>
 docs/<short-name>
 ```
 
-PR 要求：
+PRs should include:
 
-- 描述问题、改动和验证命令。
-- 协议或架构变化链接对应 RFC / Issue。
-- 保持改动聚焦；无关格式化和重构另开 PR。
-- 至少一名相关模块维护者 review；涉及跨模块协议时需要更严格审查。
+- Problem statement, implementation summary, and verification commands.
+- Linked issue or RFC for protocol, architecture, or evidence-policy changes.
+- Focused diffs. Put unrelated formatting and refactors in separate PRs.
+- Review from a relevant module owner; cross-module contracts need stricter review.
 
-Commit 建议使用 Conventional Commits：
+Use Conventional Commits when possible:
 
 ```text
-feat(spec): add collector envelope
-fix(core): reject over-capability actions
-docs(readme): clarify collector boundary
+feat(action): add volatile cache release target
+fix(android): reject stale execute envelopes
+docs(readme): clarify v0.3 evidence boundary
 ```
 
 ## Testing Expectations
 
-- 新 `RawEvent`：补 `aios-spec` 类型、`PrivacyAirGap` 脱敏测试、窗口聚合测试。
-- 新决策规则：补 `aios-agent` 后端测试，并说明后端能力上限。
-- 新动作：补 `PolicyEngine` 审查测试和 `aios-action` 执行结果测试。
-- Android 采集能力：先在 `apps/android-collector` 证明真实 API 能看到稳定字段，再接入 `aios-collector`。
-- 端到端回路变更：补充或更新 `tests/scenarios/` 下的场景脚本。action-loop 变更需通过 mock-socket 验证。
+- New `RawEvent`: update `aios-spec`, add `PrivacyAirGap` tests, and cover window aggregation.
+- New decision rule: add `aios-agent` backend tests and document capability limits.
+- New action: add `PolicyEngine` review tests, `aios-action` result tests, and Android bridge coverage if dispatched to device.
+- Android collection capability: first prove stable fields in `apps/android-collector`, then connect it to `aios-collector`.
+- End-to-end route changes: update or add scripts under `tests/scenarios/`.
+- Evidence claims: keep n, device, source artifact, baseline, and acceptance gate explicit.
 
-## Safety
+## Safety and Privacy
 
-- 非测试代码避免 `unwrap()` / `expect()`；库层使用结构化错误。
-- 原始文本、完整路径、联系人、通知正文等敏感信息不得越过 `PrivacyAirGap`。
-- 任何自动动作必须经过 `PolicyEngine` 和 `CapabilityLevel` 审查。
-- 新依赖需要说明必要性、Android 交叉编译支持和二进制体积影响。
+- Avoid `unwrap()` / `expect()` in non-test code; use structured errors.
+- Raw text, full paths, contacts, notification body, tokens, and device-unique
+  identifiers must not cross `PrivacyAirGap` or enter committed artifacts.
+- Automatic actions must pass `PolicyEngine`, `CapabilityLevel`, and
+  `ActionLifecycle`.
+- New dependencies require a reason, Android cross-compilation notes when
+  applicable, and binary-size impact.
+- Real-device scripts must fail closed when bridge responses, pressure evidence,
+  or cache artifacts are missing.
+
+## Documentation and i18n
+
+- Keep root user-facing docs available in English and Simplified Chinese:
+  `README.md` / `README.zh-CN.md`, `CONTRIBUTING.md` / `CONTRIBUTING.zh-CN.md`.
+- When changing one language, update the sibling file in the same PR.
+- Keep technical numbers identical across languages; do not translate away
+  evidence boundaries.
+- Prefer concise root docs and link to `docs/src` for details.
 
 ## Useful Links
 
 - [README](README.md)
-- [开发指南](https://114august514.github.io/DiPECS/team/dev/)
-- [架构概览](https://114august514.github.io/DiPECS/architecture/)
-- [RFC 流程](https://114august514.github.io/DiPECS/rfc/process/)
-- [团队分工](https://114august514.github.io/DiPECS/team/roles/)
+- [中文 README](README.zh-CN.md)
+- [Changelog](CHANGELOG.md)
+- [Architecture overview](docs/src/architecture/index.md)
+- [Action benefit coverage](docs/src/evaluation/action-benefit-coverage.md)
+- [Tests guide](tests/README.md)
+- [Third-party sources](third_party/README.md)

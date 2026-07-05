@@ -132,7 +132,8 @@ aios-cli 复用 core/agent/action 做离线 replay
 | `actions/ActionExecutorBridge.kt` | Android-side action dispatch（含 `handleExecuteEnvelope` / `BridgeExecuteProtocol`）。 |
 | `actions/AccessibleContentPrefetcher.kt` | `url:https://` / `uri:content://` prefetch。 |
 | `actions/ActionMaintenanceScheduler.kt` | `KeepAlive(work:*)` 的 JobScheduler 实现。 |
-| `actions/CacheTrimmer.kt` | `ReleaseMemory(cache:*)` 的 app-owned cache 清理。 |
+| `actions/CacheTrimmer.kt` | `ReleaseMemory(cache:*)` 的 app-owned file/volatile cache 清理。 |
+| `actions/VolatileMemoryCache.kt` | #99 使用的 app-owned volatile memory cache seed/release 机制。 |
 | `actions/SystemActionExecutors.kt` | 系统级 action 执行器（需要 platform 签名/root 时才能启用完整能力）。 |
 | `actions/SystemPrewarmActivity.kt` | 系统预装 app / 自身资源预热 activity。 |
 | `actions/SystemPrewarmActivity.kt` | 系统预装 app 预热 activity。 |

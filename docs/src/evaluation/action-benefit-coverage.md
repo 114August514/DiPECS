@@ -54,8 +54,8 @@
    cold mean/p95 为 710.75/733 ms，PreWarm hit 后为 201.55/213 ms；wrong-prewarm
    后启动 Settings 的 miss delta 为 0.5 ms，PreWarm dispatch/control cost 为
    8.394 ms/action。接入 LSApp standard hit@1 后，DiPECS ensemble
-   `net_benefit_ms=75,975,810.192`，强基线为 `72,283,770.198`，DiPECS 高
-   `3,692,039.994 ms`。该结论只覆盖 Android-safe `own:*` 预热证据。
+   `net_benefit_ms=76,068,875.158`，强基线为 `72,283,770.198`，DiPECS 高
+   `3,785,104.960 ms`。该结论只覆盖 Android-safe `own:*` 预热证据。
 5. **PrefetchFile 在 Pixel 6a 上证明了命中收益并通过 #97 gate。**
    `prefetch-file-benefit-20260705-201053` 使用非 LFS 的 399,165-byte GitHub raw
    目标，n=20/mode 且所有样本 payload size 一致。prefetched read mean/p95 为
@@ -139,7 +139,7 @@
 
 | ActionType | 语义 | 代码链 | 真机派发 | 收益实验 | 结论 |
 | --- | --- | --- | --- | --- | --- |
-| `PreWarmProcess` | 预热应用进程 | 齐 | 转发到设备 | 已测：模拟器 n=20 +44.7% 启动（489.3 vs 884.1 ms，p95 512.0 vs 932.0 ms）；Pixel 6a net-benefit n=20/mode，hit saved 509.2 ms，miss action cost 0.5 ms，dispatch/control 8.394 ms/action；DiPECS net benefit 75,975,810 ms > strong baseline 72,283,770 ms | #90 标准 split / `own:*` PreWarm gate 已闭环 |
+| `PreWarmProcess` | 预热应用进程 | 齐 | 转发到设备 | 已测：模拟器 n=20 +44.7% 启动（489.3 vs 884.1 ms，p95 512.0 vs 932.0 ms）；Pixel 6a net-benefit n=20/mode，hit saved 509.2 ms，miss action cost 0.5 ms，dispatch/control 8.394 ms/action；DiPECS net benefit 76,068,875 ms > strong baseline 72,283,770 ms | #90 标准 split / `own:*` PreWarm gate 已闭环 |
 | `ReleaseMemory` | 释放非关键内存 | 齐 | 转发到设备 | 旧 `cache:prefetch` 语义已测为负面：available gain -3475.4 KB、PSS reduction gain -2205.2 KB、Welch p=0.65937954，accepted=false；升级后 `cache:volatile` n=20/mode 真压力通过：available gain +55158.6 KB、PSS reduction gain +64621.3 KB、Welch p=0.00026891，accepted=true | #99 在 app-owned volatile memory 语义下闭环；旧磁盘 cache 清理语义不得作为内存收益引用 |
 | `PrefetchFile` | 预加载热点文件到页缓存 | 齐 | 带 `url:`/`uri:` 时转发 | Pixel 6a n=20/mode 真机通过：399,165-byte HTTPS 目标，prefetched read mean/p95 79.993/101.332 ms，miss fetch+read mean/p95 1860.332/2276.297 ms，hit saved 1780.339 ms；接入 LSApp standard hit@1 后 DiPECS projected net benefit 61,268,324 ms > strong baseline 34,859,929 ms | #97 gate 已闭环；设备测 hit/miss，强基线对比由 LSApp 命中率投影 |
 | `KeepAlive` | 保活当前前台进程 | 齐 | 无条件转发 | 已实测机制边界（#98）：真机/模拟器 app 形态下 `oom=denied,cgroup=denied`；root 代写 oom_score_adj 被 AMS 覆盖。app 形态无法兑现抗杀收益 | 收益需 platform-signed dipecsd 部署；app 形态下机制不生效，见 #98 |

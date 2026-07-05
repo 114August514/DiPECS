@@ -1,7 +1,7 @@
 # Android 动作实现手册
 
 > Status: Current  
-> Last verified: 2026-07-01
+> Last verified: 2026-07-05
 
 本文记录当前已经落地的 Android action bridge。更早文档中关于 WorkManager、通用 ActionResult、静默预热第三方应用的内容已经过期。
 
@@ -24,6 +24,7 @@ Deferred items for v0.2:
 | `apps/android-collector/.../actions/AccessibleContentPrefetcher.kt` | `PrefetchFile` 实现。 |
 | `apps/android-collector/.../actions/ActionMaintenanceScheduler.kt` | `KeepAlive` 实现。 |
 | `apps/android-collector/.../actions/CacheTrimmer.kt` | 正常 App 模式下 `ReleaseMemory(cache:*)` 实现。 |
+| `apps/android-collector/.../actions/VolatileMemoryCache.kt` | `own:volatile-cache:*` seed 与 `cache:volatile` 释放的 app-owned 可丢弃内存缓存。 |
 | `apps/android-collector/.../actions/SystemActionExecutors.kt` | platform/root 模式下的系统级执行器。 |
 | `apps/android-collector/.../actions/SystemPrewarmActivity.kt` | `PreWarmProcess(own:*)` / 系统级预热 activity。 |
 | `apps/android-collector/.../actions/UserVisibleActionNotifier.kt` | 用户可见动作提示。 |
@@ -111,6 +112,7 @@ Allowed targets：
 ```text
 cache:prefetch
 cache:all
+cache:volatile
 pkg:<package>
 page
 None -> cache:prefetch
@@ -119,7 +121,8 @@ None -> cache:prefetch
 行为：
 
 - `cache:prefetch` 清理 prefetch cache。
-- `cache:all` 在正常 App 模式下只清理 app-owned cache；platform/root 模式下会尝试清理所有应用缓存。
+- `cache:all` 在正常 App 模式下清理 app-owned file cache，并释放 app-owned volatile cache；platform/root 模式下还会尝试清理所有应用缓存。
+- `cache:volatile` 释放由 `PreWarmProcess own:volatile-cache:<MB>` seed 的进程内可丢弃内存缓存；这是 #99 正收益证据使用的默认安全语义。
 - `pkg:<package>` 需要 platform/root，对指定包执行 `pm clear --cache-only`。
 - `page` 需要 root，向 `/proc/sys/vm/drop_caches` 写入 `1`，触发全局 page cache 回收。
 
@@ -129,6 +132,7 @@ Allowed targets：
 
 ```text
 own:*
+own:volatile-cache:<MB>
 pkg:*
 notif:*
 None -> own:resources
@@ -137,6 +141,7 @@ None -> own:resources
 行为：
 
 - `own:*` 调用 `SystemPrewarmActivity`，准备 DiPECS 自身资源。
+- `own:volatile-cache:<MB>` 在进程内 seed 一个有上限的 app-owned volatile cache，用于后续 `ReleaseMemory cache:volatile` 在真实内存压力下释放。
 - `pkg:*` 和 `notif:*` 在正常 App 模式下只发布用户可见 action hint；platform/root 模式下会启动目标包的 launcher Activity 并立即 finish task，触发 Zygote fork。
 
 ### `NoOp`

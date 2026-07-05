@@ -1,15 +1,14 @@
 # 演示材料
 
-这里收纳课程汇报与答辩演示材料。可直接下载 PPTX，也可以查看 Slidev 源码和答辩 Q&A 准备。
+这里保留阶段性交付的演示材料。版本化 PPTX、答辩 Q&A 预案和临时迭代稿不放在
+`docs/src/slides/` 下，避免把草稿误当作当前交付物。
 
-## 中期汇报
+## 中期交付
 
 - [Slidev 源码](midterm/slides.md)
-- [答辩 Q&A 预案](midterm/QA.md)
-- [PPTX v1](midterm/DiPECS-midterm-v1.pptx)
-- [PPTX v2](midterm/DiPECS-midterm-v2.pptx)
-- [PPTX v3](midterm/DiPECS-midterm-v3.pptx)
+- [PPTX](midterm/DiPECS-midterm.pptx)
 
-## 期末汇报
+## 期末最终稿
 
 - [Slidev 源码](final/slides.md)
+- [PPTX](final/DiPECS-final.pptx)

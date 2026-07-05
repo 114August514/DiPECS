@@ -5,7 +5,9 @@ hide:
 
 # DiPECS 文档中心
 
-DiPECS（Digital Intelligence Platform for Efficient Computing Systems）当前是一个 Android/Linux AIOS 原型系统。它的主线不是“让模型直接控制设备”，而是把本地信号采集、隐私脱敏、上下文聚合、决策路由、策略审查和授权动作执行拆成可审计的边界。
+DiPECS（Digital Intelligence Platform for Efficient Computing Systems）当前是一个面向 Android 平台的本地优先 AIOS 原型系统。它的主线不是“让模型直接控制设备”，而是把 Android 本地信号采集、窗口级上下文构造、决策路由、策略审查和授权动作执行拆成可验证的系统边界。
+
+项目价值首先体现在可测量的 Android 资源与体验收益：将上下文预测转化为 `PreWarmProcess`、`PrefetchFile`、`ReleaseMemory` 等受控动作，并用真机/模拟器实验报告启动延迟、文件预取等待、内存压力、动作延迟和控制面开销。隐私脱敏与审计不是替代性能价值的叙事，而是让这些系统动作可以被安全部署、复现和追责的约束条件。
 
 当前默认闭环是：
 

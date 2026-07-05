@@ -15,11 +15,14 @@ data/traces/**/*.parquet filter=lfs diff=lfs merge=lfs -text
 **/*.so filter=lfs diff=lfs merge=lfs -text
 **/*.a filter=lfs diff=lfs merge=lfs -text
 # --- [ 4. 文档素材 ] ---
-# 演示录屏和高精素材
-docs/assets/**/*.mp4 filter=lfs diff=lfs merge=lfs -text
-docs/assets/**/*.mov filter=lfs diff=lfs merge=lfs -text
-docs/assets/**/*.png filter=lfs diff=lfs merge=lfs -text
-docs/assets/**/*.jpg filter=lfs diff=lfs merge=lfs -text
+# 演示录屏、图标、幻灯片图片和高精素材
+docs/**/*.mp4 filter=lfs diff=lfs merge=lfs -text
+docs/**/*.mov filter=lfs diff=lfs merge=lfs -text
+docs/**/*.png filter=lfs diff=lfs merge=lfs -text
+docs/**/*.jpg filter=lfs diff=lfs merge=lfs -text
+docs/**/*.jpeg filter=lfs diff=lfs merge=lfs -text
+docs/**/*.webp filter=lfs diff=lfs merge=lfs -text
+docs/**/*.gif filter=lfs diff=lfs merge=lfs -text
 *.pptx filter=lfs diff=lfs merge=lfs -text
 # --- [ 5. 严禁 LFS (White List) ] ---
 # 显式声明：所有的代码和配置文件严禁进入 LFS
@@ -39,7 +42,7 @@ docs/assets/**/*.jpg filter=lfs diff=lfs merge=lfs -text
 *.tex text eol=lf
 # --- [ 6. Gradle / Android ] ---
 gradlew text eol=lf
-gradlew.bat text eol=crlf
+gradlew.bat text eol=lf
 *.gradle text eol=lf
 *.gradle.kts text eol=lf
 gradle.properties text eol=lf

@@ -1,7 +1,7 @@
 site_name: DiPECS 核心架构指南
 site_url: https://114august514.github.io/DiPECS/
 site_author: DiPECS Team
-site_description: DiPECS — 意图驱动的 AIOS 原型系统架构文档
+site_description: DiPECS — 面向 Android 的本地优先 AIOS 原型系统架构文档
 copyright: DiPECS Team · <a href="https://github.com/114August514/DiPECS">Apache-2.0</a>
 
 docs_dir: src
@@ -136,9 +136,12 @@ nav:
       - v0.2: rfc/releases/v0.2.md
       - RuleBased 能力对齐: rfc/releases/rule-based-capability-conformance.md
   - 评估与测试:
+    - Baseline 框架: evaluation/baseline-framework.md
     - 模拟器评估套件: evaluation/emulator-evaluation-suite.md
     - 评估场景与数据集: evaluation/scenarios.md
     - 评估工具: evaluation/tools.md
+    - LSApp Next-App 预测评估: evaluation/lsapp-evaluation-2026-07-04.md
+    - Cloud LLM 准确率评估: evaluation/cloud-llm-accuracy.md
     - 动作收益覆盖与实验缺口: evaluation/action-benefit-coverage.md
     - 强 Baseline 与动作收益准则: evaluation/strong-baseline-action-value.md
     - PrefetchFile Benefit: evaluation/prefetch-file-benefit.md
@@ -160,11 +163,8 @@ nav:
   - 学术材料: academic/index.md
   - 演示材料:
     - slides/index.md
-    - 中期演示:
-      - Slidev 源码: slides/midterm/slides.md
-      - 答辩 Q&A: slides/midterm/QA.md
-    - 期末演示:
-      - Slidev 源码: slides/final/slides.md
+    - 中期交付: slides/midterm/slides.md
+    - 期末最终稿: slides/final/slides.md
   - 参考资料:
     - refs/index.md
     - Schema 参考: refs/schemas.md

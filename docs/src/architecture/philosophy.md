@@ -29,7 +29,7 @@ verify(Action, Policy)   → AuthorizedAction | Denied
 
 ### 2. `aios-action` — 触手层
 
-AIOS 与底层 Android/Linux 的动作执行边界。它只接收 `ActionLifecycle` 审查通过的 `AuthorizedAction`，通过 `ActionAdapter` 接口执行。`aios-action` 依赖 `aios-core` 获取 `ActionAdapter` trait 和 `AuthorizedAction` 类型。
+AIOS 与 Android 动作执行器之间的执行边界，并通过类似设备驱动的适配器抽象隔离不同执行后端。它只接收 `ActionLifecycle` 审查通过的 `AuthorizedAction`，通过 `ActionAdapter` 接口执行。`aios-action` 依赖 `aios-core` 获取 `ActionAdapter` trait 和 `AuthorizedAction` 类型。
 
 - **PreWarmProcess**：预热目标应用进程
 - **PrefetchFile**：预取热点文件到页缓存

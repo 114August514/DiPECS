@@ -143,8 +143,8 @@ class DeviceValidationActivity : Activity() {
     private fun buildGuidePanel(): View =
         wrapCard("How To Use", TextView(this).apply {
             text = buildString {
-                appendLine("1. Keep the app open on this page, set duration to 120 minutes, then tap Start.")
-                appendLine("2. Use the phone normally or leave it connected to power. The page updates after every interval.")
+                appendLine("1. Set duration to 120 minutes, then tap Start.")
+                appendLine("2. You can leave this page after the foreground-service notification appears. Sampling continues in the background.")
                 appendLine("3. Tap Stop and export now when you are done, or wait until the duration ends.")
                 appendLine("4. Tap Copy current Markdown report and paste it into the project or issue comment.")
                 appendLine()

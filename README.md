@@ -22,6 +22,8 @@ audit are the guardrails that make it acceptable to execute resource actions.
 The benefit claim must come from measured latency, I/O, memory, or device-side
 behavior improvements on Android.
 
+**Documentation site:** [114august514.github.io/DiPECS](https://114august514.github.io/DiPECS/)
+
 ## Why DiPECS?
 
 AIOS-style systems are often described as "AI agents that understand and operate
